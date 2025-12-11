@@ -1,26 +1,31 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./ThemeToggle";
-import { Hotel, Menu, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Hotel, Menu, X, User, LogOut, Calendar } from "lucide-react";
 import { useState } from "react";
-import RoleBasedContent from "./RoleBasedContent";
 
 export function Navbar() {
+  const { user, isAuthenticated, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navigation = [
     { name: "Home", href: "/" },
     { name: "Rooms", href: "/rooms" },
-    { name: "Dining", href: "/dining" },
-    { name: "Services", href: "/services" },
-    { name: "Contact", href: "/contact" },
+    { name: "Menu", href: "/menu" },
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo */}
           <Link to="/" className="flex items-center space-x-2 group">
             <div className="p-2 rounded-full bg-gradient-gold group-hover:shadow-glow transition-all duration-300">
               <Hotel className="h-6 w-6 text-primary" />
@@ -28,105 +33,86 @@ export function Navbar() {
             <span className="text-xl font-bold text-foreground">Premier Hotel</span>
           </Link>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-6">
             {navigation.map((item) => (
-              <Link
-                key={item.name}
-                to={item.href}
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
+              <Link key={item.name} to={item.href} className="text-muted-foreground hover:text-foreground transition-colors font-medium">
                 {item.name}
               </Link>
             ))}
-            
-            {/* Role-based navigation */}
-            <RoleBasedContent allowedRoles={['admin']}>
-              <Link
-                to="/admin"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
-                Admin Panel
-              </Link>
-            </RoleBasedContent>
-            
-            <RoleBasedContent allowedRoles={['admin', 'manager']}>
-              <Link
-                to="/manager"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
-                Management
-              </Link>
-            </RoleBasedContent>
-            
-            <RoleBasedContent allowedRoles={['waiter']}>
-              <Link
-                to="/waiter"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
-                Waiter Panel
-              </Link>
-            </RoleBasedContent>
-            
-            <RoleBasedContent allowedRoles={['chef']}>
-              <Link
-                to="/chef"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
-                Kitchen
-              </Link>
-            </RoleBasedContent>
-            
-            <RoleBasedContent allowedRoles={['cleaner']}>
-              <Link
-                to="/cleaner"
-                className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-              >
-                Housekeeping
-              </Link>
-            </RoleBasedContent>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             <ThemeToggle />
-            <Button variant="outline" size="sm" asChild>
-              <Link to="/menu">Order Now</Link>
-            </Button>
-            <Button variant="hero" size="sm" asChild>
-              <Link to="/login">Login</Link>
-            </Button>
 
-            {/* Mobile menu button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            >
-              {isMobileMenuOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Menu className="h-5 w-5" />
-              )}
+            {isAuthenticated && user ? (
+              <>
+                <Button variant="outline" size="sm" asChild className="hidden sm:flex">
+                  <Link to="/my-bookings"><Calendar className="h-4 w-4 mr-2" />My Bookings</Link>
+                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      <div className="h-8 w-8 rounded-full bg-gradient-gold flex items-center justify-center">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                      <span className="hidden sm:inline">{user.firstName || 'User'}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <div className="px-2 py-1.5">
+                      <p className="text-sm font-medium">{user.firstName} {user.lastName}</p>
+                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                    </div>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link to="/profile" className="cursor-pointer"><User className="mr-2 h-4 w-4" />Profile</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/my-bookings" className="cursor-pointer"><Calendar className="mr-2 h-4 w-4" />My Bookings</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={logout} className="cursor-pointer text-red-600">
+                      <LogOut className="mr-2 h-4 w-4" />Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" asChild className="hidden sm:flex">
+                  <Link to="/register">Sign Up</Link>
+                </Button>
+                <Button variant="hero" size="sm" asChild>
+                  <Link to="/login">Login</Link>
+                </Button>
+              </>
+            )}
+
+            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+              {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
           </div>
         </div>
 
-        {/* Mobile Navigation */}
         {isMobileMenuOpen && (
           <div className="md:hidden border-t border-border bg-background/95 backdrop-blur-lg">
             <div className="px-2 pt-2 pb-3 space-y-1">
               {navigation.map((item) => (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
+                <Link key={item.name} to={item.href} className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
                   {item.name}
                 </Link>
               ))}
+              {isAuthenticated && user && (
+                <>
+                  <Link to="/my-bookings" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>My Bookings</Link>
+                  <Link to="/profile" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>Profile</Link>
+                  <button onClick={() => { logout(); setIsMobileMenuOpen(false); }} className="block w-full text-left px-3 py-2 text-base font-medium text-red-600 hover:text-red-700 transition-colors">Logout</button>
+                </>
+              )}
+              {!isAuthenticated && (
+                <Link to="/register" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>Sign Up</Link>
+              )}
             </div>
           </div>
         )}

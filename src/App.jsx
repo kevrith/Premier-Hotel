@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "./contexts/AuthContext";
 import { OfflineProvider } from "./contexts/OfflineContext";
 import { SocketProvider } from "./contexts/SocketContext";
@@ -16,6 +17,11 @@ import RoomDetails from "./pages/RoomDetails";
 import RoomBooking from "./pages/RoomBooking";
 import MyBookings from "./pages/MyBookings";
 import UserProfile from "./pages/UserProfile";
+import AdminDashboard from "./pages/AdminDashboard";
+import ManagerDashboard from "./pages/ManagerDashboard";
+import ChefDashboard from "./pages/ChefDashboard";
+import WaiterDashboard from "./pages/WaiterDashboard";
+import CleanerDashboard from "./pages/CleanerDashboard";
 
 // Create QueryClient instance
 const queryClient = new QueryClient({
@@ -30,10 +36,11 @@ const queryClient = new QueryClient({
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <BrowserRouter>
-      <AuthProvider>
-        <OfflineProvider>
-          <SocketProvider>
+    <TooltipProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <OfflineProvider>
+            <SocketProvider>
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Index />} />
@@ -54,23 +61,23 @@ const App = () => (
 
               {/* Protected Staff Routes */}
               <Route element={<ProtectedRoute requiredRoles={['admin']} />}>
-                {/* Admin routes will be added here */}
+                <Route path="/admin" element={<AdminDashboard />} />
               </Route>
 
               <Route element={<ProtectedRoute requiredRoles={['manager', 'admin']} />}>
-                {/* Manager routes will be added here */}
+                <Route path="/manager" element={<ManagerDashboard />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredRoles={['chef']} />}>
-                {/* Chef routes will be added here */}
+              <Route element={<ProtectedRoute requiredRoles={['chef', 'admin']} />}>
+                <Route path="/chef" element={<ChefDashboard />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredRoles={['waiter']} />}>
-                {/* Waiter routes will be added here */}
+              <Route element={<ProtectedRoute requiredRoles={['waiter', 'admin']} />}>
+                <Route path="/waiter" element={<WaiterDashboard />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredRoles={['cleaner']} />}>
-                {/* Cleaner routes will be added here */}
+              <Route element={<ProtectedRoute requiredRoles={['cleaner', 'admin']} />}>
+                <Route path="/cleaner" element={<CleanerDashboard />} />
               </Route>
 
               {/* Error Routes */}
@@ -106,6 +113,7 @@ const App = () => (
         </OfflineProvider>
       </AuthProvider>
     </BrowserRouter>
+    </TooltipProvider>
   </QueryClientProvider>
 );
 

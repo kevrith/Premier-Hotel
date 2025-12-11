@@ -57,7 +57,7 @@ export default function MyBookings() {
     const loadBookings = async () => {
       setIsLoading(true);
       try {
-        await fetchBookings();
+        await fetchBookings(user?.id || 'guest');
       } catch (error) {
         console.error('Error fetching bookings:', error);
         toast.error('Failed to load bookings');
@@ -67,7 +67,7 @@ export default function MyBookings() {
     };
 
     loadBookings();
-  }, [isAuthenticated, navigate, fetchBookings]);
+  }, [isAuthenticated, navigate, fetchBookings, user]);
 
   if (!isAuthenticated) {
     return null;

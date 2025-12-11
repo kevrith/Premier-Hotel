@@ -128,4 +128,5 @@ const useBookingStore = create((set, get) => ({
   clearError: () => set({ error: null })
 }));
 
+export { useBookingStore };
 export default useBookingStore;
