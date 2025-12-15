@@ -30,10 +30,12 @@ import {
   CheckCircle,
   Loader2,
   Star,
-  MessageSquare
+  MessageSquare,
+  CreditCard
 } from 'lucide-react';
 import { format, isPast, isFuture, isToday, differenceInDays } from 'date-fns';
 import { toast } from 'react-hot-toast';
+import PaymentModal from '@/components/PaymentModal';
 
 export default function MyBookings() {
   const navigate = useNavigate();
@@ -44,6 +46,8 @@ export default function MyBookings() {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentBooking, setPaymentBooking] = useState(null);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -134,6 +138,30 @@ export default function MyBookings() {
     toast.info('Review feature coming soon!');
   };
 
+  const handlePayClick = (booking) => {
+    setPaymentBooking(booking);
+    setIsPaymentModalOpen(true);
+  };
+
+  const handlePaymentSuccess = async (payment) => {
+    toast.success('Payment completed successfully!');
+    setIsPaymentModalOpen(false);
+    setPaymentBooking(null);
+    // Refresh bookings to get updated payment status
+    await fetchBookings(user?.id || 'guest');
+  };
+
+  const handlePaymentError = (error) => {
+    toast.error(error);
+  };
+
+  const needsPayment = (booking) => {
+    // Check if booking needs payment (not paid and not cancelled)
+    return booking.paymentStatus !== 'paid' &&
+           booking.status !== 'cancelled' &&
+           booking.status !== 'completed';
+  };
+
   const upcomingBookings = bookings.filter((b) => getBookingStatus(b) === 'upcoming');
   const activeBookings = bookings.filter((b) => getBookingStatus(b) === 'active');
   const pastBookings = bookings.filter((b) => ['completed', 'cancelled'].includes(getBookingStatus(b)));
@@ -222,12 +250,30 @@ export default function MyBookings() {
               <span>Total</span>
               <span className="text-primary">KES {booking.pricing.total.toLocaleString()}</span>
             </div>
+            <div className="flex justify-between items-center pt-2">
+              <span className="text-muted-foreground">Payment Status</span>
+              <Badge variant={booking.paymentStatus === 'paid' ? 'default' : 'destructive'}>
+                {booking.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+              </Badge>
+            </div>
           </div>
 
           <Separator />
 
           {/* Actions */}
           <div className="flex flex-wrap gap-2">
+            {needsPayment(booking) && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => handlePayClick(booking)}
+                className="w-full mb-2"
+              >
+                <CreditCard className="h-4 w-4 mr-2" />
+                Pay Now
+              </Button>
+            )}
+
             <Button asChild variant="outline" size="sm" className="flex-1">
               <Link to={`/rooms/${booking.roomId}`}>
                 <MapPin className="h-4 w-4 mr-2" />
@@ -470,6 +516,20 @@ export default function MyBookings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Payment Modal */}
+      {paymentBooking && (
+        <PaymentModal
+          isOpen={isPaymentModalOpen}
+          onClose={() => setIsPaymentModalOpen(false)}
+          referenceType="booking"
+          referenceId={paymentBooking.id}
+          amount={paymentBooking.pricing.total}
+          description={`Payment for ${paymentBooking.roomType} - Room ${paymentBooking.roomNumber}`}
+          onSuccess={handlePaymentSuccess}
+          onError={handlePaymentError}
+        />
+      )}
     </div>
   );
 }

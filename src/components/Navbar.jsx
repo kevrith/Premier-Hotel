@@ -9,8 +9,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Hotel, Menu, X, User, LogOut, Calendar } from "lucide-react";
+import { Hotel, Menu, X, User, LogOut, Calendar, Bell } from "lucide-react";
 import { useState } from "react";
+import NotificationBell from "./NotificationBell";
 
 export function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -46,6 +47,8 @@ export function Navbar() {
 
             {isAuthenticated && user ? (
               <>
+                <NotificationBell />
+
                 <Button variant="outline" size="sm" asChild className="hidden sm:flex">
                   <Link to="/my-bookings"><Calendar className="h-4 w-4 mr-2" />My Bookings</Link>
                 </Button>
@@ -70,6 +73,9 @@ export function Navbar() {
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link to="/my-bookings" className="cursor-pointer"><Calendar className="mr-2 h-4 w-4" />My Bookings</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/notifications" className="cursor-pointer"><Bell className="mr-2 h-4 w-4" />Notifications</Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={logout} className="cursor-pointer text-red-600">
@@ -106,6 +112,7 @@ export function Navbar() {
               {isAuthenticated && user && (
                 <>
                   <Link to="/my-bookings" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>My Bookings</Link>
+                  <Link to="/notifications" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>Notifications</Link>
                   <Link to="/profile" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>Profile</Link>
                   <button onClick={() => { logout(); setIsMobileMenuOpen(false); }} className="block w-full text-left px-3 py-2 text-base font-medium text-red-600 hover:text-red-700 transition-colors">Logout</button>
                 </>

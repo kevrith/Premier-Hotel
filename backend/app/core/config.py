@@ -42,6 +42,24 @@ class Settings(BaseSettings):
     MPESA_PASSKEY: str = ""
     MPESA_CALLBACK_URL: str = ""
 
+    # Email Configuration (Gmail SMTP)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""  # Gmail address
+    SMTP_PASSWORD: str = ""  # Gmail app password
+    EMAIL_FROM: str = ""  # From email address (same as SMTP_USER)
+    EMAIL_FROM_NAME: str = "Premier Hotel"
+
+    # Stripe Configuration
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+
+    # Cloudinary Configuration
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True

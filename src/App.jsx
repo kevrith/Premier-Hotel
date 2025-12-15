@@ -22,6 +22,16 @@ import ManagerDashboard from "./pages/ManagerDashboard";
 import ChefDashboard from "./pages/ChefDashboard";
 import WaiterDashboard from "./pages/WaiterDashboard";
 import CleanerDashboard from "./pages/CleanerDashboard";
+import MyOrders from "./pages/MyOrders";
+import ReportsDashboard from "./pages/ReportsDashboard";
+import StaffManagement from "./pages/StaffManagement";
+import HousekeepingDashboard from "./pages/HousekeepingDashboard";
+import ServiceRequests from "./pages/ServiceRequests";
+import ExpenseTracking from "./pages/ExpenseTracking";
+import InventoryDashboard from "./pages/InventoryDashboard";
+import LoyaltyProgram from "./pages/LoyaltyProgram";
+import NotificationsPage from "./pages/NotificationsPage";
+import MessagesPage from "./pages/MessagesPage";
 
 // Create QueryClient instance
 const queryClient = new QueryClient({
@@ -56,7 +66,12 @@ const App = () => (
               <Route element={<ProtectedRoute requiredRoles={['customer', 'admin']} />}>
                 <Route path="/profile" element={<UserProfile />} />
                 <Route path="/my-bookings" element={<MyBookings />} />
+                <Route path="/my-orders" element={<MyOrders />} />
                 <Route path="/booking" element={<RoomBooking />} />
+                <Route path="/service-requests" element={<ServiceRequests />} />
+                <Route path="/loyalty" element={<LoyaltyProgram />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/messages" element={<MessagesPage />} />
               </Route>
 
               {/* Protected Staff Routes */}
@@ -66,6 +81,35 @@ const App = () => (
 
               <Route element={<ProtectedRoute requiredRoles={['manager', 'admin']} />}>
                 <Route path="/manager" element={<ManagerDashboard />} />
+              </Route>
+
+              {/* Staff Management & Reports - Admin and Manager only */}
+              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager', 'staff']} />}>
+                <Route path="/reports" element={<ReportsDashboard />} />
+              </Route>
+
+              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager']} />}>
+                <Route path="/staff" element={<StaffManagement />} />
+              </Route>
+
+              {/* Expense Tracking - Admin, Manager, Staff */}
+              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager', 'staff']} />}>
+                <Route path="/expenses" element={<ExpenseTracking />} />
+              </Route>
+
+              {/* Inventory Management - Admin, Manager, Staff */}
+              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager', 'staff']} />}>
+                <Route path="/inventory" element={<InventoryDashboard />} />
+              </Route>
+
+              {/* Housekeeping - Admin, Manager, Cleaner, Staff */}
+              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager', 'cleaner', 'staff']} />}>
+                <Route path="/housekeeping" element={<HousekeepingDashboard />} />
+              </Route>
+
+              {/* Service Requests - Available to Staff and Customers */}
+              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager', 'staff']} />}>
+                <Route path="/staff/service-requests" element={<ServiceRequests />} />
               </Route>
 
               <Route element={<ProtectedRoute requiredRoles={['chef', 'admin']} />}>
