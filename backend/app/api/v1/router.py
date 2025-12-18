@@ -2,7 +2,7 @@
 API v1 Router - Combines all endpoint routers
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, rooms, bookings, menu, orders, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages
+from app.api.v1.endpoints import auth, rooms, bookings, menu, orders, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector
 
 api_router = APIRouter()
 
@@ -27,3 +27,7 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(emails.router, prefix="/emails", tags=["Email Management"])
 api_router.include_router(websocket.router, tags=["WebSocket"])
 api_router.include_router(messages.router, prefix="/messages", tags=["Messaging"])
+
+# QuickBooks POS Integration
+api_router.include_router(quickbooks.router, prefix="/quickbooks", tags=["QuickBooks Admin"])
+api_router.include_router(quickbooks_connector.router, prefix="/quickbooks-connector", tags=["QuickBooks Web Connector"])

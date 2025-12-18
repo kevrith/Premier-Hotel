@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.core.config import settings
+from app.core.database import init_db, close_db
 from app.api.v1.router import api_router
 import time
 
@@ -94,9 +95,15 @@ async def startup_event():
     print(f"📚 API Documentation: http://localhost:8000/docs")
     print(f"🔗 API Version: {settings.API_V1_PREFIX}")
 
+    # Initialize database connection pool for QuickBooks
+    await init_db()
+
 
 # Shutdown event
 @app.on_event("shutdown")
 async def shutdown_event():
     """Run on application shutdown"""
     print(f"👋 {settings.APP_NAME} shutting down...")
+
+    # Close database connection pool
+    await close_db()
