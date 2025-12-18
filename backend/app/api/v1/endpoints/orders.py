@@ -11,6 +11,10 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import random
 import string
+import asyncio
+import asyncpg
+from app.core.database import get_db_pool
+from app.services.quickbooks_sync import QuickBooksSyncService
 
 router = APIRouter()
 
@@ -280,6 +284,7 @@ async def update_order_status(
     status_data: OrderStatusUpdate,
     current_user: dict = Depends(require_staff),
     supabase: Client = Depends(get_supabase),
+    db_pool: asyncpg.Pool = Depends(get_db_pool),
 ):
     """
     Update order status (Staff only)
@@ -348,6 +353,18 @@ async def update_order_status(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update order status",
             )
+
+        # Trigger QuickBooks sync if order is completed
+        if new_status == "completed":
+            try:
+                sync_service = QuickBooksSyncService(db_pool)
+                # Run sync in background to not block the response
+                asyncio.create_task(
+                    sync_service.sync_completed_order(order_id)
+                )
+            except Exception as qb_error:
+                # Log QB sync error but don't fail the request
+                print(f"QuickBooks sync failed for order {order_id}: {str(qb_error)}")
 
         return OrderResponse(**response.data[0])
 

@@ -17,6 +17,10 @@ from app.middleware.auth import get_current_user, require_staff
 from datetime import datetime
 import random
 import string
+import asyncio
+import asyncpg
+from app.core.database import get_db_pool
+from app.services.quickbooks_sync import QuickBooksSyncService
 
 router = APIRouter()
 
@@ -483,6 +487,7 @@ async def check_out(
     check_out_data: BookingCheckOut,
     current_user: dict = Depends(require_staff),
     supabase: Client = Depends(get_supabase),
+    db_pool: asyncpg.Pool = Depends(get_db_pool),
 ):
     """
     Check out guest (Staff only)
@@ -544,6 +549,17 @@ async def check_out(
                 "status": "pending",
             }
             supabase.table("maintenance_issues").insert(maintenance_data).execute()
+
+        # Trigger QuickBooks sync for checked-out booking
+        try:
+            sync_service = QuickBooksSyncService(db_pool)
+            # Run sync in background to not block the response
+            asyncio.create_task(
+                sync_service.sync_completed_booking(booking_id)
+            )
+        except Exception as qb_error:
+            # Log QB sync error but don't fail the request
+            print(f"QuickBooks sync failed for booking {booking_id}: {str(qb_error)}")
 
         return BookingResponse(**booking_response.data[0])
 
