@@ -10,8 +10,8 @@ from datetime import datetime
 import random
 import string
 
-from app.core.supabase import get_supabase_client
-from app.core.auth import get_current_user, require_role
+from app.core.supabase import get_supabase
+from app.middleware.auth import get_current_user, require_role
 from app.schemas.reviews import (
     ReviewCategoryCreate,
     ReviewCategoryUpdate,
@@ -55,7 +55,7 @@ def generate_review_number() -> str:
 @router.get("/categories", response_model=List[ReviewCategoryResponse])
 async def get_review_categories(
     is_active: Optional[bool] = Query(True),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all review categories"""
     try:
@@ -81,7 +81,7 @@ async def get_reviews(
     min_rating: Optional[int] = None,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get reviews with filters"""
     try:
@@ -109,7 +109,7 @@ async def get_reviews(
 @router.get("/{review_id}", response_model=ReviewResponse)
 async def get_review(
     review_id: str,
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get a specific review"""
     try:
@@ -127,7 +127,7 @@ async def get_review(
 async def create_review(
     review: ReviewCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new review"""
     try:
@@ -151,7 +151,7 @@ async def update_review(
     review_id: str,
     updates: ReviewUpdate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update a review"""
     try:
@@ -182,7 +182,7 @@ async def moderate_review(
     review_id: str,
     moderation: ReviewModerate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Moderate a review (approve/reject/flag)"""
     try:
@@ -207,7 +207,7 @@ async def moderate_review(
 async def delete_review(
     review_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Delete a review"""
     try:
@@ -238,7 +238,7 @@ async def create_review_response(
     review_id: str,
     response: ReviewResponseCreate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Add a response to a review"""
     try:
@@ -259,7 +259,7 @@ async def create_review_response(
 @router.get("/{review_id}/responses", response_model=List[ReviewResponseResponse])
 async def get_review_responses(
     review_id: str,
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all responses for a review"""
     try:
@@ -278,7 +278,7 @@ async def mark_review_helpful(
     review_id: str,
     is_helpful: bool,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Mark a review as helpful or not helpful"""
     try:
@@ -305,7 +305,7 @@ async def mark_review_helpful(
 @router.get("/stats/overview", response_model=ReviewStats)
 async def get_review_stats(
     room_id: Optional[str] = None,
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get review statistics"""
     try:
@@ -344,7 +344,7 @@ async def get_review_stats(
 @router.get("/rooms/{room_id}/summary", response_model=RoomReviewSummary)
 async def get_room_review_summary(
     room_id: str,
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get review summary for a specific room"""
     try:

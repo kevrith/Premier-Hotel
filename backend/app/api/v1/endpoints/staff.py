@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import List, Optional
 from datetime import date, datetime, time
-from app.core.supabase import get_supabase_client
+from app.core.supabase import get_supabase
 from app.middleware.auth import get_current_user, require_role
 from app.schemas.staff import (
     StaffCreate,
@@ -40,7 +40,7 @@ router = APIRouter()
 async def create_staff(
     staff: StaffCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Create a new staff member.
@@ -74,7 +74,7 @@ async def list_staff(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     List all staff members with optional filtering.
@@ -105,7 +105,7 @@ async def list_staff(
 async def get_staff(
     staff_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Get staff member details by ID.
@@ -145,7 +145,7 @@ async def update_staff(
     staff_id: str,
     staff_update: StaffUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Update staff member information.
@@ -187,7 +187,7 @@ async def update_staff(
 async def delete_staff(
     staff_id: str,
     current_user: dict = Depends(require_role(["admin"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Delete a staff member.
@@ -221,7 +221,7 @@ async def delete_staff(
 async def create_shift(
     shift: StaffShiftCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Create a new shift for a staff member.
@@ -258,7 +258,7 @@ async def list_shifts(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     List shifts with optional filtering.
@@ -296,7 +296,7 @@ async def get_my_shifts(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Get shifts for the current logged-in staff member.
@@ -342,7 +342,7 @@ async def update_shift(
     shift_id: str,
     shift_update: StaffShiftUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Update a shift.
@@ -383,7 +383,7 @@ async def update_shift(
 async def check_in(
     attendance: AttendanceCheckIn,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Staff check-in for the day.
@@ -432,7 +432,7 @@ async def check_in(
 async def check_out(
     attendance: AttendanceCheckOut,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Staff check-out for the day.
@@ -502,7 +502,7 @@ async def list_attendance(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     List attendance records.
@@ -540,7 +540,7 @@ async def list_attendance(
 async def create_leave_request(
     leave_request: LeaveRequestCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Create a leave request.
@@ -576,7 +576,7 @@ async def list_leave_requests(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     List leave requests.
@@ -608,7 +608,7 @@ async def approve_leave(
     leave_id: str,
     approval: LeaveApproval,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Approve or reject a leave request.
@@ -650,7 +650,7 @@ async def approve_leave(
 async def create_evaluation(
     evaluation: PerformanceEvaluationCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Create a performance evaluation.
@@ -681,7 +681,7 @@ async def list_evaluations(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     List performance evaluations.
@@ -712,7 +712,7 @@ async def list_evaluations(
 @router.get("/stats/overview", response_model=StaffStats)
 async def get_staff_stats(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Get staff statistics overview.

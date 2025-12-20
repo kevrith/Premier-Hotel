@@ -7,8 +7,8 @@ from typing import List
 from datetime import datetime
 from supabase import Client
 
-from app.core.supabase import get_supabase_client
-from app.core.auth import require_role, get_current_user
+from app.core.supabase import get_supabase
+from app.middleware.auth import require_role, get_current_user
 from app.schemas.notifications import (
     NotificationPreferencesBase, NotificationPreferencesResponse,
     NotificationCreate, NotificationResponse, NotificationUpdate,
@@ -21,7 +21,7 @@ router = APIRouter()
 @router.get("/preferences", response_model=NotificationPreferencesResponse)
 async def get_my_preferences(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get current user's notification preferences"""
     result = supabase.table("notification_preferences").select("*").eq("user_id", current_user["id"]).execute()
@@ -38,7 +38,7 @@ async def get_my_preferences(
 async def update_preferences(
     preferences: NotificationPreferencesBase,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update notification preferences"""
     prefs_data = preferences.model_dump()
@@ -60,7 +60,7 @@ async def get_my_notifications(
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get current user's notifications"""
     query = supabase.table("notifications").select("*").eq("user_id", current_user["id"])
@@ -78,7 +78,7 @@ async def get_my_notifications(
 async def mark_as_read(
     notification_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Mark notification as read"""
     update_data = {"read_at": datetime.now().isoformat()}
@@ -98,7 +98,7 @@ async def mark_as_read(
 @router.post("/mark-all-read")
 async def mark_all_as_read(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Mark all notifications as read"""
     update_data = {"read_at": datetime.now().isoformat()}
@@ -115,7 +115,7 @@ async def mark_all_as_read(
 @router.get("/stats", response_model=NotificationStats)
 async def get_notification_stats(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get notification statistics"""
     result = supabase.table("notifications").select("*").eq("user_id", current_user["id"]).execute()
@@ -142,7 +142,7 @@ async def get_notification_stats(
 async def send_notification(
     notification: NotificationCreate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Send notification (staff only)"""
     notif_data = notification.model_dump()

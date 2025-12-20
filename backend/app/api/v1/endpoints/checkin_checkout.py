@@ -9,8 +9,8 @@ from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 
-from app.core.supabase import get_supabase_client
-from app.core.auth import get_current_user, require_role
+from app.core.supabase import get_supabase
+from app.middleware.auth import get_current_user, require_role
 from app.schemas.checkin_checkout import (
     GuestRegistrationCreate,
     GuestRegistrationResponse,
@@ -38,7 +38,7 @@ router = APIRouter()
 async def create_registration(
     registration: GuestRegistrationCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create guest registration for check-in"""
     try:
@@ -60,7 +60,7 @@ async def create_registration(
 async def get_registration(
     registration_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get registration details"""
     try:
@@ -82,7 +82,7 @@ async def get_registration(
 async def create_checkin(
     checkin: CheckinCreate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create check-in record"""
     try:
@@ -106,7 +106,7 @@ async def get_checkins(
     booking_id: Optional[str] = None,
     limit: int = Query(50, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get check-in records"""
     try:
@@ -138,7 +138,7 @@ async def process_checkin(
     checkin_id: str,
     process_data: CheckinProcess,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Process check-in (assign room, issue key)"""
     try:
@@ -162,7 +162,7 @@ async def complete_checkin(
     checkin_id: str,
     complete_data: CheckinComplete,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Complete check-in"""
     try:
@@ -193,7 +193,7 @@ async def complete_checkin(
 async def create_checkout(
     checkout: CheckoutCreate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create check-out record"""
     try:
@@ -217,7 +217,7 @@ async def get_checkouts(
     booking_id: Optional[str] = None,
     limit: int = Query(50, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get check-out records"""
     try:
@@ -248,7 +248,7 @@ async def process_checkout(
     checkout_id: str,
     process_data: CheckoutProcess,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Process check-out (inspect room, calculate charges)"""
     try:
@@ -279,7 +279,7 @@ async def complete_checkout(
     checkout_id: str,
     complete_data: CheckoutComplete,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Complete check-out"""
     try:
@@ -311,7 +311,7 @@ async def complete_checkout(
 async def create_request(
     request: CheckinCheckoutRequestCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create early check-in or late checkout request"""
     try:
@@ -334,7 +334,7 @@ async def get_requests(
     status: Optional[str] = None,
     request_type: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get check-in/out requests"""
     try:
@@ -361,7 +361,7 @@ async def process_request(
     request_id: str,
     process_data: CheckinCheckoutRequestProcess,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Approve or reject request"""
     try:

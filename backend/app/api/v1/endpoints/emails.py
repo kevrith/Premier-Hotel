@@ -5,7 +5,7 @@ Endpoints for processing email queue and sending emails
 
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
-from app.core.dependencies import get_supabase_client, require_role
+from app.core.dependencies import get_supabase, require_role
 from app.services.email_queue_processor import (
     process_email_queue,
     queue_booking_confirmation_email,
@@ -29,7 +29,7 @@ class EmailStatsResponse(BaseModel):
 async def process_queue(
     limit: int = 10,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Process pending emails in the queue (Admin/Manager only)
@@ -52,7 +52,7 @@ async def process_queue(
 @router.get("/stats", response_model=EmailStatsResponse)
 async def get_email_stats(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get email queue statistics (Admin/Manager only)"""
     try:
@@ -77,7 +77,7 @@ async def get_email_queue(
     status: str = None,
     limit: int = 50,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get emails from the queue (Admin/Manager only)"""
     try:
@@ -106,7 +106,7 @@ class QueueEmailRequest(BaseModel):
 async def queue_email(
     request: QueueEmailRequest,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Manually queue an email for sending (Staff/Admin/Manager)
@@ -143,7 +143,7 @@ async def queue_email(
 async def delete_queued_email(
     email_id: str,
     current_user: dict = Depends(require_role(["admin"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Delete an email from the queue (Admin only)"""
     try:
@@ -165,7 +165,7 @@ async def delete_queued_email(
 @router.post("/retry-failed")
 async def retry_failed_emails(
     current_user: dict = Depends(require_role(["admin"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Retry all failed emails (Admin only)

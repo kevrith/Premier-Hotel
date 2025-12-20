@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 import random
 import string
 
-from app.core.supabase import get_supabase_client
-from app.core.auth import get_current_user, require_role
+from app.core.supabase import get_supabase
+from app.middleware.auth import get_current_user, require_role
 from app.schemas.service_requests import (
     ServiceRequestTypeCreate,
     ServiceRequestTypeUpdate,
@@ -57,7 +57,7 @@ def generate_request_number() -> str:
 async def get_service_request_types(
     category: Optional[str] = Query(None, pattern="^(room_service|housekeeping|maintenance|concierge|amenities|other)$"),
     is_active: Optional[bool] = Query(True),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all service request types"""
     try:
@@ -80,7 +80,7 @@ async def get_service_request_types(
 async def create_service_request_type(
     request_type: ServiceRequestTypeCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new service request type (Admin/Manager only)"""
     try:
@@ -100,7 +100,7 @@ async def update_service_request_type(
     type_id: str,
     updates: ServiceRequestTypeUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update a service request type (Admin/Manager only)"""
     try:
@@ -125,7 +125,7 @@ async def update_service_request_type(
 async def delete_service_request_type(
     type_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Delete a service request type (Admin/Manager only)"""
     try:
@@ -159,7 +159,7 @@ async def get_service_requests(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get service requests with filters"""
     try:
@@ -209,7 +209,7 @@ async def get_service_requests(
 async def get_service_request(
     request_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get a specific service request by ID"""
     try:
@@ -236,7 +236,7 @@ async def get_service_request(
 async def create_service_request(
     request: ServiceRequestCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new service request"""
     try:
@@ -267,7 +267,7 @@ async def update_service_request(
     request_id: str,
     updates: ServiceRequestUpdate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update a service request"""
     try:
@@ -308,7 +308,7 @@ async def assign_service_request(
     request_id: str,
     assignment: ServiceRequestAssign,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Assign a service request to a staff member"""
     try:
@@ -336,7 +336,7 @@ async def start_service_request(
     request_id: str,
     start_data: ServiceRequestStart,
     current_user: dict = Depends(require_role(["admin", "manager", "staff", "cleaner"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Mark a service request as in progress"""
     try:
@@ -375,7 +375,7 @@ async def complete_service_request(
     request_id: str,
     completion_data: ServiceRequestComplete,
     current_user: dict = Depends(require_role(["admin", "manager", "staff", "cleaner"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Mark a service request as completed"""
     try:
@@ -421,7 +421,7 @@ async def cancel_service_request(
     request_id: str,
     cancel_data: ServiceRequestCancel,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Cancel a service request"""
     try:
@@ -459,7 +459,7 @@ async def submit_service_request_feedback(
     request_id: str,
     feedback: ServiceRequestFeedback,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Submit feedback for a completed service request"""
     try:
@@ -503,7 +503,7 @@ async def submit_service_request_feedback(
 async def get_service_request_history(
     request_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get status history for a service request"""
     try:
@@ -534,7 +534,7 @@ async def add_service_request_attachment(
     request_id: str,
     attachment: ServiceRequestAttachmentCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Add an attachment to a service request"""
     try:
@@ -566,7 +566,7 @@ async def add_service_request_attachment(
 async def get_service_request_attachments(
     request_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all attachments for a service request"""
     try:
@@ -597,7 +597,7 @@ async def add_service_request_comment(
     request_id: str,
     comment: ServiceRequestCommentCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Add a comment to a service request"""
     try:
@@ -633,7 +633,7 @@ async def add_service_request_comment(
 async def get_service_request_comments(
     request_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all comments for a service request"""
     try:
@@ -670,7 +670,7 @@ async def get_service_request_stats(
     from_date: Optional[datetime] = None,
     to_date: Optional[datetime] = None,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get overall service request statistics"""
     try:
@@ -738,7 +738,7 @@ async def get_my_service_requests(
     status: Optional[str] = Query(None, pattern="^(pending|assigned|in_progress|completed|cancelled|rejected)$"),
     limit: int = Query(10, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get current user's service requests"""
     try:

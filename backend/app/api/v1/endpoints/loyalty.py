@@ -9,8 +9,8 @@ from datetime import datetime, date
 from supabase import Client
 from decimal import Decimal
 
-from app.core.supabase import get_supabase_client
-from app.core.auth import require_role, get_current_user
+from app.core.supabase import get_supabase
+from app.middleware.auth import require_role, get_current_user
 from app.schemas.loyalty import (
     # Tiers
     LoyaltyTierCreate, LoyaltyTierUpdate, LoyaltyTierResponse,
@@ -56,7 +56,7 @@ def generate_referral_code(user_id: str) -> str:
 @router.get("/tiers", response_model=List[LoyaltyTierResponse])
 async def get_loyalty_tiers(
     is_active: Optional[bool] = Query(None),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all loyalty tiers (public endpoint)"""
     query = supabase.table("loyalty_tiers").select("*")
@@ -74,7 +74,7 @@ async def get_loyalty_tiers(
 async def create_tier(
     tier: LoyaltyTierCreate,
     current_user: dict = Depends(require_role(["admin"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new loyalty tier"""
     tier_data = tier.model_dump()
@@ -92,7 +92,7 @@ async def update_tier(
     tier_id: str,
     tier: LoyaltyTierUpdate,
     current_user: dict = Depends(require_role(["admin"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update loyalty tier"""
     update_data = tier.model_dump(exclude_unset=True)
@@ -112,7 +112,7 @@ async def update_tier(
 @router.get("/account", response_model=LoyaltyAccountResponse)
 async def get_my_account(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get current user's loyalty account"""
     result = supabase.table("loyalty_accounts").select("*").eq("user_id", current_user["id"]).execute()
@@ -140,7 +140,7 @@ async def get_all_accounts(
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all loyalty accounts (admin only)"""
     query = supabase.table("loyalty_accounts").select("*")
@@ -161,7 +161,7 @@ async def get_all_accounts(
 async def get_account_by_user(
     user_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get loyalty account by user ID (admin only)"""
     result = supabase.table("loyalty_accounts").select("*").eq("user_id", user_id).execute()
@@ -182,7 +182,7 @@ async def get_my_transactions(
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get current user's points transactions"""
     query = supabase.table("loyalty_transactions").select("*").eq("user_id", current_user["id"])
@@ -200,7 +200,7 @@ async def get_my_transactions(
 async def earn_points(
     request: PointsEarnRequest,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Award points to a user (staff only)"""
     # Call the award_loyalty_points function
@@ -231,7 +231,7 @@ async def earn_points(
 async def redeem_points(
     request: PointsRedeemRequest,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Redeem points (deduct from account)"""
     # Get account
@@ -273,7 +273,7 @@ async def get_rewards(
     reward_type: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(True),
     is_featured: Optional[bool] = Query(None),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get rewards catalog (public for authenticated users)"""
     query = supabase.table("rewards_catalog").select("*")
@@ -297,7 +297,7 @@ async def get_rewards(
 async def create_reward(
     reward: RewardCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new reward"""
     reward_data = reward.model_dump()
@@ -313,7 +313,7 @@ async def create_reward(
 @router.get("/rewards/{reward_id}", response_model=RewardResponse)
 async def get_reward(
     reward_id: str,
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get reward by ID"""
     result = supabase.table("rewards_catalog").select("*").eq("id", reward_id).execute()
@@ -329,7 +329,7 @@ async def update_reward(
     reward_id: str,
     reward: RewardUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update reward"""
     update_data = reward.model_dump(exclude_unset=True)
@@ -350,7 +350,7 @@ async def update_reward(
 async def get_my_redemptions(
     status: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get current user's reward redemptions"""
     query = supabase.table("reward_redemptions").select("*").eq("user_id", current_user["id"])
@@ -368,7 +368,7 @@ async def get_my_redemptions(
 async def redeem_reward(
     redemption: RewardRedemptionCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Redeem a reward with points"""
     # Get reward
@@ -447,7 +447,7 @@ async def update_redemption(
     redemption_id: str,
     redemption: RewardRedemptionUpdate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update redemption status (staff only)"""
     update_data = redemption.model_dump(exclude_unset=True)
@@ -472,7 +472,7 @@ async def update_redemption(
 @router.get("/referrals", response_model=List[ReferralResponse])
 async def get_my_referrals(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get current user's referrals"""
     result = supabase.table("referrals").select("*").eq("referrer_id", current_user["id"]).order("created_at", desc=True).execute()
@@ -484,7 +484,7 @@ async def get_my_referrals(
 async def create_referral(
     referral: ReferralCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new referral"""
     referral_data = referral.model_dump()
@@ -507,7 +507,7 @@ async def create_referral(
 @router.get("/statistics", response_model=LoyaltyStatistics)
 async def get_loyalty_statistics(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get loyalty program statistics (admin only)"""
     # Get counts
@@ -549,7 +549,7 @@ async def get_loyalty_statistics(
 @router.get("/summary", response_model=MemberSummary)
 async def get_member_summary(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get complete member summary for current user"""
     # Get account

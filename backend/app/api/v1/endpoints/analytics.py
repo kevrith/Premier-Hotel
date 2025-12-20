@@ -10,8 +10,8 @@ from supabase import Client
 from decimal import Decimal
 import statistics
 
-from app.core.supabase import get_supabase_client
-from app.core.auth import require_role
+from app.core.supabase import get_supabase
+from app.middleware.auth import require_role
 from app.schemas.analytics import (
     RevenueAnalytics, RevenueByPeriod,
     OccupancyAnalytics, OccupancyByPeriod,
@@ -92,7 +92,7 @@ async def get_revenue_analytics(
     end_date: date = Query(...),
     period: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get comprehensive revenue analytics"""
     # Get payments data
@@ -146,7 +146,7 @@ async def get_occupancy_analytics(
     start_date: date = Query(...),
     end_date: date = Query(...),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get occupancy analytics"""
     # Get total rooms
@@ -205,7 +205,7 @@ async def get_booking_analytics(
     start_date: date = Query(...),
     end_date: date = Query(...),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get booking analytics"""
     bookings_result = supabase.table("bookings")\
@@ -264,7 +264,7 @@ async def get_booking_analytics(
 @router.get("/customers", response_model=CustomerAnalytics)
 async def get_customer_analytics(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get customer analytics"""
     users_result = supabase.table("auth.users").select("*").execute()
@@ -295,7 +295,7 @@ async def get_customer_analytics(
 async def get_analytics_dashboard(
     period: str = Query("month", pattern="^(today|week|month|year)$"),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get comprehensive analytics dashboard"""
     # Calculate date range based on period
@@ -354,7 +354,7 @@ async def get_analytics_dashboard(
 async def forecast_revenue(
     horizon_days: int = Query(30, ge=1, le=365),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Forecast future revenue"""
     # Get historical data (last 90 days)
@@ -411,7 +411,7 @@ async def forecast_revenue(
 @router.get("/kpis", response_model=KPIDashboard)
 async def get_kpi_dashboard(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get KPI dashboard"""
     kpis = [
@@ -457,7 +457,7 @@ async def get_kpi_dashboard(
 @router.get("/insights", response_model=InsightsList)
 async def get_insights(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get AI-generated insights"""
     insights = [

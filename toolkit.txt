@@ -1,1 +1,973 @@
-I first started by having a conversation with the AI. My choice of A.I was
+I first started by having a conversation with the AI. My choice of A.I was Claude.
+
+Prompt 1
+Help me to come up with a project structure of the implementation of the following masterplan. Give me in details how to implement it since I will be using react with Typescript and for the backend am thinking of using python with postgress sql. also analyse and let me know of the best approach I can use.
+
+Response:
+Hotel Management App - Complete Project Structure & Implementation Guide
+Based on your masterplan and tech stack preferences (React/TypeScript frontend, Python backend, PostgreSQL), I'll provide a detailed implementation strategy with project structure.
+Tech Stack Analysis & Recommendations
+Your Proposed Stack vs. Masterplan
+Frontend: React + TypeScript ✅ (Excellent choice - aligns with masterplan)
+Backend: Python vs. Node.js (Masterplan suggested)
+Database: PostgreSQL ✅ (Perfect - Supabase is PostgreSQL-based)
+Python Backend - Pros & Cons
+Why Python Works Well Here:
+
+Your Expertise: You're highly proficient in Python and FastAPI
+Rapid Development: Python's expressiveness speeds up development
+Excellent Libraries: Great ecosystem for payments, reporting, data analysis
+Type Safety: With Pydantic models matching your TypeScript frontend
+Analytics: Superior for reporting and data analysis features
+QuickBooks Integration: Good Python libraries available
+
+Potential Considerations:
+
+Real-time Features: Node.js has more native WebSocket support, but Python handles this well with FastAPI's WebSocket support
+Team Consistency: Full JavaScript stack can be easier for small teams, but as CTO with Python expertise, this isn't an issue for you
+
+Recommendation: Stick with Python (FastAPI) + PostgreSQL. Given your expertise and the project requirements, this is actually a better choice than the masterplan's Node.js suggestion.
+
+Response continued:
+Detailed Implementation Guide
+Phase 1: Project Setup & Core Infrastructure (Weeks 1-2)
+1.1 Database Setup
+Create PostgreSQL schema:
+sql-- migrations/001_initial_schema.sql
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Users table
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20) UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('customer', 'admin', 'manager', 'waiter', 'chef', 'cleaner')),
+    is_active BOOLEAN DEFAULT true,
+    loyalty_points INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Menu items
+CREATE TABLE menu_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    price DECIMAL(10, 2) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    image_url VARCHAR(500),
+    is_available BOOLEAN DEFAULT true,
+    customization_options JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Orders
+CREATE TABLE orders (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    order_number VARCHAR(20) UNIQUE NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'preparing', 'ready', 'delivered', 'cancelled')),
+    total_amount DECIMAL(10, 2) NOT NULL,
+    payment_method VARCHAR(20) CHECK (payment_method IN ('mpesa', 'cash', 'card')),
+    payment_status VARCHAR(20) DEFAULT 'pending',
+    location VARCHAR(100),
+    waiter_id UUID REFERENCES users(id),
+    special_instructions TEXT,
+    is_synced BOOLEAN DEFAULT false,  -- For offline functionality
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Order items
+CREATE TABLE order_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+    menu_item_id UUID REFERENCES menu_items(id),
+    quantity INTEGER NOT NULL,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    customizations JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Rooms
+CREATE TABLE rooms (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    room_number VARCHAR(20) UNIQUE NOT NULL,
+    room_type VARCHAR(50) NOT NULL,
+    rate DECIMAL(10, 2) NOT NULL,
+    capacity INTEGER NOT NULL,
+    status VARCHAR(20) DEFAULT 'available' CHECK (status IN ('available', 'occupied', 'cleaning', 'maintenance')),
+    features JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Bookings
+CREATE TABLE bookings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id),
+    room_id UUID REFERENCES rooms(id),
+    booking_number VARCHAR(20) UNIQUE NOT NULL,
+    check_in_date DATE NOT NULL,
+    check_out_date DATE NOT NULL,
+    number_of_guests INTEGER NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    payment_status VARCHAR(20) DEFAULT 'pending',
+    special_requests TEXT,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Inventory
+CREATE TABLE inventory (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    quantity DECIMAL(10, 2) NOT NULL,
+    unit VARCHAR(20) NOT NULL,
+    purchase_price DECIMAL(10, 2),
+    reorder_threshold DECIMAL(10, 2) DEFAULT 10,
+    last_restocked TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Staff records
+CREATE TABLE staff_records (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    shift_start TIME,
+    shift_end TIME,
+    hourly_rate DECIMAL(10, 2),
+    performance_score DECIMAL(3, 2),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Feedback
+CREATE TABLE feedback (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id),
+    entity_type VARCHAR(20) CHECK (entity_type IN ('order', 'room', 'service')),
+    entity_id UUID,
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+    comments TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Maintenance requests
+CREATE TABLE maintenance_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    room_id UUID REFERENCES rooms(id),
+    reported_by UUID REFERENCES users(id),
+    issue_description TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed')),
+    priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+    assigned_to UUID REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Notifications
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT false,
+    data JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for performance
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_created_at ON orders(created_at);
+CREATE INDEX idx_bookings_room_id ON bookings(room_id);
+CREATE INDEX idx_bookings_dates ON bookings(check_in_date, check_out_date);
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_menu_items_category ON menu_items(category);
+1.2 Backend Setup (FastAPI)
+backend/app/main.py:
+pythonfrom fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
+from app.core.config import settings
+from app.core.database import engine
+from app.models import base
+from app.api.v1.router import api_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("Starting up...")
+    yield
+    # Shutdown
+    print("Shutting down...")
+
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
+)
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include API router
+app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+backend/app/core/config.py:
+pythonfrom pydantic_settings import BaseSettings
+from typing import List
+
+
+class Settings(BaseSettings):
+    PROJECT_NAME: str = "Hotel Management API"
+    VERSION: str = "1.0.0"
+    API_V1_STR: str = "/api/v1"
+    
+    # Database
+    POSTGRES_SERVER: str
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
+    POSTGRES_DB: str
+    SQLALCHEMY_DATABASE_URI: str = None
+    
+    # Security
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    # CORS
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    
+    # Redis
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    
+    # M-Pesa (Daraja API)
+    MPESA_CONSUMER_KEY: str
+    MPESA_CONSUMER_SECRET: str
+    MPESA_SHORTCODE: str
+    MPESA_PASSKEY: str
+    MPESA_CALLBACK_URL: str
+    
+    # Email
+    SMTP_HOST: str = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str = None
+    SMTP_PASSWORD: str = None
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if not self.SQLALCHEMY_DATABASE_URI:
+            self.SQLALCHEMY_DATABASE_URI = (
+                f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+                f"@{self.POSTGRES_SERVER}/{self.POSTGRES_DB}"
+            )
+
+
+settings = Settings()
+backend/app/core/database.py:
+pythonfrom sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+from app.core.config import settings
+
+engine = create_engine(settings.SQLALCHEMY_DATABASE_URI, pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+backend/app/core/security.py:
+pythonfrom datetime import datetime, timedelta
+from typing import Optional
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+
+from app.core.config import settings
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+
+def decode_token(token: str):
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload
+    except JWTError:
+        return None
+1.3 Frontend Setup (React + TypeScript)
+frontend/src/services/api/client.ts:
+typescriptimport axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+
+class ApiClient {
+  private client: AxiosInstance;
+
+  constructor() {
+    this.client = axios.create({
+      baseURL: API_BASE_URL,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // Request interceptor
+    this.client.interceptors.request.use(
+      (config) => {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    // Response interceptor
+    this.client.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        if (error.response?.status === 401) {
+          // Handle token refresh or redirect to login
+          localStorage.removeItem('access_token');
+          window.location.href = '/login';
+        }
+        return Promise.reject(error);
+      }
+    );
+  }
+
+  async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.get<T>(url, config);
+    return response.data;
+  }
+
+  async post<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.post<T>(url, data, config);
+    return response.data;
+  }
+
+  async put<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.put<T>(url, data, config);
+    return response.data;
+  }
+
+  async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.delete<T>(url, config);
+    return response.data;
+  }
+}
+
+export const apiClient = new ApiClient();
+frontend/src/types/models/User.ts:
+typescriptexport enum UserRole {
+  CUSTOMER = 'customer',
+  ADMIN = 'admin',
+  MANAGER = 'manager',
+  WAITER = 'waiter',
+  CHEF = 'chef',
+  CLEANER = 'cleaner',
+}
+
+export interface User {
+  id: string;
+  email: string;
+  phone?: string;
+  fullName: string;
+  role: UserRole;
+  isActive: boolean;
+  loyaltyPoints: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData {
+  email: string;
+  phone?: string;
+  password: string;
+  fullName: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
+}
+
+Phase 2: Core Features Implementation (Weeks 3-8)
+2.1 Authentication System
+Backend - backend/app/api/v1/endpoints/auth.py:
+pythonfrom fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+from datetime import timedelta
+
+from app.core.database import get_db
+from app.core.config import settings
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+)
+from app.models.user import User
+from app.schemas.user import UserCreate, UserResponse
+from app.schemas.token import Token
+
+router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+
+
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def register(user_data: UserCreate, db: Session = Depends(get_db)):
+    # Check if user exists
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Create new user
+    hashed_password = get_password_hash(user_data.password)
+    db_user = User(
+        email=user_data.email,
+        phone=user_data.phone,
+        full_name=user_data.full_name,
+        password_hash=hashed_password,
+        role=user_data.role or "customer"
+    )
+    
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    return db_user
+
+
+@router.post("/login", response_model=Token)
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == form_data.username).first()
+    
+    if not user or not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user"
+        )
+    
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email, "role": user.role},
+        expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user
+    }
+Frontend - frontend/src/services/api/auth.ts:
+typescriptimport { apiClient } from './client';
+import { LoginCredentials, RegisterData, AuthResponse, User } from '../../types/models/User';
+
+export const authApi = {
+  login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
+    const formData = new FormData();
+    formData.append('username', credentials.email);
+    formData.append('password', credentials.password);
+    
+    const response = await apiClient.post<AuthResponse>('/auth/login', formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+    
+    // Store tokens
+    localStorage.setItem('access_token', response.accessToken);
+    localStorage.setItem('refresh_token', response.refreshToken);
+    
+    return response;
+  },
+
+  register: async (data: RegisterData): Promise<User> => {
+    return apiClient.post<User>('/auth/register', data);
+  },
+
+  logout: () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+  },
+
+  getCurrentUser: async (): Promise<User> => {
+    return apiClient.get<User>('/auth/me');
+  },
+};
+Frontend - Custom Hook frontend/src/hooks/useAuth.ts:
+typescriptimport { create } from 'zustand';
+import { User } from '../types/models/User';
+import { authApi } from '../services/api/auth';
+
+interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (data: any) => Promise<void>;
+  logout: () => void;
+  checkAuth: () => Promise<void>;
+}
+
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isLoading: true,
+
+  login: async (email, password) => {
+    try {
+      const response = await authApi.login({ email, password });
+      set({ user: response.user, isAuthenticated: true });
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  register: async (data) => {
+    try {
+      const user = await authApi.register(data);
+      // Auto-login after registration
+      await authApi.login({ email: data.email, password: data.password });
+      set({ user, isAuthenticated: true });
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  logout: () => {
+    authApi.logout();
+    set({ user: null, isAuthenticated: false });
+  },
+
+  checkAuth: async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        set({ isLoading: false });
+        return;
+      }
+
+      const user = await authApi.getCurrentUser();
+      set({ user, isAuthenticated: true, isLoading: false });
+    } catch (error) {
+      set({ user: null, isAuthenticated: false, isLoading: false });
+    }
+  },
+}));
+2.2 Menu & Food Ordering System
+Due to length constraints, I'll provide the key components:
+Backend Model - backend/app/models/menu.py:
+pythonfrom sqlalchemy import Column, String, Numeric, Boolean, Text, DateTime
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+import uuid
+from datetime import datetime
+
+from app.core.database import Base
+
+
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    price = Column(Numeric(10, 2), nullable=False)
+    category = Column(String(50), nullable=False)
+    image_url = Column(String(500))
+    is_available = Column(Boolean, default=True)
+    customization_options = Column(JSONB)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+Frontend Component - frontend/src/pages/Customer/Menu/MenuList.tsx:
+typescriptimport React, { useEffect, useState } from 'react';
+import { menuApi } from '../../../services/api/menu';
+import { MenuItem } from '../../../types/models/MenuItem';
+import MenuItemCard from './MenuItemCard';
+import { useCartStore } from '../../../store/slices/cartSlice';
+
+const MenuList: React.FC = () => {
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<string>('all');
+  const addToCart = useCartStore((state) => state.addItem);
+
+  useEffect(() => {
+    loadMenu();
+  }, []);
+
+  const loadMenu = async () => {
+    try {
+      const items = await menuApi.getMenuItems();
+      setMenuItems(items);
+    } catch (error) {
+      console.error('Failed to load menu:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredItems = filter === 'all' 
+    ? menuItems 
+    : menuItems.filter(item => item.category === filter);
+
+  if (loading) return <div>Loading menu...</div>;
+
+  return (
+    <div className="menu-container">
+      <div className="filters">
+        <button onClick={() => setFilter('all')}>All</button>
+        <button onClick={() => setFilter('main')}>Main Dishes</button>
+        <button onClick={() => setFilter('drinks')}>Drinks</button>
+        <button onClick={() => setFilter('desserts')}>Desserts</button>
+      </div>
+
+      <div className="menu-grid">
+        {filteredItems.map(item => (
+          <MenuItemCard 
+            key={item.id} 
+            item={item} 
+            onAddToCart={addToCart}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default MenuList;
+
+Phase 3: Advanced Features (Weeks 9-12)
+3.1 Offline Functionality Implementation
+Service Worker - frontend/public/service-worker.js:
+javascriptconst CACHE_NAME = 'hotel-app-v1';
+const urlsToCache = [
+  '/',
+  '/static/css/main.css',
+  '/static/js/main.js',
+  '/manifest.json',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(urlsToCache))
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => response || fetch(event.request))
+  );
+});
+IndexedDB Service - frontend/src/services/offline/indexedDB.ts:
+typescriptimport { openDB, DBSchema, IDBPDatabase } from 'idb';
+
+interface HotelDB extends DBSchema {
+  orders: {
+    key: string;
+    value: any;
+    indexes: { 'by-status': string };
+  };
+  menuItems: {
+    key: string;
+    value: any;
+  };
+}
+
+class OfflineDatabase {
+  private db: IDBPDatabase<HotelDB> | null = null;
+
+  async init() {
+    this.db = await openDB<HotelDB>('hotel-app-db', 1, {
+      upgrade(db) {
+        // Orders store
+        const orderStore = db.createObjectStore('orders', { keyPath: 'id' });
+        orderStore.createIndex('by-status', 'status');
+
+        // Menu items store
+        db.createObjectStore('menuItems', { keyPath: 'id' });
+      },
+    });
+  }
+
+  async saveOrder(order: any) {
+    if (!this.db) await this.init();
+    await this.db!.put('orders', order);
+  }
+
+  async getOrders() {
+    if (!this.db) await this.init();
+    return this.db!.getAll('orders');
+  }
+
+  async getPendingOrders() {
+    if (!this.db) await this.init();
+    return this.db!.getAllFromIndex('orders', 'by-status', 'pending');
+  }
+
+  async cacheMenuItems(items: any[]) {
+    if (!this.db) await this.init();
+    const tx = this.db!.transaction('menuItems', 'readwrite');
+    await Promise.all(items.map(item => tx.store.put(item)));
+    await tx.done;
+  }
+
+  async getMenuItems() {
+    if (!this.db) await this.init();
+    return this.db!.getAll('menuItems');
+  }
+}
+
+export const offlineDB = new OfflineDatabase();
+3.2 M-Pesa Integration
+Backend - backend/app/integrations/mpesa/daraja.py:
+pythonimport base64
+import requests
+from datetime import datetime
+from app.core.config import settings
+
+
+class MpesaService:
+    def __init__(self):
+        self.consumer_key = settings.MPESA_CONSUMER_KEY
+        self.consumer_secret = settings.MPESA_CONSUMER_SECRET
+        self.shortcode = settings.MPESA_SHORTCODE
+        self.passkey = settings.MPESA_PASSKEY
+        self.callback_url = settings.MPESA_CALLBACK_URL
+        
+        # Sandbox URLs (change to production when ready)
+        self.base_url = "https://sandbox.safaricom.co.ke"
+        self.access_token = None
+    
+    def get_access_token(self):
+        """Get OAuth access token"""
+        api_url = f"{self.base_url}/oauth/v1/generate?grant_type=client_credentials"
+        
+        response = requests.get(
+            api_url,
+            auth=(self.consumer_key, self.consumer_secret)
+        )
+        
+        if response.status_code == 200:
+            self.access_token = response.json()['access_token']
+            return self.access_token
+        return None
+    
+    def generate_password(self):
+        """Generate password for STK push"""
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        data_to_encode = f"{self.shortcode}{self.passkey}{timestamp}"
+        encoded = base64.b64encode(data_to_encode.encode())
+        return encoded.decode('utf-8'), timestamp
+    
+    def stk_push(self, phone_number: str, amount: int, account_reference: str):
+        """Initiate STK push payment"""
+        if not self.access_token:
+            self.get_access_token()
+        
+        password, timestamp = self.generate_password()
+        
+        api_url = f"{self.base_url}/mpesa/stkpush/v1/processrequest"
+        
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "BusinessShortCode": self.shortcode,
+            "Password": password,
+            "Timestamp": timestamp,
+            "TransactionType": "CustomerPayBillOnline",
+            "Amount": amount,
+            "PartyA": phone_number,
+            "PartyB": self.shortcode,
+            "PhoneNumber": phone_number,
+            "CallBackURL": self.callback_url,
+            "AccountReference": account_reference,
+            "TransactionDesc": "Hotel Payment"
+        }
+        
+        response = requests.post(api_url, json=payload, headers=headers)
+        return response.json()
+
+
+mpesa_service = MpesaService()
+
+Implementation Roadmap
+Week 1-2: Foundation
+
+✅ Set up project repositories
+✅ Configure PostgreSQL database
+✅ Initialize FastAPI backend
+✅ Initialize React frontend with TypeScript
+✅ Implement authentication system
+✅ Set up CI/CD pipelines
+
+Week 3-4: Core Features
+
+📋 Menu management (CRUD operations)
+📋 Food ordering system
+📋 Shopping cart functionality
+📋 Basic customer interface
+📋 Staff role routing
+
+Week 5-6: Payment & Bookings
+
+💳 M-Pesa integration
+💳 Cash/Card payment flows
+🏨 Room booking system
+🏨 Room availability calendar
+🏨 Booking confirmation
+
+Week 7-8: Staff Features
+
+👨‍🍳 Chef kitchen display
+🍽️ Waiter order management
+🧹 Cleaner task management
+👔 Manager dashboard
+
+Week 9-10: Advanced Features
+
+📱 Offline functionality
+🔔 Real-time notifications (WebSocket)
+📊 Basic reporting
+💬 In-app messaging
+
+Week 11-12: Polish & Testing
+
+🎨 UI/UX refinements
+🧪 Comprehensive testing
+📈 Performance optimization
+📱 PWA optimization
+🚀 Production deployment
+
+
+Key Technical Decisions
+Why Python (FastAPI) Backend is Better for You:
+
+Your Expertise: You're already proficient in FastAPI
+Type Safety: Pydantic models match TypeScript perfectly
+Better for Reports: Python's pandas, matplotlib for analytics
+Async Support: FastAPI handles WebSockets natively
+M-Pesa Libraries: Better Python libraries for Safaricom Daraja
+QuickBooks: Python has good integration libraries
+
+State Management: Zustand vs Redux
+Recommendation: Zustand
+
+Simpler API, less boilerplate
+Better TypeScript support out of the box
+Easier offline sync middleware
+Perfect for your project scale
+
+Database: PostgreSQL ✅
+Perfect choice because:
+
+ACID compliance for payments
+JSONB for flexible data (customizations)
+Excellent performance
+Strong typing matches your backend
+
+PWA vs Native Mobile
+Phase 1: PWA (Current)
+
+Single codebase
+Offline-first
+Installable
+Push notifications
+
+Phase 2: React Native (Future)
+
+Better performance
+Native features
+App store presence
+
+
+Next Steps
+
+Initialize the project structure - I can create starter files
+Set up database - Run migration scripts
+Implement auth - Get login/register working
+Build menu system - CRUD + ordering
+Add M-Pesa - Payment integration

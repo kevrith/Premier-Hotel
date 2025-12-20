@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from supabase import Client
 from typing import List, Optional
 from datetime import datetime, date
-from app.core.supabase import get_supabase_client
-from app.core.auth import get_current_user, require_role
+from app.core.supabase import get_supabase
+from app.middleware.auth import get_current_user, require_role
 from app.schemas.expenses import (
     ExpenseCategoryCreate, ExpenseCategoryUpdate, ExpenseCategoryResponse,
     ExpenseCreate, ExpenseUpdate, ExpenseApprove, ExpenseReject, ExpenseMarkPaid, ExpenseResponse,
@@ -27,7 +27,7 @@ router = APIRouter()
 async def get_expense_categories(
     is_active: Optional[bool] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all expense categories"""
     try:
@@ -45,7 +45,7 @@ async def get_expense_categories(
 async def create_expense_category(
     category: ExpenseCategoryCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new expense category"""
     try:
@@ -62,7 +62,7 @@ async def update_expense_category(
     category_id: str,
     category: ExpenseCategoryUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update an expense category"""
     try:
@@ -95,7 +95,7 @@ async def get_expenses(
     limit: int = Query(100, le=1000),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all expenses with optional filters"""
     try:
@@ -123,7 +123,7 @@ async def get_expenses(
 async def get_expense(
     expense_id: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get a specific expense by ID"""
     try:
@@ -138,7 +138,7 @@ async def get_expense(
 async def create_expense(
     expense: ExpenseCreate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new expense"""
     try:
@@ -161,7 +161,7 @@ async def update_expense(
     expense_id: str,
     expense: ExpenseUpdate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update an expense"""
     try:
@@ -189,7 +189,7 @@ async def approve_expense(
     expense_id: str,
     approval: ExpenseApprove,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Approve an expense"""
     try:
@@ -212,7 +212,7 @@ async def reject_expense(
     expense_id: str,
     rejection: ExpenseReject,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Reject an expense"""
     try:
@@ -235,7 +235,7 @@ async def mark_expense_paid(
     expense_id: str,
     payment: ExpenseMarkPaid,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Mark an expense as paid"""
     try:
@@ -257,7 +257,7 @@ async def mark_expense_paid(
 async def delete_expense(
     expense_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Delete an expense"""
     try:
@@ -281,7 +281,7 @@ async def get_budgets(
     status: Optional[str] = Query(None),
     period_type: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all budgets"""
     try:
@@ -301,7 +301,7 @@ async def get_budgets(
 async def get_budget(
     budget_id: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get a specific budget by ID"""
     try:
@@ -316,7 +316,7 @@ async def get_budget(
 async def create_budget(
     budget: BudgetCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new budget"""
     try:
@@ -337,7 +337,7 @@ async def update_budget(
     budget_id: str,
     budget: BudgetUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update a budget"""
     try:
@@ -357,7 +357,7 @@ async def approve_budget(
     budget_id: str,
     approval: BudgetApprove,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Approve and activate a budget"""
     try:
@@ -382,7 +382,7 @@ async def approve_budget(
 async def get_budget_allocations(
     budget_id: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all allocations for a budget"""
     try:
@@ -396,7 +396,7 @@ async def create_budget_allocation(
     budget_id: str,
     allocation: BudgetAllocationCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a budget allocation"""
     try:
@@ -416,7 +416,7 @@ async def update_budget_allocation(
     allocation_id: str,
     allocation: BudgetAllocationUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update a budget allocation"""
     try:
@@ -440,7 +440,7 @@ async def get_expense_statistics(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get expense statistics"""
     try:
@@ -500,7 +500,7 @@ async def get_expense_statistics(
 async def get_budget_statistics(
     budget_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get budget statistics"""
     try:

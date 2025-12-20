@@ -9,8 +9,8 @@ from datetime import datetime, date
 from supabase import Client
 from decimal import Decimal
 
-from app.core.supabase import get_supabase_client
-from app.core.auth import require_role
+from app.core.supabase import get_supabase
+from app.middleware.auth import require_role
 from app.schemas.inventory import (
     # Suppliers
     SupplierCreate, SupplierUpdate, SupplierResponse,
@@ -64,7 +64,7 @@ def generate_stock_take_number() -> str:
 async def get_suppliers(
     is_active: Optional[bool] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all suppliers with optional filtering"""
     query = supabase.table("suppliers").select("*")
@@ -82,7 +82,7 @@ async def get_suppliers(
 async def create_supplier(
     supplier: SupplierCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new supplier"""
     supplier_data = supplier.model_dump()
@@ -103,7 +103,7 @@ async def create_supplier(
 async def get_supplier(
     supplier_id: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get supplier by ID"""
     result = supabase.table("suppliers").select("*").eq("id", supplier_id).execute()
@@ -119,7 +119,7 @@ async def update_supplier(
     supplier_id: str,
     supplier: SupplierUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update supplier"""
     update_data = supplier.model_dump(exclude_unset=True)
@@ -140,7 +140,7 @@ async def update_supplier(
 async def get_categories(
     is_active: Optional[bool] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all inventory categories"""
     query = supabase.table("inventory_categories").select("*")
@@ -158,7 +158,7 @@ async def get_categories(
 async def create_category(
     category: CategoryCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new category"""
     category_data = category.model_dump()
@@ -176,7 +176,7 @@ async def update_category(
     category_id: str,
     category: CategoryUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update category"""
     update_data = category.model_dump(exclude_unset=True)
@@ -201,7 +201,7 @@ async def get_inventory_items(
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(require_role(["admin", "manager", "staff", "chef", "waiter"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all inventory items with filtering"""
     query = supabase.table("inventory_items").select("*")
@@ -233,7 +233,7 @@ async def get_inventory_items(
 async def create_inventory_item(
     item: InventoryItemCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new inventory item"""
     item_data = item.model_dump()
@@ -250,7 +250,7 @@ async def create_inventory_item(
 async def get_inventory_item(
     item_id: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff", "chef", "waiter"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get inventory item by ID"""
     result = supabase.table("inventory_items").select("*").eq("id", item_id).execute()
@@ -266,7 +266,7 @@ async def update_inventory_item(
     item_id: str,
     item: InventoryItemUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update inventory item"""
     update_data = item.model_dump(exclude_unset=True)
@@ -283,7 +283,7 @@ async def update_inventory_item(
 async def delete_inventory_item(
     item_id: str,
     current_user: dict = Depends(require_role(["admin"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Delete inventory item"""
     result = supabase.table("inventory_items").delete().eq("id", item_id).execute()
@@ -307,7 +307,7 @@ async def get_stock_movements(
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get stock movements with filtering"""
     query = supabase.table("stock_movements").select("*")
@@ -334,7 +334,7 @@ async def get_stock_movements(
 async def create_stock_movement(
     movement: StockMovementCreate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a stock movement and update inventory quantity"""
     movement_data = movement.model_dump()
@@ -395,7 +395,7 @@ async def get_purchase_orders(
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get purchase orders with filtering"""
     query = supabase.table("purchase_orders").select("*")
@@ -422,7 +422,7 @@ async def get_purchase_orders(
 async def create_purchase_order(
     po: PurchaseOrderCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Create a new purchase order"""
     po_data = po.model_dump()
@@ -441,7 +441,7 @@ async def create_purchase_order(
 async def get_purchase_order(
     po_id: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get purchase order by ID"""
     result = supabase.table("purchase_orders").select("*").eq("id", po_id).execute()
@@ -457,7 +457,7 @@ async def update_purchase_order(
     po_id: str,
     po: PurchaseOrderUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update purchase order"""
     update_data = po.model_dump(exclude_unset=True)
@@ -474,7 +474,7 @@ async def update_purchase_order(
 async def approve_purchase_order(
     po_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Approve a purchase order"""
     update_data = {
@@ -499,7 +499,7 @@ async def approve_purchase_order(
 async def get_po_items(
     po_id: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get all items for a purchase order"""
     result = supabase.table("purchase_order_items").select("*").eq("po_id", po_id).execute()
@@ -512,7 +512,7 @@ async def add_po_item(
     po_id: str,
     item: PurchaseOrderItemCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Add item to purchase order"""
     item_data = item.model_dump()
@@ -532,7 +532,7 @@ async def update_po_item(
     item_id: str,
     item: PurchaseOrderItemUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Update purchase order item"""
     update_data = item.model_dump(exclude_unset=True)
@@ -550,7 +550,7 @@ async def delete_po_item(
     po_id: str,
     item_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Delete purchase order item"""
     result = supabase.table("purchase_order_items").delete().eq("id", item_id).eq("po_id", po_id).execute()
@@ -572,7 +572,7 @@ async def get_stock_alerts(
     is_acknowledged: Optional[bool] = Query(None),
     limit: int = Query(100, le=500),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get stock alerts"""
     query = supabase.table("stock_alerts").select("*")
@@ -596,7 +596,7 @@ async def get_stock_alerts(
 async def acknowledge_alert(
     alert_id: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Acknowledge a stock alert"""
     update_data = {
@@ -620,7 +620,7 @@ async def acknowledge_alert(
 @router.get("/statistics", response_model=InventoryStatistics)
 async def get_inventory_statistics(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get inventory statistics"""
     # Get all items
@@ -664,7 +664,7 @@ async def get_inventory_statistics(
 @router.get("/reports/low-stock", response_model=List[LowStockItem])
 async def get_low_stock_report(
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get low stock items report"""
     result = supabase.table("inventory_items").select("*").eq("is_active", True).execute()
@@ -690,7 +690,7 @@ async def get_low_stock_report(
 @router.get("/reports/valuation", response_model=List[InventoryValuation])
 async def get_inventory_valuation(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase_client)
+    supabase: Client = Depends(get_supabase)
 ):
     """Get inventory valuation report"""
     result = supabase.table("inventory_items").select("*").eq("is_active", True).execute()
