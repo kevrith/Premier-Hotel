@@ -1,16 +1,29 @@
 -- =====================================================
--- Customer Reviews & Ratings System Schema
--- Phase 3 - Feature 4
+-- Fix for Reviews Tables - Column Reference Error
 -- =====================================================
 
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Drop existing policies that might be causing conflicts
+DROP POLICY IF EXISTS "Anyone can view approved reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Users can view own reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Verified guests can create reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Users can update own pending reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Users can delete own pending reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Staff can view all reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Admins can moderate reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Service role full access to reviews" ON public.reviews;
+
+-- Drop and recreate the reviews table to ensure clean state
+DROP TABLE IF EXISTS public.review_reports CASCADE;
+DROP TABLE IF EXISTS public.review_images CASCADE;
+DROP TABLE IF EXISTS public.review_helpfulness CASCADE;
+DROP TABLE IF EXISTS public.review_responses CASCADE;
+DROP TABLE IF EXISTS public.reviews CASCADE;
+DROP TABLE IF EXISTS public.review_categories CASCADE;
 
 -- =====================================================
 -- Review Categories Table
 -- =====================================================
--- Defines what aspects of the hotel can be reviewed
-CREATE TABLE IF NOT EXISTS public.review_categories (
+CREATE TABLE public.review_categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
@@ -24,8 +37,7 @@ CREATE TABLE IF NOT EXISTS public.review_categories (
 -- =====================================================
 -- Reviews Table
 -- =====================================================
--- Main table for customer reviews and ratings
-CREATE TABLE IF NOT EXISTS public.reviews (
+CREATE TABLE public.reviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     review_number VARCHAR(50) UNIQUE NOT NULL,
 
@@ -66,7 +78,7 @@ CREATE TABLE IF NOT EXISTS public.reviews (
 
     -- Verification
     is_verified BOOLEAN DEFAULT false,
-    verified_stay BOOLEAN DEFAULT false, -- Did the user actually stay?
+    verified_stay BOOLEAN DEFAULT false,
 
     -- Interaction Metrics
     helpful_count INTEGER DEFAULT 0,
@@ -86,15 +98,14 @@ CREATE TABLE IF NOT EXISTS public.reviews (
 -- =====================================================
 -- Review Responses Table
 -- =====================================================
--- Hotel management responses to reviews
-CREATE TABLE IF NOT EXISTS public.review_responses (
+CREATE TABLE public.review_responses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     review_id UUID NOT NULL REFERENCES public.reviews(id) ON DELETE CASCADE,
     responder_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     responder_name VARCHAR(200),
     responder_position VARCHAR(100),
     response TEXT NOT NULL,
-    is_official BOOLEAN DEFAULT true, -- Is this an official hotel response?
+    is_official BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -102,12 +113,11 @@ CREATE TABLE IF NOT EXISTS public.review_responses (
 -- =====================================================
 -- Review Helpfulness Table
 -- =====================================================
--- Tracks which users found reviews helpful
-CREATE TABLE IF NOT EXISTS public.review_helpfulness (
+CREATE TABLE public.review_helpfulness (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     review_id UUID NOT NULL REFERENCES public.reviews(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    is_helpful BOOLEAN NOT NULL, -- true = helpful, false = not helpful
+    is_helpful BOOLEAN NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(review_id, user_id)
 );
@@ -115,8 +125,7 @@ CREATE TABLE IF NOT EXISTS public.review_helpfulness (
 -- =====================================================
 -- Review Images Table
 -- =====================================================
--- Guest photos uploaded with reviews
-CREATE TABLE IF NOT EXISTS public.review_images (
+CREATE TABLE public.review_images (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     review_id UUID NOT NULL REFERENCES public.reviews(id) ON DELETE CASCADE,
     image_url TEXT NOT NULL,
@@ -129,8 +138,7 @@ CREATE TABLE IF NOT EXISTS public.review_images (
 -- =====================================================
 -- Review Reports Table
 -- =====================================================
--- Users can report inappropriate reviews
-CREATE TABLE IF NOT EXISTS public.review_reports (
+CREATE TABLE public.review_reports (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     review_id UUID NOT NULL REFERENCES public.reviews(id) ON DELETE CASCADE,
     reported_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -148,39 +156,39 @@ CREATE TABLE IF NOT EXISTS public.review_reports (
 -- =====================================================
 
 -- Review Categories
-CREATE INDEX IF NOT EXISTS idx_review_categories_active ON public.review_categories(is_active);
+CREATE INDEX idx_review_categories_active ON public.review_categories(is_active);
 
 -- Reviews
-CREATE INDEX IF NOT EXISTS idx_reviews_user ON public.reviews(user_id);
-CREATE INDEX IF NOT EXISTS idx_reviews_booking ON public.reviews(booking_id);
-CREATE INDEX IF NOT EXISTS idx_reviews_room ON public.reviews(room_id);
-CREATE INDEX IF NOT EXISTS idx_reviews_type ON public.reviews(review_type);
-CREATE INDEX IF NOT EXISTS idx_reviews_status ON public.reviews(status);
-CREATE INDEX IF NOT EXISTS idx_reviews_rating ON public.reviews(overall_rating DESC);
-CREATE INDEX IF NOT EXISTS idx_reviews_created ON public.reviews(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_reviews_verified ON public.reviews(is_verified);
-CREATE INDEX IF NOT EXISTS idx_reviews_number ON public.reviews(review_number);
+CREATE INDEX idx_reviews_user ON public.reviews(user_id);
+CREATE INDEX idx_reviews_booking ON public.reviews(booking_id);
+CREATE INDEX idx_reviews_room ON public.reviews(room_id);
+CREATE INDEX idx_reviews_type ON public.reviews(review_type);
+CREATE INDEX idx_reviews_status ON public.reviews(status);
+CREATE INDEX idx_reviews_rating ON public.reviews(overall_rating DESC);
+CREATE INDEX idx_reviews_created ON public.reviews(created_at DESC);
+CREATE INDEX idx_reviews_verified ON public.reviews(is_verified);
+CREATE INDEX idx_reviews_number ON public.reviews(review_number);
 
--- Composite indexes for common queries
-CREATE INDEX IF NOT EXISTS idx_reviews_status_rating ON public.reviews(status, overall_rating DESC);
-CREATE INDEX IF NOT EXISTS idx_reviews_type_status ON public.reviews(review_type, status);
-CREATE INDEX IF NOT EXISTS idx_reviews_room_approved ON public.reviews(room_id, status) WHERE status = 'approved';
+-- Composite indexes
+CREATE INDEX idx_reviews_status_rating ON public.reviews(status, overall_rating DESC);
+CREATE INDEX idx_reviews_type_status ON public.reviews(review_type, status);
+CREATE INDEX idx_reviews_room_approved ON public.reviews(room_id, status) WHERE status = 'approved';
 
 -- Review Responses
-CREATE INDEX IF NOT EXISTS idx_review_responses_review ON public.review_responses(review_id);
-CREATE INDEX IF NOT EXISTS idx_review_responses_responder ON public.review_responses(responder_id);
+CREATE INDEX idx_review_responses_review ON public.review_responses(review_id);
+CREATE INDEX idx_review_responses_responder ON public.review_responses(responder_id);
 
 -- Review Helpfulness
-CREATE INDEX IF NOT EXISTS idx_review_helpfulness_review ON public.review_helpfulness(review_id);
-CREATE INDEX IF NOT EXISTS idx_review_helpfulness_user ON public.review_helpfulness(user_id);
+CREATE INDEX idx_review_helpfulness_review ON public.review_helpfulness(review_id);
+CREATE INDEX idx_review_helpfulness_user ON public.review_helpfulness(user_id);
 
 -- Review Images
-CREATE INDEX IF NOT EXISTS idx_review_images_review ON public.review_images(review_id);
+CREATE INDEX idx_review_images_review ON public.review_images(review_id);
 
 -- Review Reports
-CREATE INDEX IF NOT EXISTS idx_review_reports_review ON public.review_reports(review_id);
-CREATE INDEX IF NOT EXISTS idx_review_reports_status ON public.review_reports(status);
-CREATE INDEX IF NOT EXISTS idx_review_reports_reporter ON public.review_reports(reported_by);
+CREATE INDEX idx_review_reports_review ON public.review_reports(review_id);
+CREATE INDEX idx_review_reports_status ON public.review_reports(status);
+CREATE INDEX idx_review_reports_reporter ON public.review_reports(reported_by);
 
 -- =====================================================
 -- Triggers for Automatic Updates
@@ -343,20 +351,20 @@ CREATE POLICY "Anyone can view approved reviews"
 
 CREATE POLICY "Users can view own reviews"
     ON public.reviews FOR SELECT
-    USING (user_id = (select auth.uid()));
+    USING (reviews.user_id = (select auth.uid()));
 
 CREATE POLICY "Verified guests can create reviews"
     ON public.reviews FOR INSERT
-    WITH CHECK (user_id = (select auth.uid()));
+    WITH CHECK (reviews.user_id = (select auth.uid()));
 
 CREATE POLICY "Users can update own pending reviews"
     ON public.reviews FOR UPDATE
-    USING (user_id = (select auth.uid()) AND status = 'pending')
-    WITH CHECK (user_id = (select auth.uid()));
+    USING (reviews.user_id = (select auth.uid()) AND reviews.status = 'pending')
+    WITH CHECK (reviews.user_id = (select auth.uid()));
 
 CREATE POLICY "Users can delete own pending reviews"
     ON public.reviews FOR DELETE
-    USING (user_id = (select auth.uid()) AND status = 'pending');
+    USING (reviews.user_id = (select auth.uid()) AND reviews.status = 'pending');
 
 CREATE POLICY "Staff can view all reviews"
     ON public.reviews FOR SELECT
@@ -396,8 +404,8 @@ CREATE POLICY "Staff can create responses"
 -- Review Helpfulness Policies
 CREATE POLICY "Users can mark reviews helpful"
     ON public.review_helpfulness FOR ALL
-    USING (user_id = (select auth.uid()))
-    WITH CHECK (user_id = (select auth.uid()));
+    USING (review_helpfulness.user_id = (select auth.uid()))
+    WITH CHECK (review_helpfulness.user_id = (select auth.uid()));
 
 -- Review Images Policies
 CREATE POLICY "Anyone can view review images"
@@ -409,7 +417,7 @@ CREATE POLICY "Users can add images to own reviews"
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM public.reviews
-            WHERE id = review_id
+            WHERE id = review_images.review_id
             AND user_id = (select auth.uid())
         )
     );
@@ -417,7 +425,7 @@ CREATE POLICY "Users can add images to own reviews"
 -- Review Reports Policies
 CREATE POLICY "Users can create reports"
     ON public.review_reports FOR INSERT
-    WITH CHECK (reported_by = (select auth.uid()));
+    WITH CHECK (review_reports.reported_by = (select auth.uid()));
 
 CREATE POLICY "Admins can view reports"
     ON public.review_reports FOR SELECT
@@ -442,6 +450,26 @@ CREATE POLICY "Admins can manage reports"
 -- Service role full access
 CREATE POLICY "Service role full access to reviews"
     ON public.reviews FOR ALL
+    USING ((select auth.jwt()) ->> 'role' = 'service_role');
+
+CREATE POLICY "Service role full access to review_categories"
+    ON public.review_categories FOR ALL
+    USING ((select auth.jwt()) ->> 'role' = 'service_role');
+
+CREATE POLICY "Service role full access to review_responses"
+    ON public.review_responses FOR ALL
+    USING ((select auth.jwt()) ->> 'role' = 'service_role');
+
+CREATE POLICY "Service role full access to review_helpfulness"
+    ON public.review_helpfulness FOR ALL
+    USING ((select auth.jwt()) ->> 'role' = 'service_role');
+
+CREATE POLICY "Service role full access to review_images"
+    ON public.review_images FOR ALL
+    USING ((select auth.jwt()) ->> 'role' = 'service_role');
+
+CREATE POLICY "Service role full access to review_reports"
+    ON public.review_reports FOR ALL
     USING ((select auth.jwt()) ->> 'role' = 'service_role');
 
 -- =====================================================

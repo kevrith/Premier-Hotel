@@ -415,14 +415,14 @@ export default function Register() {
                 <Button
                   type="button"
                   onClick={handleNext}
-                  className="flex-1"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
                 >
                   Next
                 </Button>
               ) : (
                 <Button
                   type="submit"
-                  className="flex-1"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
                   disabled={isLoading || !isOnline}
                 >
                   {isLoading ? (

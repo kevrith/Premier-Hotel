@@ -59,11 +59,29 @@ CREATE POLICY "Users can update own pending payments"
     USING (auth.uid() = user_id AND status = 'pending')
     WITH CHECK (auth.uid() = user_id);
 
--- Service role can do everything (for backend operations)
-CREATE POLICY "Service role full access"
+-- Staff and admin can view all payments
+CREATE POLICY "Staff can view all payments"
     ON public.payments
-    FOR ALL
-    USING (auth.jwt() ->> 'role' = 'service_role');
+    FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE users.id = auth.uid()
+            AND users.role IN ('admin', 'staff', 'manager')
+        )
+    );
+
+-- Staff can update payment status
+CREATE POLICY "Staff can update payments"
+    ON public.payments
+    FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.users
+            WHERE users.id = auth.uid()
+            AND users.role IN ('admin', 'staff', 'manager')
+        )
+    );
 
 -- Create updated_at trigger
 CREATE OR REPLACE FUNCTION update_payments_updated_at()

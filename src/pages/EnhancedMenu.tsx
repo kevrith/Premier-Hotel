@@ -12,6 +12,7 @@ import { Search, Filter, SlidersHorizontal } from 'lucide-react';
 import useCartStore from '@/stores/cartStore';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
+import menuService from '@/lib/api/services/menuService';
 
 // Mock menu data - will be replaced with API call
 const mockMenuData = [
@@ -115,6 +116,31 @@ export default function EnhancedMenu() {
   const [sortBy, setSortBy] = useState('default');
   const [showFilters, setShowFilters] = useState(false);
   const [favorites, setFavorites] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch menu items from API
+  useEffect(() => {
+    const fetchMenuItems = async () => {
+      try {
+        setLoading(true);
+        const response = await menuService.getAllMenuItems();
+        if (response && response.length > 0) {
+          setMenuItems(response);
+        } else {
+          // Fallback to mock data if no items in database
+          setMenuItems(mockMenuData);
+        }
+      } catch (error) {
+        console.error('Error fetching menu items:', error);
+        toast.error('Failed to load menu, showing sample data');
+        setMenuItems(mockMenuData);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMenuItems();
+  }, []);
 
   // Filter items based on category and search
   useEffect(() => {

@@ -5,7 +5,8 @@ In-app messaging between guests and staff
 
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
-from app.core.dependencies import get_supabase, get_current_user
+from app.core.supabase import get_supabase
+from app.middleware.auth import get_current_user
 from app.schemas.messaging import (
     ConversationCreate,
     ConversationUpdate,

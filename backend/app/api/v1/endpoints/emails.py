@@ -5,7 +5,8 @@ Endpoints for processing email queue and sending emails
 
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
-from app.core.dependencies import get_supabase, require_role
+from app.core.supabase import get_supabase
+from app.middleware.auth import require_role
 from app.services.email_queue_processor import (
     process_email_queue,
     queue_booking_confirmation_email,

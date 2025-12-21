@@ -22,6 +22,8 @@ import {
   Search
 } from 'lucide-react';
 import { format } from 'date-fns';
+import roomService from '@/lib/api/services/roomService';
+import { toast } from 'react-hot-toast';
 
 // Mock room data
 const mockRooms = [
@@ -96,6 +98,7 @@ const amenityIcons = {
 export default function Rooms() {
   const [rooms, setRooms] = useState(mockRooms);
   const [filteredRooms, setFilteredRooms] = useState(mockRooms);
+  const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     roomType: 'all',
     guests: 1,
@@ -104,6 +107,30 @@ export default function Rooms() {
     checkIn: '',
     checkOut: ''
   });
+
+  // Fetch rooms from API
+  useEffect(() => {
+    const fetchRooms = async () => {
+      try {
+        setLoading(true);
+        const response = await roomService.getAllRooms();
+        if (response && response.length > 0) {
+          setRooms(response);
+        } else {
+          // Fallback to mock data if no rooms in database
+          setRooms(mockRooms);
+        }
+      } catch (error) {
+        console.error('Error fetching rooms:', error);
+        toast.error('Failed to load rooms, showing sample data');
+        setRooms(mockRooms);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRooms();
+  }, []);
 
   useEffect(() => {
     let filtered = [...rooms];

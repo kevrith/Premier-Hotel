@@ -32,6 +32,9 @@ import InventoryDashboard from "./pages/InventoryDashboard";
 import LoyaltyProgram from "./pages/LoyaltyProgram";
 import NotificationsPage from "./pages/NotificationsPage";
 import MessagesPage from "./pages/MessagesPage";
+import Dining from "./pages/Dining";
+import Services from "./pages/Services";
+import Contact from "./pages/Contact";
 
 // Create QueryClient instance
 const queryClient = new QueryClient({
@@ -61,6 +64,9 @@ const App = () => (
               <Route path="/menu" element={<EnhancedMenu />} />
               <Route path="/rooms" element={<Rooms />} />
               <Route path="/rooms/:id" element={<RoomDetails />} />
+              <Route path="/dining" element={<Dining />} />
+              <Route path="/services" element={<Services />} />
+              <Route path="/contact" element={<Contact />} />
 
               {/* Protected Customer Routes */}
               <Route element={<ProtectedRoute requiredRoles={['customer', 'admin']} />}>

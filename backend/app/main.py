@@ -96,7 +96,10 @@ async def startup_event():
     print(f"🔗 API Version: {settings.API_V1_PREFIX}")
 
     # Initialize database connection pool for QuickBooks
-    await init_db()
+    # TEMP: Disabled - Supabase blocks direct PostgreSQL connections from external IPs
+    # QuickBooks tables exist and are accessible via Supabase client
+    # await init_db()
+    print("⚠️  AsyncPG pool disabled (Supabase restriction) - App fully functional with Supabase client")
 
 
 # Shutdown event

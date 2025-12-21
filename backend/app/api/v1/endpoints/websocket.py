@@ -3,9 +3,8 @@ WebSocket Endpoint
 Real-time communication endpoint
 """
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from app.services.websocket_manager import manager, EventType
-from app.core.dependencies import get_current_user_ws
 import logging
 import json
 

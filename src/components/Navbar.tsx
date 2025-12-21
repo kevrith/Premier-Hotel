@@ -89,7 +89,7 @@ export function Navbar() {
                 <Button variant="outline" size="sm" asChild className="hidden sm:flex">
                   <Link to="/register">Sign Up</Link>
                 </Button>
-                <Button variant="hero" size="sm" asChild>
+                <Button size="sm" asChild className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
                   <Link to="/login">Login</Link>
                 </Button>
               </>

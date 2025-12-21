@@ -31,12 +31,13 @@ class DatabasePool:
                 'postgresql://postgres:postgres@localhost:5432/premier_hotel'
             )
 
-            # Create connection pool
+            # Create connection pool with SSL for Supabase
             cls._pool = await asyncpg.create_pool(
                 database_url,
                 min_size=5,
                 max_size=20,
                 command_timeout=60,
+                ssl='require',  # Required for Supabase connections
             )
 
         return cls._pool

@@ -45,9 +45,7 @@ CREATE TABLE quickbooks_config (
     -- Metadata
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_by UUID REFERENCES auth.users(id),
-
-    CONSTRAINT quickbooks_config_singleton CHECK (id = gen_random_uuid())
+    created_by UUID REFERENCES auth.users(id)
 );
 
 -- Trigger to update updated_at timestamp

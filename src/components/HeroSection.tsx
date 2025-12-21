@@ -1,6 +1,6 @@
-// import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { ArrowRight, Calendar, MapPin, Star } from "lucide-react";
-// import { Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 // import { LazyImage } from "@/hooks/useLazyLoading";
 // import heroImage from "@/assets/hero-hotel-lobby.jpg";
 
@@ -42,14 +42,18 @@ export function HeroSection() {
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <button className="text-lg px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-              Order Now
-              <ArrowRight className="ml-2 h-5 w-5 inline" />
-            </button>
-            <button className="text-lg px-8 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-              <Calendar className="mr-2 h-5 w-5 inline" />
-              Book Now
-            </button>
+            <Button asChild size="lg" className="text-lg px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
+              <Link to="/menu">
+                Order Now
+                <ArrowRight className="ml-2 h-5 w-5 inline" />
+              </Link>
+            </Button>
+            <Button asChild size="lg" className="text-lg px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white">
+              <Link to="/rooms">
+                <Calendar className="mr-2 h-5 w-5 inline" />
+                Book Now
+              </Link>
+            </Button>
           </div>
 
           {/* Quick Stats */}

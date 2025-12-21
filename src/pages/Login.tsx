@@ -205,7 +205,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full"
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
               disabled={isLoading || !isOnline}
             >
               {isLoading ? (

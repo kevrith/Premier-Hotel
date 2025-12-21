@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 import asyncpg
 
 from ....core.database import get_db_pool
-from ....core.auth import get_current_admin_user
+from ....middleware.auth import require_admin
 from ....services.quickbooks_sync import QuickBooksSyncService
 from ....models.quickbooks import (
     QuickBooksConfig,
@@ -141,7 +141,7 @@ class CustomerMappingResponse(BaseModel):
 @router.get("/config", response_model=ConfigResponse)
 async def get_config(
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Get QuickBooks configuration.
@@ -173,7 +173,7 @@ async def get_config(
 async def create_or_update_config(
     config_data: QuickBooksConfigUpdate,
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Create or update QuickBooks configuration.
@@ -306,7 +306,7 @@ async def create_or_update_config(
 @router.post("/test-connection", response_model=TestConnectionResponse)
 async def test_connection(
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Test QuickBooks connection.
@@ -383,7 +383,7 @@ async def test_connection(
 async def manual_sync(
     request: ManualSyncRequest,
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Trigger manual synchronization.
@@ -438,7 +438,7 @@ async def manual_sync(
 @router.get("/sync/status", response_model=SyncStatusResponse)
 async def get_sync_status(
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Get current sync status and statistics.
@@ -493,7 +493,7 @@ async def get_sync_logs(
     status: Optional[str] = Query(None, description="Filter by status"),
     sync_type: Optional[str] = Query(None, description="Filter by sync type"),
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Get paginated sync history logs.
@@ -563,7 +563,7 @@ async def get_sync_logs(
 async def retry_sync(
     log_id: str,
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Retry a failed sync transaction.
@@ -593,7 +593,7 @@ async def retry_sync(
 @router.get("/mappings/items", response_model=List[ItemMappingResponse])
 async def get_item_mappings(
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Get all QuickBooks item mappings.
@@ -625,7 +625,7 @@ async def get_item_mappings(
 async def create_item_mapping(
     mapping_data: QuickBooksItemMappingCreate,
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Create a new QuickBooks item mapping.
@@ -682,7 +682,7 @@ async def create_item_mapping(
 async def delete_item_mapping(
     mapping_id: str,
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Delete a QuickBooks item mapping.
@@ -713,7 +713,7 @@ async def delete_item_mapping(
 @router.get("/mappings/customers", response_model=List[CustomerMappingResponse])
 async def get_customer_mappings(
     db_pool: asyncpg.Pool = Depends(get_db_pool),
-    current_user = Depends(get_current_admin_user)
+    current_user = Depends(require_admin)
 ):
     """
     Get all QuickBooks customer mappings.
