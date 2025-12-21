@@ -28,6 +28,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import MenuImport from '@/components/Admin/MenuImport';
 
 // Mock data for admin dashboard
 const mockStats = {
@@ -162,9 +163,10 @@ export default function AdminDashboard() {
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="bookings">Bookings</TabsTrigger>
+            <TabsTrigger value="menu">Menu</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
@@ -339,6 +341,11 @@ export default function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Menu Tab */}
+          <TabsContent value="menu" className="space-y-6">
+            <MenuImport />
           </TabsContent>
 
           {/* Users Tab */}

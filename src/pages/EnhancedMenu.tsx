@@ -107,7 +107,7 @@ const categories = [
 export default function EnhancedMenu() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { addItem, items: cartItems } = useCartStore();
+  const { addItem, items: cartItems, removeItem, updateQuantity } = useCartStore();
 
   const [menuItems, setMenuItems] = useState(mockMenuData);
   const [filteredItems, setFilteredItems] = useState(mockMenuData);
@@ -125,7 +125,12 @@ export default function EnhancedMenu() {
         setLoading(true);
         const response = await menuService.getAllMenuItems();
         if (response && response.length > 0) {
-          setMenuItems(response);
+          // Transform API response to ensure base_price is a number
+          const transformedItems = response.map(item => ({
+            ...item,
+            base_price: parseFloat(item.base_price) || 0
+          }));
+          setMenuItems(transformedItems);
         } else {
           // Fallback to mock data if no items in database
           setMenuItems(mockMenuData);
@@ -201,6 +206,16 @@ export default function EnhancedMenu() {
       setFavorites([...favorites, itemId]);
       toast.success('Added to favorites!');
     }
+  };
+
+  const handleCheckout = () => {
+    if (cartItems.length === 0) {
+      toast.error('Your cart is empty');
+      return;
+    }
+    // TODO: Create dedicated checkout page
+    // For now, navigate to orders page
+    navigate('/my-orders');
   };
 
   return (
@@ -296,6 +311,7 @@ export default function EnhancedMenu() {
                     onAddToFavorites={handleAddToFavorites}
                     isFavorite={favorites.includes(item.id)}
                     quantity={cartItems.filter(ci => ci.itemId === item.id).reduce((sum, ci) => sum + ci.quantity, 0)}
+                    className=""
                   />
                 ))
               ) : (
@@ -311,9 +327,8 @@ export default function EnhancedMenu() {
             <div className="sticky top-24">
               {user && (
                 <FavouritesPanel
-                  favorites={favorites.map(id => menuItems.find(item => item.id === id)).filter(Boolean)}
-                  onRemoveFavorite={handleAddToFavorites}
                   onAddToCart={handleAddToCart}
+                  className=""
                 />
               )}
             </div>
@@ -322,7 +337,13 @@ export default function EnhancedMenu() {
       </div>
 
       {/* Shopping Cart Tray */}
-      <ShoppingCartTray />
+      <ShoppingCartTray
+        items={cartItems}
+        onUpdateQuantity={updateQuantity}
+        onRemoveItem={removeItem}
+        onCheckout={handleCheckout}
+        className=""
+      />
     </div>
   );
 }

@@ -5,8 +5,8 @@ export default function Dining() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Redirect to menu page
-    navigate('/menu');
+    // Redirect to menu page - Dining and Menu are the same
+    navigate('/menu', { replace: true });
   }, [navigate]);
 
   return null;

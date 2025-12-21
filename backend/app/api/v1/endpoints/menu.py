@@ -41,7 +41,14 @@ async def get_menu_items(
         query = query.range(skip, skip + limit - 1).order("name")
 
         response = query.execute()
-        return [MenuItemResponse(**item) for item in response.data]
+        # Transform data to match frontend expectations (available -> is_available)
+        items = []
+        for item in response.data:
+            item_dict = dict(item)
+            if 'available' in item_dict:
+                item_dict['is_available'] = item_dict['available']
+            items.append(item_dict)
+        return items
 
     except Exception as e:
         raise HTTPException(
@@ -67,7 +74,11 @@ async def get_menu_item(item_id: str, supabase: Client = Depends(get_supabase)):
                 detail="Menu item not found",
             )
 
-        return MenuItemResponse(**response.data[0])
+        # Transform data to match frontend expectations
+        item_dict = dict(response.data[0])
+        if 'available' in item_dict:
+            item_dict['is_available'] = item_dict['available']
+        return item_dict
 
     except HTTPException:
         raise

@@ -13,7 +13,7 @@ class MenuItemBase(BaseModel):
     name_sw: Optional[str] = None
     description: Optional[str] = None
     description_sw: Optional[str] = None
-    category: str = Field(..., pattern="^(appetizers|mains|desserts|drinks|breakfast)$")
+    category: str = Field(..., pattern="^(appetizers|starters|mains|desserts|drinks|beverages|breakfast|snacks)$")
     base_price: Decimal = Field(..., gt=0)
     image_url: Optional[str] = None
     dietary_info: List[str] = []
@@ -32,7 +32,7 @@ class MenuItemUpdate(BaseModel):
     name_sw: Optional[str] = None
     description: Optional[str] = None
     description_sw: Optional[str] = None
-    category: Optional[str] = Field(None, pattern="^(appetizers|mains|desserts|drinks|breakfast)$")
+    category: Optional[str] = Field(None, pattern="^(appetizers|starters|mains|desserts|drinks|beverages|breakfast|snacks)$")
     base_price: Optional[Decimal] = Field(None, gt=0)
     image_url: Optional[str] = None
     dietary_info: Optional[List[str]] = None
@@ -43,9 +43,10 @@ class MenuItemUpdate(BaseModel):
 
 
 class MenuItemResponse(MenuItemBase):
-    """Menu item response schema"""
+    """Menu item response schema - Returns data with both available and is_available for frontend compatibility"""
     id: str
     available: Optional[bool] = True
+    is_available: Optional[bool] = True  # Duplicate field for frontend compatibility
     popular: Optional[bool] = False
     rating: Optional[Decimal] = None
     created_at: datetime
@@ -53,3 +54,4 @@ class MenuItemResponse(MenuItemBase):
 
     class Config:
         from_attributes = True
+        extra = "allow"  # Allow extra fields like is_available
