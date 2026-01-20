@@ -71,6 +71,9 @@ async def register(user_data: UserRegister, supabase: Client = Depends(get_supab
 
         user = profile_response.data[0]
 
+        # Construct full_name from first_name and last_name
+        user["full_name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+
         # Create tokens
         access_token = create_access_token(
             data={"sub": user_id, "email": user_data.email}
@@ -108,11 +111,17 @@ async def login(credentials: UserLogin, supabase: Client = Depends(get_supabase)
     - Returns user data and authentication tokens
     """
     try:
+        print(f"=== LOGIN ATTEMPT ===")
+        print(f"Email: {credentials.email}")
+        print(f"Password length: {len(credentials.password)}")
+
         # Sign in with Supabase
+        print("Calling supabase.auth.sign_in_with_password...")
         auth_response = supabase.auth.sign_in_with_password({
             "email": credentials.email,
             "password": credentials.password,
         })
+        print(f"Auth response: user={auth_response.user is not None}")
 
         if not auth_response.user:
             raise HTTPException(
@@ -140,6 +149,9 @@ async def login(credentials: UserLogin, supabase: Client = Depends(get_supabase)
                 detail="Account is not active",
             )
 
+        # Construct full_name from first_name and last_name
+        user["full_name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+
         # Create tokens
         access_token = create_access_token(
             data={"sub": user_id, "email": credentials.email}
@@ -159,9 +171,14 @@ async def login(credentials: UserLogin, supabase: Client = Depends(get_supabase)
     except HTTPException:
         raise
     except Exception as e:
+        # Log the actual error for debugging
+        import traceback
+        traceback.print_exc()
+        error_msg = str(e)
+        print(f"Login error: {error_msg}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail=f"Invalid credentials: {error_msg}",
         )
 
 

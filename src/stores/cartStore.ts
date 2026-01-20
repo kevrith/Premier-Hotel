@@ -11,11 +11,19 @@ const useCartStore = create(
 
       // Actions
       addItem: (item) => {
+        console.log('cartStore.addItem called with:', item);
+
         const { items } = get();
         const existingItemIndex = items.findIndex(
           (i) => i.itemId === item.itemId &&
           JSON.stringify(i.customizations) === JSON.stringify(item.customizations)
         );
+
+        // Safely calculate customizations price
+        const getCustomizationsPrice = (customizations) => {
+          if (!customizations || !Array.isArray(customizations)) return 0;
+          return customizations.reduce((sum, c) => sum + (c.priceModifier || 0), 0);
+        };
 
         if (existingItemIndex >= 0) {
           // Item with same customizations exists, increment quantity
@@ -23,17 +31,19 @@ const useCartStore = create(
           updatedItems[existingItemIndex].quantity += item.quantity;
           updatedItems[existingItemIndex].subtotal =
             (updatedItems[existingItemIndex].basePrice +
-             updatedItems[existingItemIndex].customizations.reduce((sum, c) => sum + c.priceModifier, 0)) *
+             getCustomizationsPrice(updatedItems[existingItemIndex].customizations)) *
             updatedItems[existingItemIndex].quantity;
 
+          console.log('Updated existing item:', updatedItems[existingItemIndex]);
           set({ items: updatedItems });
         } else {
           // New item, add to cart
           const newItem = {
             ...item,
             id: `${item.itemId}-${Date.now()}`,
-            subtotal: (item.basePrice + item.customizations.reduce((sum, c) => sum + c.priceModifier, 0)) * item.quantity
+            subtotal: (item.basePrice + getCustomizationsPrice(item.customizations)) * item.quantity
           };
+          console.log('Adding new item to cart:', newItem);
           set({ items: [...items, newItem] });
         }
       },

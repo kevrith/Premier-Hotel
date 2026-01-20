@@ -11,9 +11,40 @@
 
 **A comprehensive, production-ready hotel management application with multi-role interfaces, real-time communication, and offline capabilities.**
 
-[Features](#-features) • [Tech Stack](#-tech-stack) • [Installation](#-installation) • [Documentation](#-documentation) • [Screenshots](#-screenshots)
+[Quick Start](#-installation) • [Features](#-features) • [Tech Stack](#-tech-stack) • [API Docs](#-api-documentation) • [Screenshots](#-screenshots)
 
 </div>
+
+---
+
+## 🚀 Getting Started in 5 Minutes
+
+```bash
+# 1. Clone and setup
+git clone https://github.com/yourusername/premier-hotel.git
+cd premier-hotel
+
+# 2. Setup backend (create venv, install dependencies, configure .env)
+cd backend && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
+cp .env.example .env  # Then edit .env with your Supabase credentials
+cd ..
+
+# 3. Setup frontend
+npm install && cp .env.example .env  # Then edit .env
+
+# 4. Create super admin account
+cd backend && ./create_admin.sh && cd ..
+
+# 5. Start the entire application
+./start.sh
+```
+
+**Open http://localhost:5173 and login with your admin credentials!**
+
+📚 **Detailed Guides:**
+- [QUICK_START.md](QUICK_START.md) - Step-by-step setup guide
+- [SCRIPTS_GUIDE.md](SCRIPTS_GUIDE.md) - Complete reference for management scripts
+- [ADMIN_SETUP_GUIDE.md](ADMIN_SETUP_GUIDE.md) - Admin account and staff management
 
 ---
 
@@ -254,7 +285,7 @@ Premier Hotel Management System is a full-stack web application designed to stre
 - **PostgreSQL** (via Supabase account)
 - **Git**
 
-### Quick Start
+### Quick Start (Recommended)
 
 #### 1. Clone the Repository
 
@@ -263,32 +294,14 @@ git clone https://github.com/yourusername/premier-hotel.git
 cd premier-hotel
 ```
 
-#### 2. Frontend Setup
-
-```bash
-# Install dependencies
-npm install
-
-# Create environment file
-cp .env.example .env
-
-# Configure environment variables (see Configuration section)
-nano .env
-
-# Start development server
-npm run dev
-```
-
-The frontend will be available at `http://localhost:5173`
-
-#### 3. Backend Setup
+#### 2. Backend Setup
 
 ```bash
 # Navigate to backend directory
 cd backend
 
 # Create virtual environment
-python -m venv venv
+python3 -m venv venv
 
 # Activate virtual environment
 # On Windows:
@@ -297,28 +310,101 @@ venv\Scripts\activate
 source venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+./venv/bin/pip install -r requirements.txt
+
+# Create environment file
+cp .env.example .env
+
+# Configure environment variables (see Configuration section)
+nano .env
+```
+
+#### 3. Frontend Setup
+
+```bash
+# Return to root directory
+cd ..
+
+# Install dependencies
+npm install
 
 # Create environment file
 cp .env.example .env
 
 # Configure environment variables
 nano .env
-
-# Run database migrations
-python -m alembic upgrade head
-
-# Start backend server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-
-The backend API will be available at `http://localhost:8000`
 
 #### 4. Database Setup
 
 ```bash
 # Connect to Supabase and run the schema
 psql -h your-supabase-host -U postgres -d postgres -f backend/supabase_schema.sql
+```
+
+#### 5. Create Super Admin Account
+
+```bash
+cd backend
+./create_admin.sh
+cd ..
+```
+
+You'll be prompted to enter:
+- Email address
+- Password (minimum 6 characters)
+- First name, last name, phone
+
+#### 6. Start the Application
+
+```bash
+# Start both backend and frontend with one command
+./start.sh
+```
+
+The application will start and display:
+- **Frontend**: http://localhost:5173
+- **Backend**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+
+#### 7. Access the Application
+
+1. Open http://localhost:5173 in your browser
+2. Login with the admin credentials you created
+3. Create staff accounts (chef, waiter, cleaner) from Admin Dashboard
+
+### Management Scripts
+
+```bash
+# Start the application (both frontend and backend)
+./start.sh
+
+# Check application status
+./status.sh
+
+# Stop the application
+./stop.sh
+
+# Or press Ctrl+C in the terminal where start.sh is running
+```
+
+**For detailed script documentation, see** [SCRIPTS_GUIDE.md](SCRIPTS_GUIDE.md)
+
+### Manual Setup (Advanced)
+
+If you prefer to run frontend and backend separately:
+
+#### Terminal 1 - Backend:
+
+```bash
+cd backend
+./venv/bin/python3.12 -m uvicorn app.main:app --reload --port 8000
+```
+
+#### Terminal 2 - Frontend:
+
+```bash
+npm run dev
 ```
 
 ---
@@ -400,7 +486,28 @@ LOG_LEVEL=INFO
 
 ## 🚀 Usage
 
-### Development Mode
+### Development Mode (Recommended)
+
+```bash
+# Start everything with one command
+./start.sh
+
+# Check if everything is running
+./status.sh
+
+# View logs in real-time
+tail -f backend.log    # Backend logs
+tail -f frontend.log   # Frontend logs
+
+# Stop the application
+./stop.sh              # Or press Ctrl+C
+```
+
+**See [SCRIPTS_GUIDE.md](SCRIPTS_GUIDE.md) for complete script documentation.**
+
+### Development Mode (Manual)
+
+If you need to run services separately:
 
 ```bash
 # Terminal 1: Frontend
@@ -408,10 +515,7 @@ npm run dev
 
 # Terminal 2: Backend
 cd backend
-uvicorn app.main:app --reload
-
-# Terminal 3: WebSocket Server (if separate)
-python backend/app/services/websocket_manager.py
+./venv/bin/python3.12 -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### Production Build

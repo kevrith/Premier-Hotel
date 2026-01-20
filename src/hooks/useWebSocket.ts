@@ -59,8 +59,8 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       const token = await getToken();
 
       if (!token) {
-        console.error('No auth token available');
-        setConnectionStatus('error');
+        // User not logged in - this is expected, don't show error
+        setConnectionStatus('disconnected');
         return;
       }
 
@@ -71,8 +71,15 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
 
       setConnectionStatus('connecting');
 
-      // Create WebSocket connection
-      const wsUrl = `ws://localhost:8000/api/v1/ws?token=${token}`;
+      // Create WebSocket connection with automatic protocol detection
+      // Use wss:// for HTTPS, ws:// for HTTP
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.hostname === 'localhost'
+        ? 'localhost:8000'  // Development
+        : window.location.host;  // Production (uses same host as frontend)
+
+      const wsUrl = `${protocol}//${host}/api/v1/ws?token=${token}`;
+      console.log('Connecting to WebSocket:', wsUrl);
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {

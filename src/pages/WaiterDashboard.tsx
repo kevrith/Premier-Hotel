@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navbar } from '@/components/Navbar';
@@ -16,9 +16,33 @@ import {
   Bell,
   MapPin,
   CreditCard,
-  Star
+  Star,
+  Plus,
+  Volume2,
+  VolumeX,
+  ArrowRightLeft,
+  WifiOff,
+  Receipt
 } from 'lucide-react';
+import { BillsManagement } from '@/components/Bills';
 import { toast } from 'react-hot-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const mockTables = [
   {
@@ -87,6 +111,32 @@ export default function WaiterDashboard() {
   const [roomService, setRoomService] = useState(mockRoomService);
   const [activeTab, setActiveTab] = useState('tables');
 
+  // Sound notifications
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previousOrderCountRef = useRef(tables.length + roomService.length);
+
+  // Create new order dialog
+  const [showNewOrderDialog, setShowNewOrderDialog] = useState(false);
+  const [newOrderForm, setNewOrderForm] = useState({
+    type: 'table', // 'table' or 'room'
+    location: '',
+    guests: 2,
+    items: ''
+  });
+
+  // Table transfer dialog
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [transferForm, setTransferForm] = useState({
+    orderId: '',
+    currentLocation: '',
+    newLocation: ''
+  });
+
+  // Offline detection
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [offlineQueue, setOfflineQueue] = useState<any[]>([]);
+
   useEffect(() => {
     if (!isAuthenticated || (role !== 'waiter' && role !== 'admin')) {
       toast.error('Access denied. Waiter privileges required.');
@@ -94,9 +144,202 @@ export default function WaiterDashboard() {
     }
   }, [isAuthenticated, role, navigate]);
 
+  // Sound notification setup
+  useEffect(() => {
+    // Initialize audio element
+    audioRef.current = new Audio('/notification.mp3');
+    audioRef.current.volume = 0.5;
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  // Monitor for new orders and play sound
+  useEffect(() => {
+    const totalOrders = tables.length + roomService.length;
+    if (totalOrders > previousOrderCountRef.current && soundEnabled) {
+      playNotificationSound();
+      announceNewOrder();
+    }
+    previousOrderCountRef.current = totalOrders;
+  }, [tables.length, roomService.length, soundEnabled]);
+
+  // Offline/online detection
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast.success('Connection restored');
+      // Process offline queue
+      if (offlineQueue.length > 0) {
+        processOfflineQueue();
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      toast.error('You are offline. Orders will be queued.');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [offlineQueue]);
+
   if (!isAuthenticated || (role !== 'waiter' && role !== 'admin')) {
     return null;
   }
+
+  // Sound notification functions
+  const playNotificationSound = () => {
+    if (audioRef.current && soundEnabled) {
+      audioRef.current.play().catch(err => console.log('Audio play failed:', err));
+    }
+  };
+
+  const announceNewOrder = () => {
+    if ('speechSynthesis' in window && soundEnabled) {
+      const utterance = new SpeechSynthesisUtterance('New order received');
+      utterance.rate = 1.2;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const toggleSound = () => {
+    setSoundEnabled(!soundEnabled);
+    toast.success(soundEnabled ? 'Sound alerts disabled' : 'Sound alerts enabled');
+  };
+
+  // Process offline queue when connection is restored
+  const processOfflineQueue = () => {
+    // In production, this would send queued orders to the server
+    offlineQueue.forEach(order => {
+      if (order.type === 'table') {
+        handleCreateTableOrder(order, true);
+      } else {
+        handleCreateRoomOrder(order, true);
+      }
+    });
+    setOfflineQueue([]);
+    toast.success(`${offlineQueue.length} queued orders processed`);
+  };
+
+  // Create new order handlers
+  const handleCreateNewOrder = () => {
+    if (!isOnline) {
+      // Add to offline queue
+      const order = {
+        ...newOrderForm,
+        id: `OFFLINE-${Date.now()}`,
+        timestamp: new Date()
+      };
+      setOfflineQueue([...offlineQueue, order]);
+      toast.success('Order queued for when connection is restored');
+      setShowNewOrderDialog(false);
+      resetNewOrderForm();
+      return;
+    }
+
+    if (newOrderForm.type === 'table') {
+      handleCreateTableOrder(newOrderForm);
+    } else {
+      handleCreateRoomOrder(newOrderForm);
+    }
+  };
+
+  const handleCreateTableOrder = (orderData: any, fromQueue = false) => {
+    const newTable = {
+      id: `T-${Date.now()}`,
+      number: orderData.location,
+      location: 'Main Dining',
+      status: 'occupied',
+      guests: orderData.guests,
+      orderStatus: 'in-progress',
+      orderTime: new Date(),
+      totalBill: 0,
+      items: orderData.items.split(',').map((item: string) => item.trim())
+    };
+    setTables([...tables, newTable]);
+    if (!fromQueue) {
+      toast.success(`Table ${orderData.location} order created`);
+      setShowNewOrderDialog(false);
+      resetNewOrderForm();
+    }
+  };
+
+  const handleCreateRoomOrder = (orderData: any, fromQueue = false) => {
+    const newOrder = {
+      id: `RS-${Date.now()}`,
+      room: orderData.location,
+      guest: 'Guest',
+      items: orderData.items.split(',').map((item: string) => item.trim()),
+      status: 'pending',
+      orderTime: new Date(),
+      deliveryTime: new Date(Date.now() + 20 * 60 * 1000),
+      totalBill: 0
+    };
+    setRoomService([...roomService, newOrder]);
+    if (!fromQueue) {
+      toast.success(`Room ${orderData.location} order created`);
+      setShowNewOrderDialog(false);
+      resetNewOrderForm();
+    }
+  };
+
+  const resetNewOrderForm = () => {
+    setNewOrderForm({
+      type: 'table',
+      location: '',
+      guests: 2,
+      items: ''
+    });
+  };
+
+  // Table transfer handlers
+  const handleTransferTable = () => {
+    if (transferForm.orderId.startsWith('T-')) {
+      setTables(tables.map(table =>
+        table.id === transferForm.orderId
+          ? { ...table, number: transferForm.newLocation }
+          : table
+      ));
+      toast.success(`Order transferred to Table ${transferForm.newLocation}`);
+    } else {
+      setRoomService(roomService.map(order =>
+        order.id === transferForm.orderId
+          ? { ...order, room: transferForm.newLocation }
+          : order
+      ));
+      toast.success(`Order transferred to Room ${transferForm.newLocation}`);
+    }
+    setShowTransferDialog(false);
+    resetTransferForm();
+  };
+
+  const openTransferDialog = (orderId: string, currentLocation: string) => {
+    setTransferForm({
+      orderId,
+      currentLocation,
+      newLocation: ''
+    });
+    setShowTransferDialog(true);
+  };
+
+  const resetTransferForm = () => {
+    setTransferForm({
+      orderId: '',
+      currentLocation: '',
+      newLocation: ''
+    });
+  };
 
   const handleServeOrder = (tableId) => {
     setTables(tables.map(table =>
@@ -171,36 +414,47 @@ export default function WaiterDashboard() {
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2">
-          {table.orderStatus === 'ready' && (
-            <Button
-              className="flex-1"
-              onClick={() => handleServeOrder(table.id)}
-            >
-              <Utensils className="h-4 w-4 mr-2" />
-              Serve Order
-            </Button>
-          )}
-          {table.needsPayment && (
-            <Button
-              className="flex-1"
-              variant="default"
-              onClick={() => handleProcessPayment(table.id)}
-            >
-              <CreditCard className="h-4 w-4 mr-2" />
-              Process Payment
-            </Button>
-          )}
-          {table.orderStatus === 'in-progress' && (
-            <Button
-              className="flex-1"
-              variant="outline"
-              disabled
-            >
-              <Clock className="h-4 w-4 mr-2" />
-              In Kitchen
-            </Button>
-          )}
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            {table.orderStatus === 'ready' && (
+              <Button
+                className="flex-1"
+                onClick={() => handleServeOrder(table.id)}
+              >
+                <Utensils className="h-4 w-4 mr-2" />
+                Serve Order
+              </Button>
+            )}
+            {table.needsPayment && (
+              <Button
+                className="flex-1"
+                variant="default"
+                onClick={() => handleProcessPayment(table.id)}
+              >
+                <CreditCard className="h-4 w-4 mr-2" />
+                Process Payment
+              </Button>
+            )}
+            {table.orderStatus === 'in-progress' && (
+              <Button
+                className="flex-1"
+                variant="outline"
+                disabled
+              >
+                <Clock className="h-4 w-4 mr-2" />
+                In Kitchen
+              </Button>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full"
+            onClick={() => openTransferDialog(table.id, `Table ${table.number}`)}
+          >
+            <ArrowRightLeft className="h-3 w-3 mr-2" />
+            Transfer
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -243,33 +497,44 @@ export default function WaiterDashboard() {
         </div>
 
         {/* Actions */}
-        {order.status === 'ready' ? (
+        <div className="flex flex-col gap-2">
+          {order.status === 'ready' ? (
+            <Button
+              className="w-full"
+              onClick={() => handleDeliverRoomService(order.id)}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Deliver to Room
+            </Button>
+          ) : order.status === 'pending' ? (
+            <Button
+              className="w-full"
+              variant="outline"
+              disabled
+            >
+              <Clock className="h-4 w-4 mr-2" />
+              Preparing in Kitchen
+            </Button>
+          ) : (
+            <Button
+              className="w-full"
+              variant="secondary"
+              disabled
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Delivered
+            </Button>
+          )}
           <Button
+            variant="ghost"
+            size="sm"
             className="w-full"
-            onClick={() => handleDeliverRoomService(order.id)}
+            onClick={() => openTransferDialog(order.id, `Room ${order.room}`)}
           >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Deliver to Room
+            <ArrowRightLeft className="h-3 w-3 mr-2" />
+            Transfer
           </Button>
-        ) : order.status === 'pending' ? (
-          <Button
-            className="w-full"
-            variant="outline"
-            disabled
-          >
-            <Clock className="h-4 w-4 mr-2" />
-            Preparing in Kitchen
-          </Button>
-        ) : (
-          <Button
-            className="w-full"
-            variant="secondary"
-            disabled
-          >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Delivered
-          </Button>
-        )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -281,13 +546,36 @@ export default function WaiterDashboard() {
       <div className="container mx-auto px-4 py-8 mt-16">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="h-12 w-12 rounded-full bg-gradient-gold flex items-center justify-center">
-              <Utensils className="h-6 w-6 text-primary" />
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-gradient-gold flex items-center justify-center">
+                <Utensils className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold">Waiter Dashboard</h1>
+                <p className="text-muted-foreground">Welcome, {user?.firstName}!</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold">Waiter Dashboard</h1>
-              <p className="text-muted-foreground">Welcome, {user?.firstName}!</p>
+            <div className="flex gap-2">
+              {!isOnline && (
+                <Badge variant="destructive" className="flex items-center gap-1">
+                  <WifiOff className="h-3 w-3" />
+                  Offline
+                </Badge>
+              )}
+              <Button
+                variant={soundEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={toggleSound}
+              >
+                {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              </Button>
+              <Button
+                onClick={() => setShowNewOrderDialog(true)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Order
+              </Button>
             </div>
           </div>
         </div>
@@ -341,12 +629,16 @@ export default function WaiterDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="tables">
               Tables ({tables.length})
             </TabsTrigger>
             <TabsTrigger value="room-service">
               Room Service ({roomService.filter(o => o.status !== 'delivered').length})
+            </TabsTrigger>
+            <TabsTrigger value="bills">
+              <Receipt className="h-4 w-4 mr-2" />
+              Bills & Payments
             </TabsTrigger>
           </TabsList>
 
@@ -433,8 +725,137 @@ export default function WaiterDashboard() {
               </>
             )}
           </TabsContent>
+
+          {/* Bills Tab */}
+          <TabsContent value="bills" className="space-y-6">
+            <BillsManagement />
+          </TabsContent>
         </Tabs>
       </div>
+
+      {/* New Order Dialog */}
+      <Dialog open={showNewOrderDialog} onOpenChange={setShowNewOrderDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Order</DialogTitle>
+            <DialogDescription>
+              Add a new order for a table or room service
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Order Type</Label>
+              <Select
+                value={newOrderForm.type}
+                onValueChange={(value) => setNewOrderForm({ ...newOrderForm, type: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="table">Table Service</SelectItem>
+                  <SelectItem value="room">Room Service</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{newOrderForm.type === 'table' ? 'Table Number' : 'Room Number'}</Label>
+              <Input
+                placeholder={newOrderForm.type === 'table' ? 'e.g., 12' : 'e.g., 305'}
+                value={newOrderForm.location}
+                onChange={(e) => setNewOrderForm({ ...newOrderForm, location: e.target.value })}
+              />
+            </div>
+
+            {newOrderForm.type === 'table' && (
+              <div className="space-y-2">
+                <Label>Number of Guests</Label>
+                <Select
+                  value={newOrderForm.guests.toString()}
+                  onValueChange={(value) => setNewOrderForm({ ...newOrderForm, guests: parseInt(value) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 Guest</SelectItem>
+                    <SelectItem value="2">2 Guests</SelectItem>
+                    <SelectItem value="3">3 Guests</SelectItem>
+                    <SelectItem value="4">4 Guests</SelectItem>
+                    <SelectItem value="5">5+ Guests</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Items (comma separated)</Label>
+              <Input
+                placeholder="e.g., Burger x2, Fries x1, Coffee x2"
+                value={newOrderForm.items}
+                onChange={(e) => setNewOrderForm({ ...newOrderForm, items: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewOrderDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateNewOrder}
+              disabled={!newOrderForm.location || !newOrderForm.items}
+            >
+              Create Order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Order Dialog */}
+      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transfer Order</DialogTitle>
+            <DialogDescription>
+              Move this order to a different location
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Current Location</Label>
+              <Input
+                value={transferForm.currentLocation}
+                disabled
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>New {transferForm.orderId.startsWith('T-') ? 'Table' : 'Room'} Number</Label>
+              <Input
+                placeholder={transferForm.orderId.startsWith('T-') ? 'e.g., 15' : 'e.g., 402'}
+                value={transferForm.newLocation}
+                onChange={(e) => setTransferForm({ ...transferForm, newLocation: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTransferDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleTransferTable}
+              disabled={!transferForm.newLocation}
+            >
+              Transfer Order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

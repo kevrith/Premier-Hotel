@@ -8,7 +8,20 @@ import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
 
 export default function MenuItemForm({ item, onSave, onCancel }) {
-  const [formData, setFormData] = useState(item);
+  const [formData, setFormData] = useState(item || {
+    name: '',
+    name_sw: '',
+    description: '',
+    description_sw: '',
+    category: 'mains',
+    base_price: 0,
+    image_url: '',
+    dietary_info: [],
+    customizations: [],
+    preparation_time: 0,
+    available: true,
+    popular: false,
+  });
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -31,22 +44,6 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
     }));
   };
 
-  const addAllergen = (allergen) => {
-    if (allergen && !formData.allergens.includes(allergen)) {
-      setFormData(prev => ({
-        ...prev,
-        allergens: [...prev.allergens, allergen]
-      }));
-    }
-  };
-
-  const removeAllergen = (allergen) => {
-    setFormData(prev => ({
-      ...prev,
-      allergens: prev.allergens.filter(a => a !== allergen)
-    }));
-  };
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
@@ -62,8 +59,8 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
           <label className="text-sm font-medium mb-2 block">Price (KES)</label>
           <Input
             type="number"
-            value={formData.price_kes}
-            onChange={(e) => setFormData(prev => ({ ...prev, price_kes: Number(e.target.value) }))}
+            value={formData.base_price}
+            onChange={(e) => setFormData(prev => ({ ...prev, base_price: Number(e.target.value) }))}
             required
           />
         </div>
@@ -89,11 +86,14 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Appetizers">Appetizers</SelectItem>
-              <SelectItem value="Main Course">Main Course</SelectItem>
-              <SelectItem value="Desserts">Desserts</SelectItem>
-              <SelectItem value="Beverages">Beverages</SelectItem>
-              <SelectItem value="Snacks">Snacks</SelectItem>
+              <SelectItem value="appetizers">Appetizers</SelectItem>
+              <SelectItem value="starters">Starters</SelectItem>
+              <SelectItem value="mains">Main Course</SelectItem>
+              <SelectItem value="desserts">Desserts</SelectItem>
+              <SelectItem value="drinks">Drinks</SelectItem>
+              <SelectItem value="beverages">Beverages</SelectItem>
+              <SelectItem value="breakfast">Breakfast</SelectItem>
+              <SelectItem value="snacks">Snacks</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -107,23 +107,13 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-sm font-medium mb-2 block">Calories</label>
-          <Input
-            type="number"
-            value={formData.calories || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, calories: Number(e.target.value) || undefined }))}
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium mb-2 block">Image URL</label>
-          <Input
-            value={formData.image_url || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, image_url: e.target.value }))}
-            placeholder="https://..."
-          />
-        </div>
+      <div>
+        <label className="text-sm font-medium mb-2 block">Image URL</label>
+        <Input
+          value={formData.image_url || ''}
+          onChange={(e) => setFormData(prev => ({ ...prev, image_url: e.target.value }))}
+          placeholder="https://..."
+        />
       </div>
 
       <div>
@@ -154,47 +144,19 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
         </Select>
       </div>
 
-      <div>
-        <label className="text-sm font-medium mb-2 block">Allergens</label>
-        <div className="flex flex-wrap gap-2 mb-2">
-          {formData.allergens.map((allergen, index) => (
-            <Badge key={index} variant="destructive" className="gap-1">
-              {allergen}
-              <X 
-                className="h-3 w-3 cursor-pointer" 
-                onClick={() => removeAllergen(allergen)}
-              />
-            </Badge>
-          ))}
-        </div>
-        <Select onValueChange={addAllergen}>
-          <SelectTrigger>
-            <SelectValue placeholder="Add allergen" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Nuts">Nuts</SelectItem>
-            <SelectItem value="Dairy">Dairy</SelectItem>
-            <SelectItem value="Eggs">Eggs</SelectItem>
-            <SelectItem value="Soy">Soy</SelectItem>
-            <SelectItem value="Wheat">Wheat</SelectItem>
-            <SelectItem value="Seafood">Seafood</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
       <div className="flex items-center justify-between p-4 border rounded">
         <label className="text-sm font-medium">Available for Order</label>
         <Switch
-          checked={formData.is_available}
-          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_available: checked }))}
+          checked={formData.available}
+          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, available: checked }))}
         />
       </div>
 
       <div className="flex items-center justify-between p-4 border rounded">
         <label className="text-sm font-medium">Mark as Popular</label>
         <Switch
-          checked={formData.is_popular}
-          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_popular: checked }))}
+          checked={formData.popular}
+          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, popular: checked }))}
         />
       </div>
 

@@ -1,7 +1,34 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import useAuthStore from '@/stores/authStore';
 
-const AuthContext = createContext(undefined);
+interface User {
+  id: string;
+  email?: string;
+  phone?: string;
+  full_name: string;
+  role: string;
+  status: string;
+  email_verified?: boolean;
+  phone_verified?: boolean;
+  profile_picture?: string;
+}
+
+interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  userRole: string | null;
+  role: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+  login: (email: string, password: string) => Promise<any>;
+  logout: () => void;
+  register: (userData: any) => Promise<any>;
+  updateProfile: (data: any) => Promise<any>;
+  clearError: () => void;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }) {
   const {
@@ -10,6 +37,7 @@ export function AuthProvider({ children }) {
     role,
     isAuthenticated,
     isLoading: storeLoading,
+    hasHydrated,
     error,
     login: storeLogin,
     logout: storeLogout,
@@ -22,8 +50,10 @@ export function AuthProvider({ children }) {
 
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check authentication on mount
+  // Check authentication on mount - only after hydration
   useEffect(() => {
+    if (!hasHydrated) return; // Wait for Zustand to rehydrate from localStorage
+
     const initAuth = async () => {
       try {
         const isValid = checkAuth();
@@ -39,7 +69,7 @@ export function AuthProvider({ children }) {
     };
 
     initAuth();
-  }, []);
+  }, [hasHydrated]);
 
   // Auto-refresh token before expiry
   useEffect(() => {

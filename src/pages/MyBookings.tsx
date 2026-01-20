@@ -31,11 +31,15 @@ import {
   Loader2,
   Star,
   MessageSquare,
-  CreditCard
+  CreditCard,
+  QrCode,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { format, isPast, isFuture, isToday, differenceInDays } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import PaymentModal from '@/components/PaymentModal';
+import { BookingQRCode } from '@/components/CheckIn/BookingQRCode';
 
 export default function MyBookings() {
   const navigate = useNavigate();
@@ -48,6 +52,8 @@ export default function MyBookings() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentBooking, setPaymentBooking] = useState(null);
+  const [qrCodeBooking, setQrCodeBooking] = useState(null);
+  const [isQRDialogOpen, setIsQRDialogOpen] = useState(false);
 
   useEffect(() => {
     // Redirect to login if not authenticated
@@ -162,6 +168,46 @@ export default function MyBookings() {
            booking.status !== 'completed';
   };
 
+  const canCheckIn = (booking) => {
+    const status = getBookingStatus(booking);
+    const checkInDate = new Date(booking.checkIn);
+    const today = new Date();
+    const hoursUntilCheckIn = differenceInDays(checkInDate, today) * 24;
+
+    // Can check in if: upcoming within 24 hours or active today
+    return (status === 'upcoming' && hoursUntilCheckIn <= 24) ||
+           (status === 'active' && isToday(checkInDate));
+  };
+
+  const canCheckOut = (booking) => {
+    const status = getBookingStatus(booking);
+    const checkOutDate = new Date(booking.checkOut);
+
+    // Can check out if: active and on checkout day or past checkout
+    return status === 'active' && (isToday(checkOutDate) || isPast(checkOutDate));
+  };
+
+  const handleShowQRCode = (booking) => {
+    setQrCodeBooking(booking);
+    setIsQRDialogOpen(true);
+  };
+
+  const handleCheckIn = (booking) => {
+    navigate(`/check-in/${booking.id}`);
+  };
+
+  const handleExpressCheckIn = () => {
+    navigate('/express-check-in');
+  };
+
+  const handleCheckOut = (booking) => {
+    navigate(`/express-check-out/${booking.id}`);
+  };
+
+  const handlePreArrivalRegistration = (booking) => {
+    navigate(`/pre-arrival-registration/${booking.id}`);
+  };
+
   const upcomingBookings = bookings.filter((b) => getBookingStatus(b) === 'upcoming');
   const activeBookings = bookings.filter((b) => getBookingStatus(b) === 'active');
   const pastBookings = bookings.filter((b) => ['completed', 'cancelled'].includes(getBookingStatus(b)));
@@ -271,6 +317,55 @@ export default function MyBookings() {
               >
                 <CreditCard className="h-4 w-4 mr-2" />
                 Pay Now
+              </Button>
+            )}
+
+            {/* Check-In Actions */}
+            {canCheckIn(booking) && (
+              <>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => handleCheckIn(booking)}
+                  className="flex-1"
+                >
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Check In
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleShowQRCode(booking)}
+                >
+                  <QrCode className="h-4 w-4 mr-2" />
+                  QR Code
+                </Button>
+              </>
+            )}
+
+            {/* Check-Out Actions */}
+            {canCheckOut(booking) && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => handleCheckOut(booking)}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Check Out
+              </Button>
+            )}
+
+            {/* Pre-Arrival Registration for upcoming bookings */}
+            {status === 'upcoming' && !canCheckIn(booking) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePreArrivalRegistration(booking)}
+                className="flex-1"
+              >
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Pre-Register
               </Button>
             )}
 
@@ -530,6 +625,35 @@ export default function MyBookings() {
           onError={handlePaymentError}
         />
       )}
+
+      {/* QR Code Dialog */}
+      <Dialog open={isQRDialogOpen} onOpenChange={setIsQRDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Booking QR Code</DialogTitle>
+            <DialogDescription>
+              Show this QR code at the front desk for express check-in
+            </DialogDescription>
+          </DialogHeader>
+          {qrCodeBooking && (
+            <BookingQRCode
+              bookingId={qrCodeBooking.id}
+              guestName={user?.name || qrCodeBooking.guestName || 'Guest'}
+              checkInDate={qrCodeBooking.checkIn}
+              roomNumber={qrCodeBooking.roomNumber}
+              size={250}
+            />
+          )}
+          <div className="flex justify-center gap-2">
+            <Button onClick={handleExpressCheckIn} className="flex-1">
+              Start Express Check-In
+            </Button>
+            <Button variant="outline" onClick={() => setIsQRDialogOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

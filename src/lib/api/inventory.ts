@@ -1,8 +1,8 @@
 /**
- * Inventory Management API Client
+ * Inventory Management API Client - v2.0 UPDATED
  */
 
-import api from './axios';
+import apiClient from './client';
 
 // =====================================================
 // TYPE DEFINITIONS
@@ -166,6 +166,41 @@ export interface InventoryValuation {
   category?: string;
 }
 
+export interface TurnoverRate {
+  item_id: string;
+  sku: string;
+  name: string;
+  category?: string;
+  total_sold: number;
+  avg_inventory: number;
+  turnover_ratio: number;
+  days_in_stock: number;
+  performance: 'excellent' | 'good' | 'average' | 'poor';
+}
+
+export interface SeasonalVariation {
+  item_id: string;
+  sku: string;
+  name: string;
+  month: number;
+  year: number;
+  avg_quantity: number;
+  peak_quantity: number;
+  low_quantity: number;
+  usage_trend: 'increasing' | 'decreasing' | 'stable';
+  seasonal_index: number;
+}
+
+export interface InventoryAnalytics {
+  turnover_rates: TurnoverRate[];
+  seasonal_variations: SeasonalVariation[];
+  slow_moving_items: LowStockItem[];
+  fast_moving_items: LowStockItem[];
+  stock_accuracy: number;
+  carrying_cost: number;
+  stockout_rate: number;
+}
+
 // =====================================================
 // INVENTORY SERVICE CLASS
 // =====================================================
@@ -177,22 +212,22 @@ class InventoryService {
     const params = new URLSearchParams();
     if (isActive !== undefined) params.append('is_active', isActive.toString());
 
-    const response = await api.get<Supplier[]>(`/inventory/suppliers?${params.toString()}`);
+    const response = await apiClient.get<Supplier[]>(`/inventory/suppliers?${params.toString()}`);
     return response.data;
   }
 
   async getSupplier(supplierId: string): Promise<Supplier> {
-    const response = await api.get<Supplier>(`/inventory/suppliers/${supplierId}`);
+    const response = await apiClient.get<Supplier>(`/inventory/suppliers/${supplierId}`);
     return response.data;
   }
 
   async createSupplier(data: Partial<Supplier>): Promise<Supplier> {
-    const response = await api.post<Supplier>('/inventory/suppliers', data);
+    const response = await apiClient.post<Supplier>('/inventory/suppliers', data);
     return response.data;
   }
 
   async updateSupplier(supplierId: string, data: Partial<Supplier>): Promise<Supplier> {
-    const response = await api.patch<Supplier>(`/inventory/suppliers/${supplierId}`, data);
+    const response = await apiClient.patch<Supplier>(`/inventory/suppliers/${supplierId}`, data);
     return response.data;
   }
 
@@ -202,17 +237,17 @@ class InventoryService {
     const params = new URLSearchParams();
     if (isActive !== undefined) params.append('is_active', isActive.toString());
 
-    const response = await api.get<InventoryCategory[]>(`/inventory/categories?${params.toString()}`);
+    const response = await apiClient.get<InventoryCategory[]>(`/inventory/categories?${params.toString()}`);
     return response.data;
   }
 
   async createCategory(data: Partial<InventoryCategory>): Promise<InventoryCategory> {
-    const response = await api.post<InventoryCategory>('/inventory/categories', data);
+    const response = await apiClient.post<InventoryCategory>('/inventory/categories', data);
     return response.data;
   }
 
   async updateCategory(categoryId: string, data: Partial<InventoryCategory>): Promise<InventoryCategory> {
-    const response = await api.patch<InventoryCategory>(`/inventory/categories/${categoryId}`, data);
+    const response = await apiClient.patch<InventoryCategory>(`/inventory/categories/${categoryId}`, data);
     return response.data;
   }
 
@@ -232,27 +267,27 @@ class InventoryService {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.offset) queryParams.append('offset', params.offset.toString());
 
-    const response = await api.get<InventoryItem[]>(`/inventory/items?${queryParams.toString()}`);
+    const response = await apiClient.get<InventoryItem[]>(`/inventory/items?${queryParams.toString()}`);
     return response.data;
   }
 
   async getItem(itemId: string): Promise<InventoryItem> {
-    const response = await api.get<InventoryItem>(`/inventory/items/${itemId}`);
+    const response = await apiClient.get<InventoryItem>(`/inventory/items/${itemId}`);
     return response.data;
   }
 
   async createItem(data: Partial<InventoryItem>): Promise<InventoryItem> {
-    const response = await api.post<InventoryItem>('/inventory/items', data);
+    const response = await apiClient.post<InventoryItem>('/inventory/items', data);
     return response.data;
   }
 
   async updateItem(itemId: string, data: Partial<InventoryItem>): Promise<InventoryItem> {
-    const response = await api.patch<InventoryItem>(`/inventory/items/${itemId}`, data);
+    const response = await apiClient.patch<InventoryItem>(`/inventory/items/${itemId}`, data);
     return response.data;
   }
 
   async deleteItem(itemId: string): Promise<void> {
-    await api.delete(`/inventory/items/${itemId}`);
+    await apiClient.delete(`/inventory/items/${itemId}`);
   }
 
   // ----- STOCK MOVEMENTS -----
@@ -273,12 +308,12 @@ class InventoryService {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.offset) queryParams.append('offset', params.offset.toString());
 
-    const response = await api.get<StockMovement[]>(`/inventory/movements?${queryParams.toString()}`);
+    const response = await apiClient.get<StockMovement[]>(`/inventory/movements?${queryParams.toString()}`);
     return response.data;
   }
 
   async createMovement(data: Partial<StockMovement>): Promise<StockMovement> {
-    const response = await api.post<StockMovement>('/inventory/movements', data);
+    const response = await apiClient.post<StockMovement>('/inventory/movements', data);
     return response.data;
   }
 
@@ -300,44 +335,44 @@ class InventoryService {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.offset) queryParams.append('offset', params.offset.toString());
 
-    const response = await api.get<PurchaseOrder[]>(`/inventory/purchase-orders?${queryParams.toString()}`);
+    const response = await apiClient.get<PurchaseOrder[]>(`/inventory/purchase-orders?${queryParams.toString()}`);
     return response.data;
   }
 
   async getPurchaseOrder(poId: string): Promise<PurchaseOrder> {
-    const response = await api.get<PurchaseOrder>(`/inventory/purchase-orders/${poId}`);
+    const response = await apiClient.get<PurchaseOrder>(`/inventory/purchase-orders/${poId}`);
     return response.data;
   }
 
   async createPurchaseOrder(data: Partial<PurchaseOrder>): Promise<PurchaseOrder> {
-    const response = await api.post<PurchaseOrder>('/inventory/purchase-orders', data);
+    const response = await apiClient.post<PurchaseOrder>('/inventory/purchase-orders', data);
     return response.data;
   }
 
   async updatePurchaseOrder(poId: string, data: Partial<PurchaseOrder>): Promise<PurchaseOrder> {
-    const response = await api.patch<PurchaseOrder>(`/inventory/purchase-orders/${poId}`, data);
+    const response = await apiClient.patch<PurchaseOrder>(`/inventory/purchase-orders/${poId}`, data);
     return response.data;
   }
 
   async approvePurchaseOrder(poId: string): Promise<PurchaseOrder> {
-    const response = await api.patch<PurchaseOrder>(`/inventory/purchase-orders/${poId}/approve`, {});
+    const response = await apiClient.patch<PurchaseOrder>(`/inventory/purchase-orders/${poId}/approve`, {});
     return response.data;
   }
 
   // ----- PURCHASE ORDER ITEMS -----
 
   async getPOItems(poId: string): Promise<PurchaseOrderItem[]> {
-    const response = await api.get<PurchaseOrderItem[]>(`/inventory/purchase-orders/${poId}/items`);
+    const response = await apiClient.get<PurchaseOrderItem[]>(`/inventory/purchase-orders/${poId}/items`);
     return response.data;
   }
 
   async addPOItem(poId: string, data: Partial<PurchaseOrderItem>): Promise<PurchaseOrderItem> {
-    const response = await api.post<PurchaseOrderItem>(`/inventory/purchase-orders/${poId}/items`, data);
+    const response = await apiClient.post<PurchaseOrderItem>(`/inventory/purchase-orders/${poId}/items`, data);
     return response.data;
   }
 
   async updatePOItem(poId: string, itemId: string, data: Partial<PurchaseOrderItem>): Promise<PurchaseOrderItem> {
-    const response = await api.patch<PurchaseOrderItem>(
+    const response = await apiClient.patch<PurchaseOrderItem>(
       `/inventory/purchase-orders/${poId}/items/${itemId}`,
       data
     );
@@ -345,7 +380,7 @@ class InventoryService {
   }
 
   async deletePOItem(poId: string, itemId: string): Promise<void> {
-    await api.delete(`/inventory/purchase-orders/${poId}/items/${itemId}`);
+    await apiClient.delete(`/inventory/purchase-orders/${poId}/items/${itemId}`);
   }
 
   // ----- STOCK ALERTS -----
@@ -362,29 +397,67 @@ class InventoryService {
     if (params?.is_acknowledged !== undefined) queryParams.append('is_acknowledged', params.is_acknowledged.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
 
-    const response = await api.get<StockAlert[]>(`/inventory/alerts?${queryParams.toString()}`);
+    const response = await apiClient.get<StockAlert[]>(`/inventory/alerts?${queryParams.toString()}`);
     return response.data;
   }
 
   async acknowledgeAlert(alertId: string): Promise<StockAlert> {
-    const response = await api.patch<StockAlert>(`/inventory/alerts/${alertId}/acknowledge`, {});
+    const response = await apiClient.patch<StockAlert>(`/inventory/alerts/${alertId}/acknowledge`, {});
     return response.data;
   }
 
   // ----- STATISTICS & REPORTS -----
 
   async getStatistics(): Promise<InventoryStatistics> {
-    const response = await api.get<InventoryStatistics>('/inventory/statistics');
+    const response = await apiClient.get<InventoryStatistics>('/inventory/statistics');
     return response.data;
   }
 
   async getLowStockReport(): Promise<LowStockItem[]> {
-    const response = await api.get<LowStockItem[]>('/inventory/reports/low-stock');
+    const response = await apiClient.get<LowStockItem[]>('/inventory/reports/low-stock');
     return response.data;
   }
 
   async getValuationReport(): Promise<InventoryValuation[]> {
-    const response = await api.get<InventoryValuation[]>('/inventory/reports/valuation');
+    const response = await apiClient.get<InventoryValuation[]>('/inventory/reports/valuation');
+    return response.data;
+  }
+
+  async getTurnoverRates(params?: {
+    start_date?: string;
+    end_date?: string;
+    category_id?: string;
+  }): Promise<TurnoverRate[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+    if (params?.category_id) queryParams.append('category_id', params.category_id);
+
+    const response = await apiClient.get<TurnoverRate[]>(`/inventory/reports/turnover?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  async getSeasonalVariations(params?: {
+    item_id?: string;
+    year?: number;
+  }): Promise<SeasonalVariation[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.item_id) queryParams.append('item_id', params.item_id);
+    if (params?.year) queryParams.append('year', params.year.toString());
+
+    const response = await apiClient.get<SeasonalVariation[]>(`/inventory/reports/seasonal?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  async getInventoryAnalytics(params?: {
+    start_date?: string;
+    end_date?: string;
+  }): Promise<InventoryAnalytics> {
+    const queryParams = new URLSearchParams();
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+
+    const response = await apiClient.get<InventoryAnalytics>(`/inventory/analytics?${queryParams.toString()}`);
     return response.data;
   }
 }

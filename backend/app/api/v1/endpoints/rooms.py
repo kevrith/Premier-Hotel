@@ -4,7 +4,7 @@ Room Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import Optional, List
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_supabase_admin
 from app.schemas.room import (
     RoomCreate,
     RoomUpdate,
@@ -12,7 +12,7 @@ from app.schemas.room import (
     AvailabilityCheck,
     AvailabilityResponse,
 )
-from app.middleware.auth import get_current_user, require_admin
+from app.middleware.auth_secure import get_current_user, require_admin
 from datetime import date
 
 router = APIRouter()
@@ -26,7 +26,7 @@ async def get_rooms(
     room_status: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Get all rooms with optional filters
@@ -202,7 +202,7 @@ async def check_availability(
 async def create_room(
     room_data: RoomCreate,
     current_user: dict = Depends(require_admin),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Create a new room (Admin only)
@@ -224,8 +224,13 @@ async def create_room(
                 detail="Room number already exists",
             )
 
-        # Create room
+        # Create room - convert Decimal to float for JSON serialization
+        from decimal import Decimal
         room_dict = room_data.model_dump()
+        # Convert Decimal fields to float
+        if 'base_price' in room_dict and isinstance(room_dict['base_price'], Decimal):
+            room_dict['base_price'] = float(room_dict['base_price'])
+
         response = supabase.table("rooms").insert(room_dict).execute()
 
         if not response.data:
@@ -250,7 +255,7 @@ async def update_room(
     room_id: str,
     room_data: RoomUpdate,
     current_user: dict = Depends(require_admin),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Update room (Admin only)
@@ -268,12 +273,17 @@ async def update_room(
             )
 
         # Prepare update data
+        from decimal import Decimal
         update_data = room_data.model_dump(exclude_unset=True)
 
         if not update_data:
             # Return existing room if no updates
             response = supabase.table("rooms").select("*").eq("id", room_id).execute()
             return RoomResponse(**response.data[0])
+
+        # Convert Decimal fields to float
+        if 'base_price' in update_data and isinstance(update_data['base_price'], Decimal):
+            update_data['base_price'] = float(update_data['base_price'])
 
         # Check if room number is being changed and if it already exists
         if "room_number" in update_data:
@@ -316,7 +326,7 @@ async def update_room(
 async def delete_room(
     room_id: str,
     current_user: dict = Depends(require_admin),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Delete room (Admin only)

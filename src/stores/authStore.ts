@@ -1,11 +1,56 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { jwtDecode } from 'jwt-decode';
+import * as authApi from '@/lib/api/auth';
 
-const useAuthStore = create(
+interface User {
+  id: string;
+  email?: string;
+  phone?: string;
+  full_name: string;
+  role: string;
+  status: string;
+  email_verified?: boolean;
+  phone_verified?: boolean;
+  profile_picture?: string;
+}
+
+interface AuthState {
+  // State
+  user: User | null;
+  token: string | null;
+  refreshToken: string | null;
+  role: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+  needsVerification: boolean;
+  verificationType: 'email' | 'phone' | null;
+  hasHydrated: boolean;
+
+  // Actions
+  login: (identifier: string, password: string, type?: 'email' | 'phone') => Promise<any>;
+  register: (userData: any) => Promise<any>;
+  logout: () => void;
+  updateProfile: (data: any) => Promise<void>;
+  checkAuth: () => boolean;
+  refreshAccessToken: () => Promise<boolean>;
+  verifyOTP: (otp: string, type: 'email' | 'phone') => Promise<any>;
+  resendOTP: () => Promise<any>;
+  socialLogin: (provider: string, accessToken: string) => Promise<any>;
+  forgotPassword: (email: string) => Promise<any>;
+  resetPassword: (email: string, token: string, newPassword: string) => Promise<any>;
+  setLoading: (isLoading: boolean) => void;
+  setError: (error: string | null) => void;
+  clearError: () => void;
+  setUser: (user: User) => void;
+  setHasHydrated: (hasHydrated: boolean) => void;
+}
+
+const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      // State
+      // Initial State
       user: null,
       token: null,
       refreshToken: null,
@@ -13,100 +58,278 @@ const useAuthStore = create(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      needsVerification: false,
+      verificationType: null,
+      hasHydrated: false,
 
-      // Actions
-      login: async (email, password) => {
+      // Login - Auto-detect email or phone
+      login: async (identifier, password, type) => {
         set({ isLoading: true, error: null });
         try {
-          // This will call the API service when backend is ready
-          // For now, mock implementation
-          const mockResponse = {
-            access_token: 'mock-jwt-token',
-            refresh_token: 'mock-refresh-token',
-            user: {
-              id: '1',
-              email,
-              role: email.includes('admin') ? 'admin' : 'customer',
-              firstName: 'John',
-              lastName: 'Doe'
-            }
-          };
+          let response;
 
-          const { user, role } = mockResponse.user;
+          // Auto-detect type if not provided
+          if (!type) {
+            type = identifier.includes('@') ? 'email' : 'phone';
+          }
+
+          // Call appropriate API endpoint
+          if (type === 'email') {
+            response = await authApi.loginWithEmail({ email: identifier, password });
+          } else {
+            // Format phone if needed
+            const phone = identifier.startsWith('+') ? identifier : `+${identifier}`;
+            response = await authApi.loginWithPhone({ phone, password });
+          }
+
+          const { access_token, refresh_token, user } = response;
+
+          // Store tokens
+          localStorage.setItem('access_token', access_token);
+          localStorage.setItem('refresh_token', refresh_token);
+
+          // Check if user needs verification
+          const needsEmailVerification = user.email && !user.email_verified;
+          const needsPhoneVerification = user.phone && !user.phone_verified;
 
           set({
-            user: mockResponse.user,
-            token: mockResponse.access_token,
-            refreshToken: mockResponse.refresh_token,
-            role: mockResponse.user.role,
+            user,
+            token: access_token,
+            refreshToken: refresh_token,
+            role: user.role,
             isAuthenticated: true,
-            isLoading: false
+            isLoading: false,
+            needsVerification: needsEmailVerification || needsPhoneVerification,
+            verificationType: needsEmailVerification ? 'email' : needsPhoneVerification ? 'phone' : null,
           });
 
-          return { success: true };
-        } catch (error) {
-          set({ error: error.message, isLoading: false });
-          return { success: false, error: error.message };
+          return {
+            success: true,
+            user,
+            needsVerification: needsEmailVerification || needsPhoneVerification
+          };
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.detail || error.message || 'Login failed';
+          set({ error: errorMessage, isLoading: false });
+          return { success: false, error: errorMessage };
         }
       },
 
+      // Register
       register: async (userData) => {
         set({ isLoading: true, error: null });
         try {
-          // Mock implementation - replace with actual API call
-          const mockResponse = {
-            access_token: 'mock-jwt-token',
-            refresh_token: 'mock-refresh-token',
-            user: {
-              id: Date.now().toString(),
+          let response;
+          const fullName = `${userData.firstName} ${userData.lastName}`.trim();
+
+          // Determine if registering with email or phone
+          if (userData.email) {
+            response = await authApi.registerWithEmail({
               email: userData.email,
-              role: 'customer',
-              firstName: userData.firstName,
-              lastName: userData.lastName,
-              phone: userData.phone
-            }
-          };
+              password: userData.password,
+              full_name: fullName,
+            });
+          } else if (userData.phone) {
+            const phone = userData.phone.startsWith('+') ? userData.phone : `+${userData.phone}`;
+            response = await authApi.registerWithPhone({
+              phone,
+              password: userData.password,
+              full_name: fullName,
+            });
+          } else {
+            throw new Error('Email or phone is required');
+          }
+
+          const { access_token, refresh_token, user } = response;
+
+          // Store tokens
+          localStorage.setItem('access_token', access_token);
+          localStorage.setItem('refresh_token', refresh_token);
 
           set({
-            user: mockResponse.user,
-            token: mockResponse.access_token,
-            refreshToken: mockResponse.refresh_token,
-            role: mockResponse.user.role,
+            user,
+            token: access_token,
+            refreshToken: refresh_token,
+            role: user.role,
             isAuthenticated: true,
-            isLoading: false
+            isLoading: false,
+            needsVerification: true,
+            verificationType: userData.email ? 'email' : 'phone',
           });
 
-          return { success: true };
-        } catch (error) {
-          set({ error: error.message, isLoading: false });
-          return { success: false, error: error.message };
+          return { success: true, user, needsVerification: true };
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.detail || error.message || 'Registration failed';
+          set({ error: errorMessage, isLoading: false });
+          return { success: false, error: errorMessage };
         }
       },
 
-      logout: () => {
-        set({
-          user: null,
-          token: null,
-          refreshToken: null,
-          role: null,
-          isAuthenticated: false,
-          error: null
-        });
+      // Verify OTP
+      verifyOTP: async (otp, type) => {
+        set({ isLoading: true, error: null });
+        try {
+          const { user } = get();
+          if (!user) throw new Error('No user found');
+
+          let response;
+          if (type === 'phone') {
+            response = await authApi.verifyPhoneOTP({
+              phone: user.phone,
+              otp_code: otp,
+            });
+          } else {
+            response = await authApi.verifyEmailOTP({
+              email: user.email,
+              token: otp,
+            });
+          }
+
+          // Update user verification status
+          set({
+            user: {
+              ...user,
+              email_verified: type === 'email' ? true : user.email_verified,
+              phone_verified: type === 'phone' ? true : user.phone_verified,
+            },
+            needsVerification: false,
+            verificationType: null,
+            isLoading: false,
+          });
+
+          return { success: true, message: response.message };
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.detail || error.message || 'Verification failed';
+          set({ error: errorMessage, isLoading: false });
+          return { success: false, error: errorMessage };
+        }
       },
 
+      // Resend OTP
+      resendOTP: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const { user, verificationType } = get();
+          if (!user) throw new Error('No user found');
+
+          const data = verificationType === 'email'
+            ? { email: user.email }
+            : { phone: user.phone };
+
+          await authApi.resendVerification(data);
+
+          set({ isLoading: false });
+          return { success: true, message: 'OTP sent successfully' };
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.detail || error.message || 'Failed to resend OTP';
+          set({ error: errorMessage, isLoading: false });
+          return { success: false, error: errorMessage };
+        }
+      },
+
+      // Social Login (Google, Facebook, etc.)
+      socialLogin: async (provider, accessToken) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await authApi.socialAuth({
+            provider: provider as any,
+            access_token: accessToken,
+          });
+
+          const { access_token, refresh_token, user } = response;
+
+          // Store tokens
+          localStorage.setItem('access_token', access_token);
+          localStorage.setItem('refresh_token', refresh_token);
+
+          set({
+            user,
+            token: access_token,
+            refreshToken: refresh_token,
+            role: user.role,
+            isAuthenticated: true,
+            isLoading: false,
+            needsVerification: false,
+            verificationType: null,
+          });
+
+          return { success: true, user };
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.detail || error.message || 'Social login failed';
+          set({ error: errorMessage, isLoading: false });
+          return { success: false, error: errorMessage };
+        }
+      },
+
+      // Forgot Password
+      forgotPassword: async (email) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await authApi.forgotPassword({ email });
+          set({ isLoading: false });
+          return { success: true, message: response.message };
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.detail || error.message || 'Failed to send reset email';
+          set({ error: errorMessage, isLoading: false });
+          return { success: false, error: errorMessage };
+        }
+      },
+
+      // Reset Password
+      resetPassword: async (email, token, newPassword) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await authApi.resetPassword({
+            email,
+            token,
+            new_password: newPassword,
+          });
+          set({ isLoading: false });
+          return { success: true, message: response.message };
+        } catch (error: any) {
+          const errorMessage = error.response?.data?.detail || error.message || 'Password reset failed';
+          set({ error: errorMessage, isLoading: false });
+          return { success: false, error: errorMessage };
+        }
+      },
+
+      // Logout
+      logout: async () => {
+        try {
+          await authApi.logout();
+        } catch (error) {
+          console.error('Logout error:', error);
+        } finally {
+          set({
+            user: null,
+            token: null,
+            refreshToken: null,
+            role: null,
+            isAuthenticated: false,
+            error: null,
+            needsVerification: false,
+            verificationType: null,
+          });
+        }
+      },
+
+      // Update Profile
       updateProfile: async (data) => {
         const { user } = get();
+        if (!user) return;
+
         set({
           user: { ...user, ...data },
-          isLoading: false
+          isLoading: false,
         });
       },
 
+      // Check if token is valid
       checkAuth: () => {
         const { token } = get();
         if (token) {
           try {
-            const decoded = jwtDecode(token);
+            const decoded: any = jwtDecode(token);
             const isExpired = decoded.exp * 1000 < Date.now();
 
             if (isExpired) {
@@ -122,6 +345,7 @@ const useAuthStore = create(
         return false;
       },
 
+      // Refresh Access Token
       refreshAccessToken: async () => {
         const { refreshToken } = get();
         if (!refreshToken) {
@@ -130,12 +354,11 @@ const useAuthStore = create(
         }
 
         try {
-          // Mock implementation - replace with actual API call
-          const mockResponse = {
-            access_token: 'new-mock-jwt-token'
-          };
+          const response = await authApi.refreshAccessToken(refreshToken);
+          const { access_token } = response;
 
-          set({ token: mockResponse.access_token });
+          localStorage.setItem('access_token', access_token);
+          set({ token: access_token });
           return true;
         } catch (error) {
           get().logout();
@@ -143,11 +366,12 @@ const useAuthStore = create(
         }
       },
 
+      // Utility actions
       setLoading: (isLoading) => set({ isLoading }),
-
       setError: (error) => set({ error }),
-
-      clearError: () => set({ error: null })
+      clearError: () => set({ error: null }),
+      setUser: (user) => set({ user }),
+      setHasHydrated: (hasHydrated) => set({ hasHydrated }),
     }),
     {
       name: 'auth-storage',
@@ -156,8 +380,11 @@ const useAuthStore = create(
         token: state.token,
         refreshToken: state.refreshToken,
         role: state.role,
-        isAuthenticated: state.isAuthenticated
-      })
+        isAuthenticated: state.isAuthenticated,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

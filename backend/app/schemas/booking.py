@@ -48,7 +48,7 @@ class BookingResponse(BaseModel):
     total_amount: Decimal
     guest_info: Dict[str, Any]
     pricing: Optional[Dict[str, Any]] = None
-    total_guests: int
+    total_guests: int  # Number of guests - important for occupancy tracking
     special_requests: Optional[str] = None
     payment_status: str
     created_at: datetime

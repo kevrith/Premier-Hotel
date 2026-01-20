@@ -99,6 +99,97 @@ export interface TopCustomersResponse {
   customers: TopCustomer[];
 }
 
+export interface EmployeeSalesData {
+  employee_id: string;
+  employee_name: string;
+  email: string;
+  role: string;
+  department: string;
+  total_sales: number;
+  total_orders: number;
+  completed_orders: number;
+  avg_order_value: number;
+  total_items_sold: number;
+  orders_today: number;
+  orders_this_week: number;
+  orders_this_month: number;
+  top_selling_item: string;
+  first_sale_time: string;
+  last_sale_time: string;
+  completion_rate: number;
+}
+
+export interface EmployeeSalesResponse {
+  period: {
+    start: string;
+    end: string;
+  };
+  total_employees: number;
+  total_sales: number;
+  total_orders: number;
+  employees: EmployeeSalesData[];
+}
+
+export interface Transaction {
+  order_id: string;
+  date: string;
+  total: number;
+  status: string;
+  payment_method: string;
+  delivery_location: string;
+  items: Array<{
+    name: string;
+    quantity: number;
+    price: number;
+  }>;
+}
+
+export interface TopItem {
+  name: string;
+  quantity: number;
+  revenue: number;
+}
+
+export interface PaymentMethodBreakdown {
+  method: string;
+  total: number;
+  percentage: number;
+}
+
+export interface EmployeeDetailResponse {
+  employee: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    department: string;
+    phone: string;
+    status: string;
+  };
+  period: {
+    start: string;
+    end: string;
+  };
+  summary: {
+    total_sales: number;
+    total_orders: number;
+    completed_orders: number;
+    avg_order_value: number;
+    completion_rate: number;
+    rank: number | null;
+    total_peers: number;
+    team_average: number;
+    performance_vs_average: number;
+  };
+  transactions: Transaction[];
+  top_items: TopItem[];
+  payment_methods: PaymentMethodBreakdown[];
+  trends: {
+    daily: Array<{ date: string; revenue: number }>;
+    hourly: Array<{ hour: string; revenue: number }>;
+  };
+}
+
 class ReportsService {
   /**
    * Get reports overview
@@ -167,6 +258,43 @@ class ReportsService {
     if (endDate) params.append('end_date', endDate);
 
     const response = await api.get<TopCustomersResponse>(`/reports/top-customers?${params.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Get employee sales report
+   */
+  async getEmployeeSales(
+    startDate?: string,
+    endDate?: string,
+    employeeId?: string,
+    department?: string,
+    role?: string
+  ): Promise<EmployeeSalesResponse> {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (employeeId) params.append('employee_id', employeeId);
+    if (department) params.append('department', department);
+    if (role) params.append('role', role);
+
+    const response = await api.get<EmployeeSalesResponse>(`/reports/employee-sales?${params.toString()}`);
+    return response.data;
+  }
+
+  /**
+   * Get detailed employee performance report
+   */
+  async getEmployeeDetails(
+    employeeId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<EmployeeDetailResponse> {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const response = await api.get<EmployeeDetailResponse>(`/reports/employee/${employeeId}/details?${params.toString()}`);
     return response.data;
   }
 

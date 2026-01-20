@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Hotel, Menu, X, User, LogOut, Calendar, Bell } from "lucide-react";
+import { Hotel, Menu, X, User, LogOut, Calendar, Bell, LayoutDashboard } from "lucide-react";
 import { useState } from "react";
 import NotificationBell from "./NotificationBell";
 
@@ -22,6 +22,29 @@ export function Navbar() {
     { name: "Rooms", href: "/rooms" },
     { name: "Menu", href: "/menu" },
   ];
+
+  // Get dashboard route based on user role
+  const getDashboardRoute = () => {
+    if (!user?.role) return "/menu";
+
+    switch (user.role) {
+      case 'admin':
+        return '/admin';
+      case 'manager':
+        return '/manager';
+      case 'chef':
+        return '/chef';
+      case 'waiter':
+        return '/waiter';
+      case 'cleaner':
+        return '/cleaner';
+      case 'customer':
+      default:
+        return '/menu';
+    }
+  };
+
+  const dashboardRoute = getDashboardRoute();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-lg border-b border-border">
@@ -50,6 +73,10 @@ export function Navbar() {
                 <NotificationBell />
 
                 <Button variant="outline" size="sm" asChild className="hidden sm:flex">
+                  <Link to={dashboardRoute}><LayoutDashboard className="h-4 w-4 mr-2" />Dashboard</Link>
+                </Button>
+
+                <Button variant="outline" size="sm" asChild className="hidden sm:flex">
                   <Link to="/my-bookings"><Calendar className="h-4 w-4 mr-2" />My Bookings</Link>
                 </Button>
 
@@ -59,12 +86,12 @@ export function Navbar() {
                       <div className="h-8 w-8 rounded-full bg-gradient-gold flex items-center justify-center">
                         <User className="h-4 w-4 text-primary" />
                       </div>
-                      <span className="hidden sm:inline">{user.firstName || 'User'}</span>
+                      <span className="hidden sm:inline">{user.full_name?.split(' ')[0] || 'User'}</span>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
                     <div className="px-2 py-1.5">
-                      <p className="text-sm font-medium">{user.firstName} {user.lastName}</p>
+                      <p className="text-sm font-medium">{user.full_name}</p>
                       <p className="text-xs text-muted-foreground">{user.email}</p>
                     </div>
                     <DropdownMenuSeparator />
@@ -111,6 +138,7 @@ export function Navbar() {
               ))}
               {isAuthenticated && user && (
                 <>
+                  <Link to={dashboardRoute} className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>Dashboard</Link>
                   <Link to="/my-bookings" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>My Bookings</Link>
                   <Link to="/notifications" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>Notifications</Link>
                   <Link to="/profile" className="block px-3 py-2 text-base font-medium text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsMobileMenuOpen(false)}>Profile</Link>

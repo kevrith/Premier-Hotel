@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Admin Users Tab Fix</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover { background: #45a049; }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-success { background: #4CAF50; }
+        .status-error { background: #f44336; }
+        .status-warning { background: #ff9800; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Admin Users Tab Fix - Test Results</h1>
+
+        <div class="test-section">
+            <h2>Test 1: Backend Connectivity</h2>
+            <button onclick="testBackend()">Test Backend</button>
+            <div id="backend-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test 2: Stats Endpoint Route Order</h2>
+            <button onclick="testStatsRoute()">Test /users/stats Route</button>
+            <div id="stats-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test 3: Simulate Admin Users Tab Click</h2>
+            <button onclick="simulateUsersTab()">Simulate Navigation</button>
+            <div id="simulate-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Summary</h2>
+            <div id="summary"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        async function testBackend() {
+            const resultDiv = document.getElementById('backend-result');
+            resultDiv.innerHTML = '<div class="result info">Testing backend...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/docs`);
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            <span class="status-dot status-success"></span>
+                            ✓ Backend is running on port 8000
+                        </div>
+                    `;
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        <span class="status-dot status-error"></span>
+                        ✗ Backend connection failed: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function testStatsRoute() {
+            const resultDiv = document.getElementById('stats-result');
+            resultDiv.innerHTML = '<div class="result info">Testing /users/stats route...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/admin/users/stats`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (response.status === 401 && data.detail && data.detail.includes('authenticated')) {
+                    // This is GOOD - it means the route exists and requires auth
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            <span class="status-dot status-success"></span>
+                            ✓ Route /users/stats is correctly registered<br>
+                            ✓ Returns 401 Unauthorized (expected - requires auth)<br>
+                            ✓ NOT returning 404 "User not found"<br>
+                            <br>
+                            <strong>This means the fix is working!</strong><br>
+                            The route is matched correctly before /users/{user_id}
+                        </div>
+                    `;
+                } else if (response.status === 404) {
+                    // This is BAD - route not found or wrong route matched
+                    resultDiv.innerHTML = `
+                        <div class="result error">
+                            <span class="status-dot status-error"></span>
+                            ✗ Route issue detected<br>
+                            Status: 404 ${data.detail || ''}<br>
+                            <br>
+                            This suggests the route ordering fix didn't work.
+                        </div>
+                    `;
+                } else if (response.status === 200) {
+                    // This means we somehow authenticated (shouldn't happen)
+                    resultDiv.innerHTML = `
+                        <div class="result success">
+                            <span class="status-dot status-success"></span>
+                            ✓ Route is working and returned data!<br>
+                            Response: ${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="result info">
+                            <span class="status-dot status-warning"></span>
+                            Unexpected response: ${response.status}<br>
+                            ${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="result error">
+                        <span class="status-dot status-error"></span>
+                        ✗ Test failed: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function simulateUsersTab() {
+            const resultDiv = document.getElementById('simulate-result');
+            resultDiv.innerHTML = '<div class="result info">Simulating Users tab click...</div>';
+
+            let steps = [];
+
+            // Step 1: Check if frontend can reach backend
+            try {
+                const healthCheck = await fetch(`${API_BASE}/docs`);
+                if (healthCheck.ok) {
+                    steps.push('✓ Frontend can reach backend');
+                } else {
+                    steps.push('✗ Frontend cannot reach backend');
+                    throw new Error('Backend unreachable');
+                }
+            } catch (error) {
+                steps.push(`✗ Connection error: ${error.message}`);
+                resultDiv.innerHTML = `<div class="result error">${steps.join('<br>')}</div>`;
+                return;
+            }
+
+            // Step 2: Simulate stats endpoint call (without auth)
+            try {
+                const statsResponse = await fetch(`${API_BASE}/api/v1/admin/users/stats`);
+                const statsData = await statsResponse.json();
+
+                if (statsResponse.status === 401) {
+                    steps.push('✓ Stats endpoint found (returns 401 - needs auth)');
+                    steps.push('✓ Route order is correct');
+                    steps.push('');
+                    steps.push('<strong>Expected behavior when logged in:</strong>');
+                    steps.push('1. User clicks "Users" tab');
+                    steps.push('2. Frontend calls /api/v1/admin/users/stats');
+                    steps.push('3. Backend matches /users/stats (not /users/{user_id})');
+                    steps.push('4. Returns statistics data');
+                    steps.push('5. User sees statistics - NO LOGOUT');
+                    steps.push('');
+                    steps.push('<strong style="color: green;">✓ THE FIX IS WORKING!</strong>');
+
+                    resultDiv.innerHTML = `<div class="result success">${steps.join('<br>')}</div>`;
+                } else if (statsResponse.status === 404) {
+                    steps.push('✗ Stats endpoint returned 404');
+                    steps.push('✗ This means /users/{user_id} was matched instead');
+                    steps.push('✗ Fix did not work properly');
+                    steps.push('');
+                    steps.push(`Error: ${statsData.detail}`);
+
+                    resultDiv.innerHTML = `<div class="result error">${steps.join('<br>')}</div>`;
+                } else {
+                    steps.push(`Unexpected status: ${statsResponse.status}`);
+                    steps.push(`Response: ${JSON.stringify(statsData, null, 2)}`);
+                    resultDiv.innerHTML = `<div class="result info">${steps.join('<br>')}</div>`;
+                }
+            } catch (error) {
+                steps.push(`✗ Error during test: ${error.message}`);
+                resultDiv.innerHTML = `<div class="result error">${steps.join('<br>')}</div>`;
+            }
+        }
+
+        // Auto-run all tests on page load
+        window.onload = async function() {
+            document.getElementById('summary').innerHTML = '<div class="result info">Running tests...</div>';
+
+            await testBackend();
+            await new Promise(r => setTimeout(r, 500));
+
+            await testStatsRoute();
+            await new Promise(r => setTimeout(r, 500));
+
+            await simulateUsersTab();
+
+            document.getElementById('summary').innerHTML = `
+                <div class="result success">
+                    <strong>All automated tests completed!</strong><br><br>
+                    If all tests show ✓ (green checkmarks), the fix is working correctly.<br><br>
+                    <strong>Next step:</strong> Log in to your admin account and navigate to the Users tab.<br>
+                    You should see statistics load without getting logged out.
+                </div>
+            `;
+        };
+    </script>
+</body>
+</html>

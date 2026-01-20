@@ -1,21 +1,100 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Calendar, MapPin, Star } from "lucide-react";
 import { Link } from "react-router-dom";
-// import { LazyImage } from "@/hooks/useLazyLoading";
-// import heroImage from "@/assets/hero-hotel-lobby.jpg";
+import { useState, useEffect } from "react";
 
 export function HeroSection() {
+  // All images from the public/images folder
+  const backgroundImages = [
+    "/images/A1.jpeg",
+    "/images/A2.jpeg",
+    "/images/A3.jpeg",
+    "/images/A4.jpeg",
+    "/images/A5.jpeg",
+    "/images/T1.jpeg",
+    "/images/T2.jpeg",
+    "/images/T3.jpeg",
+    "/images/F1.jpeg",
+  ];
+
+  // Professional rotating taglines - Add more phrases here
+  const taglines = [
+    "Experience unparalleled luxury and comfort in the heart of the city. Where exceptional service meets modern elegance.",
+    "Discover world-class hospitality with breathtaking views and premium amenities. Your perfect escape awaits.",
+    "Indulge in sophisticated comfort where every detail is crafted for your pleasure. Excellence redefined.",
+    "Where timeless elegance meets contemporary luxury. Creating unforgettable moments since day one.",
+    "Elevate your stay with exquisite dining, spa services, and unmatched attention to detail.",
+  ];
+
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [currentTaglineIndex, setCurrentTaglineIndex] = useState(0);
+  const [displayedText, setDisplayedText] = useState("");
+  const [isTyping, setIsTyping] = useState(true);
+
+  // Professional timing: 8 seconds per image (industry standard for hero carousels)
+  // Provides enough time to read content while maintaining engagement
+  const SLIDE_DURATION = 8000; // 8 seconds - Change this value to adjust timing
+  const TRANSITION_DURATION = 1000; // 1 second fade transition
+  const TYPING_SPEED = 50; // milliseconds per character - adjust for faster/slower typing
+  const PAUSE_BEFORE_NEXT = 4000; // 4 seconds pause after typing completes
+
+  // Background image slideshow
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsTransitioning(true);
+
+      setTimeout(() => {
+        setCurrentImageIndex((prevIndex) =>
+          (prevIndex + 1) % backgroundImages.length
+        );
+        setIsTransitioning(false);
+      }, TRANSITION_DURATION / 2);
+    }, SLIDE_DURATION);
+
+    return () => clearInterval(interval);
+  }, [backgroundImages.length]);
+
+  // Auto-typing effect
+  useEffect(() => {
+    const currentTagline = taglines[currentTaglineIndex];
+
+    if (isTyping) {
+      if (displayedText.length < currentTagline.length) {
+        const timeout = setTimeout(() => {
+          setDisplayedText(currentTagline.slice(0, displayedText.length + 1));
+        }, TYPING_SPEED);
+        return () => clearTimeout(timeout);
+      } else {
+        // Finished typing, pause before next tagline
+        const pauseTimeout = setTimeout(() => {
+          setIsTyping(false);
+          setDisplayedText("");
+          setCurrentTaglineIndex((prev) => (prev + 1) % taglines.length);
+        }, PAUSE_BEFORE_NEXT);
+        return () => clearTimeout(pauseTimeout);
+      }
+    } else {
+      // Start typing next tagline
+      setIsTyping(true);
+    }
+  }, [displayedText, isTyping, currentTaglineIndex, taglines]);
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-blue-900 to-black">
-      {/* Background Image with Overlay */}
-      {/* <div className="absolute inset-0 z-0">
-        <LazyImage
-          src={heroImage}
-          alt="Luxury hotel lobby"
-          className="w-full h-full object-cover"
+      {/* Background Image Slideshow with Overlay */}
+      <div className="absolute inset-0 z-0">
+        {/* Current Image */}
+        <img
+          src={backgroundImages[currentImageIndex]}
+          alt="Luxury hotel"
+          className={`w-full h-full object-cover transition-opacity duration-1000 ${
+            isTransitioning ? 'opacity-0' : 'opacity-100'
+          }`}
         />
-        <div className="absolute inset-0 bg-gradient-hero"></div>
-      </div> */}
+        {/* 80% opacity overlay - Change opacity here: opacity-80 means 80% opacity (20% transparent) */}
+        <div className="absolute inset-0 bg-black opacity-80"></div>
+      </div>
 
       {/* Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -34,10 +113,12 @@ export function HeroSection() {
             </span>
           </h1>
 
-          {/* Subtitle */}
-          <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-3xl mx-auto leading-relaxed">
-            Experience unparalleled luxury and comfort in the heart of the city. 
-            Where exceptional service meets modern elegance.
+          {/* Subtitle with Auto-Typing Effect */}
+          <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-3xl mx-auto leading-relaxed min-h-[4rem] flex items-center justify-center">
+            <span>
+              {displayedText}
+              <span className="animate-pulse text-accent">|</span>
+            </span>
           </p>
 
           {/* CTA Buttons */}

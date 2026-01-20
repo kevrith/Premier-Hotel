@@ -148,7 +148,7 @@ async def get_categories(
     if is_active is not None:
         query = query.eq("is_active", is_active)
 
-    query = query.order("display_order", desc=False)
+    query = query.order("name")
     result = query.execute()
 
     return [CategoryResponse(**item) for item in result.data]

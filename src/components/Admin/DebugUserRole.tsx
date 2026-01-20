@@ -4,43 +4,56 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { User, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabase';
+import toast from 'react-hot-toast';
+import { createClient } from '@supabase/supabase-js';
 
 export function DebugUserRole() {
-  const { user, userRole, profile } = useAuth();
+  const { user, userRole } = useAuth();
   const [isUpdating, setIsUpdating] = useState(false);
-  const { toast } = useToast();
 
   const forceAdminRole = async () => {
     if (!user) return;
-    
+
     setIsUpdating(true);
     try {
-      const { error } = await supabase
-        .from('user_roles')
-        .upsert({
-          user_id: user.id,
+      // Update both profiles table and try to update auth metadata
+      // First update profiles (for backend auth middleware)
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
           role: 'admin',
-          assigned_by: user.id
+          status: 'active'
+        })
+        .eq('id', user.id);
+
+      if (profileError) {
+        console.warn('Could not update profiles table:', profileError);
+      }
+
+      // Try to update user metadata in auth.users via RPC function
+      try {
+        const { error: rpcError } = await supabase.rpc('update_user_role', {
+          user_id: user.id,
+          new_role: 'admin'
         });
 
-      if (error) throw error;
+        if (rpcError) {
+          console.warn('RPC function not available, this is expected:', rpcError);
+        }
+      } catch (rpcErr) {
+        console.warn('RPC call failed, this is expected:', rpcErr);
+      }
 
-      toast({
-        title: "Role updated",
-        description: "User role has been set to admin",
-      });
+      toast.success("User role has been set to admin. Please refresh the page.");
 
       // Force a page reload to refresh the auth context
-      window.location.reload();
-    } catch (error) {
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (error: any) {
       console.error('Error updating role:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update role",
-        variant: "destructive"
-      });
+      toast.error(error.message || "Failed to update role");
     } finally {
       setIsUpdating(false);
     }
@@ -69,7 +82,7 @@ export function DebugUserRole() {
             </Badge>
           </div>
           <div>
-            <strong>Profile Name:</strong> {profile?.full_name || 'N/A'}
+            <strong>Full Name:</strong> {user?.full_name || 'N/A'}
           </div>
         </div>
         

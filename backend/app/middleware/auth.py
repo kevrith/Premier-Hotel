@@ -1,16 +1,18 @@
 """
 Authentication Middleware and Dependencies
+Supports both Bearer token (Authorization header) and httpOnly cookie authentication
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from typing import Optional
 from app.core.config import settings
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_supabase_admin
 from supabase import Client
 
-security = HTTPBearer()
+# Make security optional to allow cookie fallback
+security = HTTPBearer(auto_error=False)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -50,11 +52,30 @@ def verify_token(token: str) -> dict:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    supabase: Client = Depends(get_supabase),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    supabase: Client = Depends(get_supabase_admin),
 ):
-    """Get current authenticated user"""
-    token = credentials.credentials
+    """
+    Get current authenticated user
+    Supports both Bearer token (Authorization header) and httpOnly cookie authentication
+    """
+    token = None
+
+    # First try Bearer token from Authorization header
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+    # Fall back to httpOnly cookie
+    elif request.cookies.get("access_token"):
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated - no token found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     payload = verify_token(token)
 
     user_id: str = payload.get("sub")
@@ -65,13 +86,21 @@ async def get_current_user(
         )
 
     # Get user from database
+    # Try users table first (for auth_secure users)
+    # Then try profiles table (for Supabase auth users)
     try:
-        response = supabase.table("profiles").select("*").eq("id", user_id).execute()
+        response = supabase.table("users").select("*").eq("id", user_id).execute()
+
+        if not response.data:
+            # Try profiles table
+            response = supabase.table("profiles").select("*").eq("id", user_id).execute()
+
         if not response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
+
         user = response.data[0]
 
         # Check if user is active
@@ -82,6 +111,8 @@ async def get_current_user(
             )
 
         return user
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -110,11 +141,35 @@ def require_role(required_roles: list[str]):
 
 # Role-specific dependencies
 async def require_admin(current_user: dict = Depends(get_current_user)):
-    """Require admin role"""
-    if current_user.get("role") not in ["admin", "manager"]:
+    """
+    Require admin role ONLY
+    SECURITY: Managers should NOT have admin privileges
+    Use require_manager_or_admin() for operations accessible to both
+    """
+    if current_user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
+        )
+    return current_user
+
+
+async def require_manager_or_admin(current_user: dict = Depends(get_current_user)):
+    """Require manager OR admin role"""
+    if current_user.get("role") not in ["admin", "manager"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manager or Admin access required",
+        )
+    return current_user
+
+
+async def require_owner_or_admin(current_user: dict = Depends(get_current_user)):
+    """Require owner OR admin role (for financial operations)"""
+    if current_user.get("role") not in ["admin", "owner"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner or Admin access required",
         )
     return current_user
 

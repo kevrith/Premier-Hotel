@@ -10,20 +10,22 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
     SUPABASE_SERVICE_KEY: str
+    SUPABASE_SERVICE_ROLE_KEY: str  # Alternative name for service key
 
     # Database
     DATABASE_URL: str
 
     # JWT
-    SECRET_KEY: str = secrets.token_urlsafe(32)
+    SECRET_KEY: str  # REQUIRED: Must be set in .env file
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Application
     APP_NAME: str = "Premier Hotel API"
-    DEBUG: bool = True
+    DEBUG: bool = False  # Default to False for security
     API_V1_PREFIX: str = "/api/v1"
+    ENVIRONMENT: str = "production"  # Options: development, staging, production
 
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
@@ -41,6 +43,11 @@ class Settings(BaseSettings):
     MPESA_SHORTCODE: str = ""
     MPESA_PASSKEY: str = ""
     MPESA_CALLBACK_URL: str = ""
+
+    # Africa's Talking SMS Configuration
+    AFRICASTALKING_USERNAME: str = "sandbox"
+    AFRICASTALKING_API_KEY: str = ""
+    AFRICASTALKING_SENDER_ID: str = ""
 
     # Email Configuration (Gmail SMTP)
     SMTP_HOST: str = "smtp.gmail.com"

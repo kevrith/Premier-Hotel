@@ -8,11 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import MenuItemCard from '@/components/MenuSystem/MenuItemCard';
 import ShoppingCartTray from '@/components/MenuSystem/ShoppingCartTray';
 import FavouritesPanel from '@/components/MenuSystem/FavouritesPanel';
+import CustomerOrderDialog, { CustomerInfo } from '@/components/MenuSystem/CustomerOrderDialog';
 import { Search, Filter, SlidersHorizontal } from 'lucide-react';
 import useCartStore from '@/stores/cartStore';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import menuService from '@/lib/api/services/menuService';
+import { ordersApi } from '@/lib/api/orders';
 
 // Mock menu data - will be replaced with API call
 const mockMenuData = [
@@ -106,8 +108,8 @@ const categories = [
 
 export default function EnhancedMenu() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { addItem, items: cartItems, removeItem, updateQuantity } = useCartStore();
+  const { user, isAuthenticated } = useAuth();
+  const { addItem, items: cartItems, removeItem, updateQuantity, clearCart, getTotal } = useCartStore();
 
   const [menuItems, setMenuItems] = useState(mockMenuData);
   const [filteredItems, setFilteredItems] = useState(mockMenuData);
@@ -117,6 +119,8 @@ export default function EnhancedMenu() {
   const [showFilters, setShowFilters] = useState(false);
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showCustomerDialog, setShowCustomerDialog] = useState(false);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
 
   // Fetch menu items from API
   useEffect(() => {
@@ -186,14 +190,29 @@ export default function EnhancedMenu() {
   }, [selectedCategory, searchQuery, sortBy, menuItems]);
 
   const handleAddToCart = (item, quantity, customizations) => {
-    addItem({
+    console.log('handleAddToCart called with:', { item, quantity, customizations });
+
+    // Transform customizations object to array format expected by cart
+    const customizationsArray = customizations && typeof customizations === 'object'
+      ? Object.entries(customizations).map(([key, value]) => ({
+          id: key,
+          name: key,
+          value: value,
+          priceModifier: 0 // TODO: Calculate from customization options
+        }))
+      : [];
+
+    const cartItem = {
       itemId: item.id,
       name: item.name,
-      basePrice: item.base_price,
+      basePrice: item.base_price || 0,
       quantity,
-      customizations: customizations || [],
-      specialInstructions: ''
-    });
+      customizations: customizationsArray,
+      specialInstructions: customizations?.special_instructions || ''
+    };
+
+    console.log('Adding to cart:', cartItem);
+    addItem(cartItem);
 
     toast.success(`${item.name} added to cart!`);
   };
@@ -213,9 +232,79 @@ export default function EnhancedMenu() {
       toast.error('Your cart is empty');
       return;
     }
-    // TODO: Create dedicated checkout page
-    // For now, navigate to orders page
-    navigate('/my-orders');
+
+    // Check if user is authenticated
+    if (!user || !isAuthenticated) {
+      toast.error('Please login to complete your order');
+      navigate('/login', { state: { from: '/menu' } });
+      return;
+    }
+
+    // Show customer info dialog
+    setShowCustomerDialog(true);
+  };
+
+  const handleCustomerOrderSubmit = async (customerInfo: CustomerInfo) => {
+    setIsCreatingOrder(true);
+    try {
+      // Prepare order items
+      const orderItems = cartItems.map(item => ({
+        menu_item_id: item.itemId,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.basePrice,
+        customizations: item.customizations || {},
+        special_instructions: item.specialInstructions || ''
+      }));
+
+      // Determine location and location_type based on order type
+      let location = '';
+      let locationType: 'table' | 'room' = 'table';
+
+      if (customerInfo.orderType === 'room_service') {
+        location = customerInfo.roomNumber || '';
+        locationType = 'room';
+      } else if (customerInfo.orderType === 'dine_in') {
+        location = customerInfo.tableNumber || '';
+        locationType = 'table';
+      } else {
+        location = 'Takeaway';
+        locationType = 'table';
+      }
+
+      // Create order via API
+      // NOTE: payment_method removed - payment happens at bill settlement, not order creation
+      const orderData = {
+        location,
+        location_type: locationType,
+        items: orderItems,
+        special_instructions: `Customer: ${customerInfo.customerName}, Phone: ${customerInfo.customerPhone}`,
+        customer_name: customerInfo.customerName,
+        customer_phone: customerInfo.customerPhone,
+        order_type: customerInfo.orderType
+      };
+
+      console.log('Creating order:', orderData);
+
+      const createdOrder = await ordersApi.create(orderData as any);
+
+      // Clear cart
+      clearCart();
+
+      // Close dialog
+      setShowCustomerDialog(false);
+
+      // Show success message
+      toast.success(`Order ${createdOrder.order_number} created successfully!`);
+
+      // Navigate to orders page or show confirmation
+      navigate('/my-orders');
+    } catch (error: any) {
+      console.error('Error creating order:', error);
+      toast.error(error.message || 'Failed to create order. Please try again.');
+    } finally {
+      setIsCreatingOrder(false);
+    }
   };
 
   return (
@@ -343,6 +432,15 @@ export default function EnhancedMenu() {
         onRemoveItem={removeItem}
         onCheckout={handleCheckout}
         className=""
+      />
+
+      {/* Customer Order Dialog */}
+      <CustomerOrderDialog
+        open={showCustomerDialog}
+        onOpenChange={setShowCustomerDialog}
+        onSubmit={handleCustomerOrderSubmit}
+        totalAmount={getTotal()}
+        itemCount={cartItems.length}
       />
     </div>
   );

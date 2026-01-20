@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auth Token Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #00ff00; }
+        .success { color: #00ff00; }
+        .error { color: #ff0000; }
+        .warning { color: #ffaa00; }
+        pre { background: #000; padding: 10px; border: 1px solid #00ff00; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Authentication Token Test</h1>
+    <p>This will check if your auth token is stored correctly in localStorage.</p>
+
+    <button onclick="checkAuth()">Check Auth Storage</button>
+    <button onclick="testAdminAPI()">Test Admin API Call</button>
+    <button onclick="clearStorage()">Clear Storage</button>
+
+    <div id="output"></div>
+
+    <script>
+        function checkAuth() {
+            const output = document.getElementById('output');
+            let html = '<h2>Auth Storage Check:</h2>';
+
+            // Check localStorage
+            const authStorage = localStorage.getItem('auth-storage');
+
+            if (!authStorage) {
+                html += '<p class="error">❌ No auth-storage found in localStorage!</p>';
+                html += '<p>You need to login first at: <a href="http://localhost:5173/login">http://localhost:5173/login</a></p>';
+            } else {
+                html += '<p class="success">✅ auth-storage found!</p>';
+
+                try {
+                    const parsed = JSON.parse(authStorage);
+                    html += '<pre>' + JSON.stringify(parsed, null, 2) + '</pre>';
+
+                    if (parsed.state && parsed.state.token) {
+                        html += '<p class="success">✅ Token exists: ' + parsed.state.token.substring(0, 50) + '...</p>';
+
+                        // Decode JWT (just the payload, no verification)
+                        try {
+                            const parts = parsed.state.token.split('.');
+                            if (parts.length === 3) {
+                                const payload = JSON.parse(atob(parts[1]));
+                                html += '<h3>Token Payload:</h3>';
+                                html += '<pre>' + JSON.stringify(payload, null, 2) + '</pre>';
+
+                                // Check expiration
+                                if (payload.exp) {
+                                    const expDate = new Date(payload.exp * 1000);
+                                    const now = new Date();
+                                    if (expDate > now) {
+                                        html += '<p class="success">✅ Token is still valid (expires: ' + expDate.toLocaleString() + ')</p>';
+                                    } else {
+                                        html += '<p class="error">❌ Token has expired! (expired: ' + expDate.toLocaleString() + ')</p>';
+                                        html += '<p>You need to login again.</p>';
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            html += '<p class="warning">⚠️ Could not decode token: ' + e.message + '</p>';
+                        }
+                    } else {
+                        html += '<p class="error">❌ No token found in auth-storage!</p>';
+                    }
+                } catch (e) {
+                    html += '<p class="error">❌ Error parsing auth-storage: ' + e.message + '</p>';
+                }
+            }
+
+            output.innerHTML = html;
+        }
+
+        async function testAdminAPI() {
+            const output = document.getElementById('output');
+            let html = '<h2>Testing Admin API:</h2>';
+
+            const authStorage = localStorage.getItem('auth-storage');
+            if (!authStorage) {
+                html += '<p class="error">❌ No auth token found! Login first.</p>';
+                output.innerHTML = html;
+                return;
+            }
+
+            const parsed = JSON.parse(authStorage);
+            const token = parsed.state?.token;
+
+            if (!token) {
+                html += '<p class="error">❌ No token in storage!</p>';
+                output.innerHTML = html;
+                return;
+            }
+
+            html += '<p>Calling GET /api/v1/admin/users...</p>';
+
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/admin/users?skip=0&limit=5', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include'
+                });
+
+                html += '<p>Status: ' + response.status + ' ' + response.statusText + '</p>';
+
+                if (response.status === 200) {
+                    const data = await response.json();
+                    html += '<p class="success">✅ API call successful!</p>';
+                    html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                } else if (response.status === 401) {
+                    html += '<p class="error">❌ 401 Unauthorized - Token is invalid or expired!</p>';
+                    const errorData = await response.json();
+                    html += '<pre>' + JSON.stringify(errorData, null, 2) + '</pre>';
+                } else {
+                    html += '<p class="error">❌ Error: ' + response.status + '</p>';
+                    const errorData = await response.json();
+                    html += '<pre>' + JSON.stringify(errorData, null, 2) + '</pre>';
+                }
+            } catch (e) {
+                html += '<p class="error">❌ Network error: ' + e.message + '</p>';
+            }
+
+            output.innerHTML = html;
+        }
+
+        function clearStorage() {
+            localStorage.removeItem('auth-storage');
+            alert('Auth storage cleared! Please login again.');
+            location.reload();
+        }
+
+        // Auto-check on load
+        window.onload = () => {
+            checkAuth();
+        };
+    </script>
+</body>
+</html>

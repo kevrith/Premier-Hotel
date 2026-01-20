@@ -6,9 +6,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { adminAPI } from '@/lib/api/admin';
+import { useAuth } from '@/contexts/AuthContext';
 
-export function UserAddDialog({ onUserAdded }) {
+interface UserAddDialogProps {
+  onUserAdded: () => void;
+}
+
+export function UserAddDialog({ onUserAdded }: UserAddDialogProps) {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -16,42 +22,47 @@ export function UserAddDialog({ onUserAdded }) {
     password: '',
     full_name: '',
     phone_number: '',
-    role: 'customer'
+    role: 'customer' as 'customer' | 'waiter' | 'chef' | 'cleaner' | 'manager' | 'admin'
   });
   const { toast } = useToast();
 
-  const handleSubmit = async (e) => {
+  // Define available roles based on current user's role
+  const getAvailableRoles = () => {
+    const currentUserRole = user?.role;
+
+    if (currentUserRole === 'owner' || currentUserRole === 'admin') {
+      return [
+        { value: 'customer', label: 'Customer' },
+        { value: 'waiter', label: 'Waiter' },
+        { value: 'chef', label: 'Chef' },
+        { value: 'cleaner', label: 'Cleaner' },
+        { value: 'manager', label: 'Manager' },
+        { value: 'admin', label: 'Admin' },
+        { value: 'owner', label: 'Owner' }
+      ];
+    } else if (currentUserRole === 'manager') {
+      return [
+        { value: 'customer', label: 'Customer' },
+        { value: 'waiter', label: 'Waiter' },
+        { value: 'chef', label: 'Chef' },
+        { value: 'cleaner', label: 'Cleaner' }
+      ];
+    }
+    return [];
+  };
+
+  const availableRoles = getAvailableRoles();
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Form submitted with data:', formData);
     setIsLoading(true);
 
     try {
-      // Create the user account
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: formData.email,
-        password: formData.password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: formData.full_name,
-          phone: formData.phone_number
-        }
-      });
-
-      if (authError) throw authError;
-
-      if (authData.user) {
-        // Update user role if not customer
-        if (formData.role !== 'customer') {
-          const { error: roleError } = await supabase
-            .from('user_roles')
-            .upsert({
-              user_id: authData.user.id,
-              role: formData.role,
-              assigned_by: (await supabase.auth.getUser()).data.user?.id
-            });
-
-          if (roleError) throw roleError;
-        }
-      }
+      console.log('Calling adminAPI.createUser...');
+      // Create user via admin API
+      const result = await adminAPI.createUser(formData);
+      console.log('User created successfully:', result);
 
       toast({
         title: "User created successfully",
@@ -68,8 +79,9 @@ export function UserAddDialog({ onUserAdded }) {
       });
       setIsOpen(false);
       onUserAdded();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating user:', error);
+      console.error('Error details:', error.response?.data);
       toast({
         title: "Error creating user",
         description: error.message || "Failed to create user account",
@@ -102,7 +114,7 @@ export function UserAddDialog({ onUserAdded }) {
               required
             />
           </div>
-          
+
           <div>
             <Label htmlFor="email">Email</Label>
             <Input
@@ -113,7 +125,7 @@ export function UserAddDialog({ onUserAdded }) {
               required
             />
           </div>
-          
+
           <div>
             <Label htmlFor="password">Password</Label>
             <Input
@@ -125,7 +137,7 @@ export function UserAddDialog({ onUserAdded }) {
               minLength={6}
             />
           </div>
-          
+
           <div>
             <Label htmlFor="phone_number">Phone Number</Label>
             <Input
@@ -135,24 +147,23 @@ export function UserAddDialog({ onUserAdded }) {
               placeholder="+254..."
             />
           </div>
-          
+
           <div>
             <Label htmlFor="role">Role</Label>
-            <Select value={formData.role} onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}>
+            <Select value={formData.role} onValueChange={(value: any) => setFormData(prev => ({ ...prev, role: value }))}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="customer">Customer</SelectItem>
-                <SelectItem value="waiter">Waiter</SelectItem>
-                <SelectItem value="chef">Chef</SelectItem>
-                <SelectItem value="cleaner">Cleaner</SelectItem>
-                <SelectItem value="manager">Manager</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
+                {availableRoles.map((role) => (
+                  <SelectItem key={role.value} value={role.value}>
+                    {role.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
-          
+
           <div className="flex gap-2 pt-4">
             <Button type="submit" disabled={isLoading} className="flex-1">
               {isLoading ? 'Creating...' : 'Create User'}

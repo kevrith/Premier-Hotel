@@ -3,6 +3,8 @@
  */
 import { useEffect, useCallback, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import { dbHelpers } from '../db/schema';
+import type { QueuedNotification } from '../db/schema';
 
 export interface NotificationOptions {
   title: string;
@@ -16,21 +18,35 @@ export interface NotificationOptions {
   soundUrl?: string;
 }
 
+export interface DNDSchedule {
+  enabled: boolean;
+  startTime: string; // HH:mm format
+  endTime: string; // HH:mm format
+  days: number[]; // 0-6 (Sunday-Saturday)
+}
+
 export interface UseNotificationsOptions {
   enableBrowserNotifications?: boolean;
   enableSounds?: boolean;
   defaultSoundUrl?: string;
+  userId?: string;
+  enableOfflineQueue?: boolean;
+  dndSchedule?: DNDSchedule;
 }
 
 export function useNotifications(options: UseNotificationsOptions = {}) {
   const {
     enableBrowserNotifications = true,
     enableSounds = true,
-    defaultSoundUrl = '/sounds/notification.mp3'
+    defaultSoundUrl = '/sounds/notification.mp3',
+    userId,
+    enableOfflineQueue = true,
+    dndSchedule
   } = options;
 
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isSupported, setIsSupported] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Check browser support and permission
@@ -48,6 +64,122 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       audioRef.current.volume = 0.5;
     }
   }, [enableSounds]);
+
+  // Monitor online/offline status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Process queued notifications when coming back online
+  useEffect(() => {
+    if (isOnline && enableOfflineQueue) {
+      processQueuedNotifications();
+    }
+  }, [isOnline, enableOfflineQueue]);
+
+  /**
+   * Check if current time is within DND period
+   */
+  const isInDNDPeriod = useCallback((): boolean => {
+    if (!dndSchedule || !dndSchedule.enabled) return false;
+
+    const now = new Date();
+    const currentDay = now.getDay();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    // Check if today is in DND days
+    if (!dndSchedule.days.includes(currentDay)) return false;
+
+    const { startTime, endTime } = dndSchedule;
+
+    // Handle overnight DND period (e.g., 22:00 to 08:00)
+    if (startTime > endTime) {
+      return currentTime >= startTime || currentTime <= endTime;
+    }
+
+    // Handle same-day DND period (e.g., 13:00 to 14:00)
+    return currentTime >= startTime && currentTime <= endTime;
+  }, [dndSchedule]);
+
+  /**
+   * Queue notification for offline delivery
+   */
+  const queueNotification = useCallback(
+    async (
+      title: string,
+      message: string,
+      type: QueuedNotification['type'],
+      priority: QueuedNotification['priority'] = 'normal',
+      data?: any
+    ) => {
+      if (!enableOfflineQueue || !userId) return;
+
+      try {
+        await dbHelpers.queueNotification({
+          userId,
+          title,
+          message,
+          type,
+          priority,
+          data,
+          createdAt: new Date().toISOString(),
+          sent: false
+        });
+      } catch (error) {
+        console.error('Failed to queue notification:', error);
+      }
+    },
+    [enableOfflineQueue, userId]
+  );
+
+  /**
+   * Process queued notifications
+   */
+  const processQueuedNotifications = useCallback(async () => {
+    if (!enableOfflineQueue || !userId) return;
+
+    try {
+      const pending = await dbHelpers.getPendingNotificationsByPriority(userId);
+
+      for (const notification of pending) {
+        // Show the notification
+        await showBrowserNotification({
+          title: notification.title,
+          body: notification.message,
+          tag: notification.referenceId,
+          requireInteraction: notification.priority === 'urgent'
+        });
+
+        // Play sound for high priority notifications
+        if (notification.priority === 'urgent' || notification.priority === 'high') {
+          playSound();
+        }
+
+        // Mark as sent
+        if (notification.id) {
+          await dbHelpers.markNotificationSent(notification.id);
+        }
+
+        // Small delay between notifications to avoid overwhelming
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      if (pending.length > 0) {
+        toast.success(`Delivered ${pending.length} queued notification${pending.length > 1 ? 's' : ''}`);
+      }
+    } catch (error) {
+      console.error('Failed to process queued notifications:', error);
+    }
+  }, [enableOfflineQueue, userId]);
 
   /**
    * Request notification permission from the browser
@@ -162,10 +294,41 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     async (
       notificationOptions: NotificationOptions,
       toastMessage?: string,
-      toastType?: 'success' | 'error' | 'info' | 'warning'
+      toastType?: 'success' | 'error' | 'info' | 'warning',
+      notificationType?: QueuedNotification['type'],
+      priority?: QueuedNotification['priority']
     ) => {
-      // Play sound if enabled
-      if (notificationOptions.playSound !== false) {
+      // Check if in DND period - only suppress non-urgent notifications
+      if (isInDNDPeriod() && priority !== 'urgent') {
+        // Queue for later delivery
+        if (enableOfflineQueue && userId && notificationType) {
+          await queueNotification(
+            notificationOptions.title,
+            notificationOptions.body,
+            notificationType,
+            priority || 'normal',
+            { toast: toastMessage, toastType }
+          );
+        }
+        return null;
+      }
+
+      // If offline and queue is enabled, queue the notification
+      if (!isOnline && enableOfflineQueue && userId && notificationType) {
+        await queueNotification(
+          notificationOptions.title,
+          notificationOptions.body,
+          notificationType,
+          priority || 'normal',
+          { toast: toastMessage, toastType }
+        );
+        // Show toast to indicate it was queued
+        showToast('Notification queued (offline)', 'info');
+        return null;
+      }
+
+      // Play sound if enabled (but respect DND for sounds)
+      if (notificationOptions.playSound !== false && !isInDNDPeriod()) {
         playSound(notificationOptions.soundUrl);
       }
 
@@ -182,7 +345,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
 
       return browserNotification;
     },
-    [playSound, showBrowserNotification, showToast]
+    [playSound, showBrowserNotification, showToast, isOnline, enableOfflineQueue, userId, queueNotification, isInDNDPeriod]
   );
 
   /**
@@ -199,7 +362,9 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
           playSound: true
         },
         message,
-        'info'
+        'info',
+        'order',
+        'normal'
       );
     },
     [notify]
@@ -216,7 +381,9 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
           playSound: true
         },
         message,
-        'info'
+        'info',
+        'booking',
+        'normal'
       );
     },
     [notify]
@@ -235,7 +402,9 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
           soundUrl: isSuccess ? '/sounds/success.mp3' : undefined
         },
         message,
-        isSuccess ? 'success' : 'info'
+        isSuccess ? 'success' : 'info',
+        'payment',
+        isSuccess ? 'normal' : 'high'
       );
     },
     [notify]
@@ -278,11 +447,16 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   return {
     isSupported,
     permission,
+    isOnline,
+    isInDNDPeriod,
     requestPermission,
     playSound,
     showBrowserNotification,
     showToast,
     notify,
+    // Offline queue
+    queueNotification,
+    processQueuedNotifications,
     // Presets
     notifyOrderUpdate,
     notifyBookingUpdate,

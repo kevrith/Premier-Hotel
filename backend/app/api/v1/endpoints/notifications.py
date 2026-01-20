@@ -1,14 +1,17 @@
 """
-Notification System API Endpoints
+Notification System API Endpoints - Enterprise Edition
+With deduplication, delivery tracking, and smart routing
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import List
 from datetime import datetime
 from supabase import Client
 
 from app.core.supabase import get_supabase
-from app.middleware.auth import require_role, get_current_user
+from app.middleware.auth_secure import get_current_user, require_role
+from app.services.notification_deduplicator import should_send_notification
+
 from app.schemas.notifications import (
     NotificationPreferencesBase, NotificationPreferencesResponse,
     NotificationCreate, NotificationResponse, NotificationUpdate,
@@ -20,6 +23,7 @@ router = APIRouter()
 
 @router.get("/preferences", response_model=NotificationPreferencesResponse)
 async def get_my_preferences(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase)
 ):
@@ -144,9 +148,35 @@ async def send_notification(
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
     supabase: Client = Depends(get_supabase)
 ):
-    """Send notification (staff only)"""
+    """
+    Send notification with enterprise deduplication (staff only)
+
+    Features:
+    - Automatic duplicate detection
+    - Type-specific deduplication windows
+    - Fingerprint generation for tracking
+    """
+
+    # Check for duplicates using enterprise deduplicator
+    should_send, fingerprint = should_send_notification(
+        supabase=supabase,
+        user_id=notification.user_id,
+        notification_type=notification.notification_type,
+        title=notification.title,
+        message=notification.message,
+        data=notification.data,
+    )
+
+    if not should_send:
+        raise HTTPException(
+            status_code=409,  # Conflict
+            detail="Duplicate notification detected. Notification blocked to prevent spam."
+        )
+
+    # Add fingerprint and status to notification data
     notif_data = notification.model_dump()
     notif_data["status"] = "pending"
+    notif_data["fingerprint"] = fingerprint
 
     result = supabase.table("notifications").insert(notif_data).execute()
 

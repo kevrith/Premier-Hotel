@@ -17,8 +17,6 @@ class RoomBase(BaseModel):
     base_price: Decimal = Field(..., gt=0, description="Price must be greater than 0")
     max_occupancy: int = Field(default=2, ge=1)
     floor: Optional[int] = None
-    view_type: Optional[str] = None
-    size_sqm: Optional[int] = None
     amenities: List[str] = []
     images: List[str] = []
 
@@ -38,8 +36,6 @@ class RoomUpdate(BaseModel):
     base_price: Optional[Decimal] = Field(None, gt=0)
     max_occupancy: Optional[int] = Field(None, ge=1)
     floor: Optional[int] = None
-    view_type: Optional[str] = None
-    size_sqm: Optional[int] = None
     status: Optional[str] = Field(None, pattern="^(available|occupied|maintenance|reserved)$")
     amenities: Optional[List[str]] = None
     images: Optional[List[str]] = None

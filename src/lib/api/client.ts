@@ -34,7 +34,7 @@ interface AuthStorage {
 /**
  * API Base URL - can be configured via environment variables
  */
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 /**
  * Create axios instance with default configuration
@@ -45,6 +45,7 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Send cookies with requests (for cookie-based auth)
 });
 
 /**

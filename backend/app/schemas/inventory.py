@@ -68,8 +68,8 @@ class CategoryBase(BaseModel):
     description: Optional[str] = None
     parent_category_id: Optional[str] = None
     icon: Optional[str] = Field(None, max_length=50)
-    is_active: bool = True
-    display_order: int = 0
+    is_active: Optional[bool] = True
+    display_order: Optional[int] = 0
 
 
 class CategoryCreate(CategoryBase):

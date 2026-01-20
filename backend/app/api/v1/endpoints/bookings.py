@@ -179,54 +179,58 @@ async def create_booking(
                 detail=f"Room can accommodate max {room['max_occupancy']} guests",
             )
 
-        # Check availability using database function
-        availability_response = supabase.rpc(
-            "check_room_availability",
-            {
-                "p_room_id": booking_data.room_id,
-                "p_check_in": str(booking_data.check_in_date),
-                "p_check_out": str(booking_data.check_out_date),
-            },
-        ).execute()
-
-        if not availability_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Room is not available for the selected dates",
-            )
-
         # Calculate total amount
         days = (booking_data.check_out_date - booking_data.check_in_date).days
+
+        # Validate days (prevent negative prices)
+        if days <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Check-out date must be after check-in date",
+            )
+
+        if days > 365:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Maximum booking duration is 365 days",
+            )
+
         subtotal = float(room["base_price"]) * days
         tax = subtotal * 0.16  # 16% tax
         total_amount = subtotal + tax
 
-        # Generate booking reference
-        booking_reference = generate_booking_reference()
-
-        # Create booking
-        booking_dict = {
-            "booking_reference": booking_reference,
-            "customer_id": current_user["id"],
-            "room_id": booking_data.room_id,
-            "check_in_date": str(booking_data.check_in_date),
-            "check_out_date": str(booking_data.check_out_date),
-            "status": "pending",
-            "total_amount": total_amount,
-            "guest_info": booking_data.guest_info.model_dump(),
-            "pricing": {
-                "base_price": float(room["base_price"]),
-                "days": days,
-                "subtotal": subtotal,
-                "tax": tax,
-                "total": total_amount,
-            },
-            "total_guests": booking_data.total_guests,
-            "special_requests": booking_data.special_requests,
-            "payment_status": "pending",
-        }
-
-        response = supabase.table("bookings").insert(booking_dict).execute()
+        # Use atomic booking function to prevent race conditions
+        # This function uses row-level locking to prevent double-booking
+        try:
+            response = supabase.rpc(
+                "create_booking_atomically",
+                {
+                    "p_room_id": booking_data.room_id,
+                    "p_customer_id": current_user["id"],
+                    "p_check_in": str(booking_data.check_in_date),
+                    "p_check_out": str(booking_data.check_out_date),
+                    "p_total_amount": float(total_amount),
+                    "p_guests": booking_data.total_guests,
+                },
+            ).execute()
+        except Exception as db_error:
+            # Handle specific database errors
+            error_msg = str(db_error)
+            if "not available" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Room is not available for the selected dates. Please try different dates.",
+                )
+            elif "exceeds room capacity" in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Number of guests exceeds room capacity of {room['max_occupancy']}",
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create booking. Please try again.",
+                )
 
         if not response.data:
             raise HTTPException(
@@ -234,7 +238,20 @@ async def create_booking(
                 detail="Failed to create booking",
             )
 
-        return BookingResponse(**response.data[0])
+        # The RPC function returns JSON directly, not an array
+        booking_data_result = response.data if isinstance(response.data, dict) else response.data[0]
+
+        # Generate booking reference if not in response
+        if "booking_reference" not in booking_data_result:
+            booking_reference = generate_booking_reference()
+            # Update booking with reference
+            update_response = supabase.table("bookings")\
+                .update({"booking_reference": booking_reference})\
+                .eq("id", booking_data_result["id"])\
+                .execute()
+            booking_data_result["booking_reference"] = booking_reference
+
+        return BookingResponse(**booking_data_result)
 
     except HTTPException:
         raise

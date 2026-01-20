@@ -185,7 +185,7 @@ class StaffService {
     if (params?.skip) queryParams.append('skip', params.skip.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
 
-    const response = await api.get<Staff[]>(`/staff?${queryParams.toString()}`);
+    const response = await api.get<Staff[]>(`/staff/?${queryParams.toString()}`);
     return response.data;
   }
 

@@ -15,6 +15,7 @@ import asyncio
 import asyncpg
 from app.core.database import get_db_pool
 from app.services.quickbooks_sync import QuickBooksSyncService
+from app.services.websocket_manager import manager as ws_manager, EventType, send_order_event
 
 router = APIRouter()
 
@@ -196,7 +197,7 @@ async def create_order(
 
         # Check all items are available
         unavailable_items = [
-            item["name"] for item in menu_items_response.data if not item["available"]
+            item["name"] for item in menu_items_response.data if not item.get("is_available", item.get("available", True))
         ]
         if unavailable_items:
             raise HTTPException(
@@ -217,14 +218,15 @@ async def create_order(
             if not menu_item:
                 continue
 
-            item_total = Decimal(str(menu_item["base_price"])) * order_item.quantity
+            item_price = Decimal(str(menu_item["base_price"]))
+            item_total = item_price * order_item.quantity
             subtotal += item_total
 
             order_items.append({
                 "menu_item_id": order_item.menu_item_id,
-                "name": order_item.name,
+                "name": order_item.name or menu_item["name"],  # Use provided name or fetch from menu
                 "quantity": order_item.quantity,
-                "price": float(order_item.price),
+                "price": float(order_item.price) if order_item.price else float(item_price),  # Use provided price or fetch from menu
                 "customizations": order_item.customizations,
                 "special_instructions": order_item.special_instructions,
                 "total": float(item_total),
@@ -256,7 +258,18 @@ async def create_order(
             "total_amount": float(total_amount),
             "special_instructions": order_data.special_instructions,
             "priority": "medium",
-            "estimated_ready_time": estimated_ready_time.isoformat(),
+            "estimated_ready_time": estimated_ready_time.isoformat(),  # Important for customer experience
+            # Customer information (for walk-in and room service orders)
+            "customer_name": order_data.customer_name,
+            "customer_phone": order_data.customer_phone,
+            "order_type": order_data.order_type,
+            # Payment tracking (payment happens later at bill settlement)
+            "payment_status": "unpaid",  # All orders start as unpaid
+            # Staff attribution
+            "created_by_staff_id": current_user["id"],  # Track which staff member created the order
+            # Extract room/table numbers for easier querying
+            "room_number": order_data.location if order_data.location_type == "room" else None,
+            "table_number": order_data.location if order_data.location_type == "table" else None,
         }
 
         response = supabase.table("orders").insert(order_dict).execute()
@@ -267,7 +280,39 @@ async def create_order(
                 detail="Failed to create order",
             )
 
-        return OrderResponse(**response.data[0])
+        created_order = response.data[0]
+
+        # Send real-time notification to customer
+        await send_order_event(
+            current_user["id"],
+            EventType.ORDER_CREATED,
+            {
+                "order_id": created_order["id"],
+                "order_number": created_order["order_number"],
+                "status": created_order["status"],
+                "total_amount": created_order["total_amount"],
+                "estimated_ready_time": created_order.get("estimated_ready_time"),
+                "message": f"Order {created_order['order_number']} placed successfully!"
+            }
+        )
+
+        # Notify all chefs about new order
+        await ws_manager.broadcast({
+            "type": EventType.ORDER_CREATED,
+            "data": {
+                "order_id": created_order["id"],
+                "order_number": created_order["order_number"],
+                "location": created_order["location"],
+                "location_type": created_order["location_type"],
+                "items": created_order["items"],
+                "priority": created_order["priority"],
+                "special_instructions": created_order.get("special_instructions"),
+                "message": f"🔔 New order from {created_order['location']}"
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+        return OrderResponse(**created_order)
 
     except HTTPException:
         raise
@@ -354,6 +399,45 @@ async def update_order_status(
                 detail="Failed to update order status",
             )
 
+        updated_order = response.data[0]
+
+        # Send real-time status update to customer
+        status_messages = {
+            "confirmed": f"Your order {order['order_number']} has been confirmed!",
+            "preparing": f"Chef is now preparing your order {order['order_number']}",
+            "ready": f"Your order {order['order_number']} is ready! 🎉",
+            "served": f"Your order {order['order_number']} has been served",
+            "completed": f"Order {order['order_number']} completed. Thank you!",
+            "cancelled": f"Order {order['order_number']} has been cancelled"
+        }
+
+        await send_order_event(
+            order["customer_id"],
+            EventType.ORDER_STATUS_CHANGED,
+            {
+                "order_id": order_id,
+                "order_number": order["order_number"],
+                "old_status": old_status,
+                "new_status": new_status,
+                "message": status_messages.get(new_status, f"Order status: {new_status}")
+            }
+        )
+
+        # Broadcast to staff based on status
+        if new_status == "ready":
+            # Notify all waiters that order is ready for pickup
+            await ws_manager.broadcast({
+                "type": EventType.ORDER_READY,
+                "data": {
+                    "order_id": order_id,
+                    "order_number": order["order_number"],
+                    "location": order["location"],
+                    "location_type": order["location_type"],
+                    "message": f"🔔 Order {order['order_number']} ready at {order['location']}"
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            })
+
         # Trigger QuickBooks sync if order is completed
         if new_status == "completed":
             try:
@@ -366,7 +450,7 @@ async def update_order_status(
                 # Log QB sync error but don't fail the request
                 print(f"QuickBooks sync failed for order {order_id}: {str(qb_error)}")
 
-        return OrderResponse(**response.data[0])
+        return OrderResponse(**updated_order)
 
     except HTTPException:
         raise

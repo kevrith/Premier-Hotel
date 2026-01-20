@@ -1,11 +1,15 @@
 """
 Payment Management Endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from typing import List, Optional
 from datetime import datetime
+import hmac
+import hashlib
+import base64
 from app.middleware.auth import get_current_user, require_role
 from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.config import settings
 from app.schemas.payment import (
     PaymentInitiate,
     PaymentResponse,
@@ -19,16 +23,64 @@ from supabase import Client
 router = APIRouter()
 
 
+def verify_mpesa_signature(payload: bytes, signature: str) -> bool:
+    """
+    Verify M-Pesa callback signature using HMAC-SHA256
+
+    Args:
+        payload: Raw request body as bytes
+        signature: Signature from M-Pesa header
+
+    Returns:
+        bool: True if signature is valid, False otherwise
+    """
+    if not signature or not settings.MPESA_PASSKEY:
+        return False
+
+    try:
+        # Calculate expected signature using HMAC-SHA256
+        expected_signature = hmac.new(
+            settings.MPESA_PASSKEY.encode('utf-8'),
+            payload,
+            hashlib.sha256
+        ).hexdigest()
+
+        # Compare using constant-time comparison to prevent timing attacks
+        return hmac.compare_digest(expected_signature, signature)
+    except Exception:
+        return False
+
+
 @router.post("/initiate", response_model=PaymentResponse)
 async def initiate_payment(
     payment: PaymentInitiate,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase)
 ):
     """
     Initiate a payment for a booking or order
+
+    Idempotency: Supports Idempotency-Key header to prevent duplicate payments
     """
     user_id = current_user["id"]
+
+    # Check idempotency key if provided
+    if idempotency_key:
+        # Check if this key was already used
+        existing_payment = supabase.table("payments")\
+            .select("*")\
+            .eq("idempotency_key", idempotency_key)\
+            .maybe_single()\
+            .execute()
+
+        if existing_payment.data:
+            # Return existing payment (idempotent response)
+            return PaymentResponse(**existing_payment.data)
+    else:
+        # Generate idempotency key if not provided (for tracking)
+        import uuid
+        idempotency_key = str(uuid.uuid4())
 
     # Verify the reference exists and belongs to the user
     if payment.reference_type == "booking":
@@ -46,7 +98,7 @@ async def initiate_payment(
                 detail="Order not found or does not belong to you"
             )
 
-    # Create payment record
+    # Create payment record with idempotency key
     payment_data = {
         "user_id": user_id,
         "reference_type": payment.reference_type,
@@ -54,7 +106,9 @@ async def initiate_payment(
         "payment_method": payment.payment_method,
         "amount": float(payment.amount),
         "description": payment.description,
-        "status": "pending"
+        "status": "pending",
+        "idempotency_key": idempotency_key,  # Add idempotency key
+        "created_by": user_id
     }
 
     # Handle M-Pesa payment
@@ -113,13 +167,28 @@ async def initiate_payment(
 @router.post("/mpesa/callback")
 async def mpesa_callback(
     request: Request,
+    x_mpesa_signature: Optional[str] = Header(None, alias="X-Mpesa-Signature"),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """
-    Handle M-Pesa payment callback
+    Handle M-Pesa payment callback with signature verification
+
+    Security: Verifies HMAC signature to prevent fraudulent callbacks
     """
     try:
-        callback_data = await request.json()
+        # Get raw request body for signature verification
+        body_bytes = await request.body()
+
+        # SECURITY: Verify M-Pesa signature before processing
+        if not verify_mpesa_signature(body_bytes, x_mpesa_signature or ""):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid M-Pesa signature"
+            )
+
+        # Parse callback data from the bytes we already read
+        import json
+        callback_data = json.loads(body_bytes.decode('utf-8'))
 
         # Extract data from M-Pesa callback
         body = callback_data.get("Body", {})

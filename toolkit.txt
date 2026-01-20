@@ -971,3 +971,5 @@ Set up database - Run migration scripts
 Implement auth - Get login/register working
 Build menu system - CRUD + ordering
 Add M-Pesa - Payment integration
+
+for notification system first check what we have if it needs any changes from the request I give please do the changes and if what we have implemented is better than the request I make just don't update. 

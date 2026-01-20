@@ -52,9 +52,14 @@ async def create_task(
     try:
         task_data = task.model_dump()
 
-        # Set created_by to current user if not specified
+        # Convert datetime to ISO string for Supabase
+        if task_data.get("scheduled_time") and hasattr(task_data["scheduled_time"], "isoformat"):
+            task_data["scheduled_time"] = task_data["scheduled_time"].isoformat()
+
+        # Remove created_by if not provided (let DB handle default or make it nullable)
+        # The foreign key constraint requires a valid user ID
         if not task_data.get("created_by"):
-            task_data["created_by"] = current_user["id"]
+            task_data.pop("created_by", None)
 
         result = supabase.table("housekeeping_tasks").insert(task_data).execute()
 

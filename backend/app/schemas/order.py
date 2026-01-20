@@ -10,9 +10,9 @@ from decimal import Decimal
 class OrderItem(BaseModel):
     """Order item schema"""
     menu_item_id: str
-    name: str
     quantity: int = Field(..., ge=1)
-    price: Decimal = Field(..., gt=0)
+    name: Optional[str] = None  # Will be fetched from menu_items table
+    price: Optional[Decimal] = None  # Will be fetched from menu_items table
     customizations: Optional[Dict[str, Any]] = None
     special_instructions: Optional[str] = None
 
@@ -23,6 +23,11 @@ class OrderCreate(BaseModel):
     location_type: str = Field(..., pattern="^(table|room)$")
     items: List[OrderItem]
     special_instructions: Optional[str] = None
+    # Customer information (for walk-in and room service orders)
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    order_type: Optional[str] = Field(None, pattern="^(room_service|walk_in|dine_in)$")
+    # NOTE: payment_method removed - payment happens at bill settlement, not order creation
 
 
 class OrderUpdate(BaseModel):
@@ -56,6 +61,19 @@ class OrderResponse(BaseModel):
     estimated_ready_time: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # Customer information fields (for walk-in and room service orders)
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    order_type: Optional[str] = None
+    # Payment tracking (separate from order creation)
+    payment_status: Optional[str] = None  # unpaid, paid, refunded
+    bill_id: Optional[str] = None  # Link to consolidated bill
+    paid_at: Optional[datetime] = None
+    # Staff attribution
+    created_by_staff_id: Optional[str] = None
+    # Location details
+    room_number: Optional[str] = None
+    table_number: Optional[str] = None
 
     class Config:
         from_attributes = True
