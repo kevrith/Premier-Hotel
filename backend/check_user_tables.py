@@ -4,10 +4,16 @@ Check which users exist in profiles vs users tables
 """
 import requests
 import json
+import os
+import sys
 
 # Supabase credentials
-SUPABASE_URL = "https://njhjpxfozgpoiqwksple.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qaGpweGZvemdwb2lxd2tzcGxlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTQ0ODk4MCwiZXhwIjoyMDgxMDI0OTgwfQ.bjmZ4q_bbthcszDn55ciS2RbctYaMiDvGhCRz5lTx1Y"
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://njhjpxfozgpoiqwksple.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_KEY:
+    print("❌ ERROR: SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY environment variable not set")
+    sys.exit(1)
 
 def get_all_users(table_name):
     """Get all users from a table"""

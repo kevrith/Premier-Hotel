@@ -7,8 +7,13 @@ import sys
 from supabase import create_client
 
 # Supabase credentials
-SUPABASE_URL = "https://iyqccquwfkglqzcyrqgn.supabase.co"
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5cWNjcXV3ZmtnbHF6Y3lycWduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNDU5NTkwNSwiZXhwIjoyMDUwMTcxOTA1fQ.s3M25YjLPvxL8nDQy2wWX-V5hv6Ml9cPa_5MKpZ4p3E")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://njhjpxfozgpoiqwksple.supabase.co")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+if not SUPABASE_SERVICE_KEY:
+    print("❌ ERROR: SUPABASE_SERVICE_KEY environment variable not set")
+    print("   Please set the SUPABASE_SERVICE_KEY environment variable")
+    sys.exit(1)
 
 def main():
     print("=" * 60)

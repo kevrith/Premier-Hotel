@@ -13,9 +13,13 @@ sys.path.insert(0, os.path.dirname(__file__))
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Supabase credentials from .env
-SUPABASE_URL = "https://njhjpxfozgpoiqwksple.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qaGpweGZvemdwb2lxd2tzcGxlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTQ0ODk4MCwiZXhwIjoyMDgxMDI0OTgwfQ.bjmZ4q_bbthcszDn55ciS2RbctYaMiDvGhCRz5lTx1Y"
+# Supabase credentials from environment
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://njhjpxfozgpoiqwksple.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_KEY:
+    print("❌ ERROR: SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY environment variable not set")
+    sys.exit(1)
 
 # Create Supabase client
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)

@@ -1,227 +1,125 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, Clock, Star, TrendingUp, Download, Award } from 'lucide-react';
+import { Users, Clock, TrendingUp, Download, Award, Loader2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import reportsService, { EmployeeSalesData, EmployeeSalesResponse } from '@/lib/api/reports';
 
 interface StaffMember {
   id: string;
   name: string;
+  email: string;
   role: string;
+  department: string;
   sales: number;
   orders: number;
+  completedOrders: number;
   avgOrderValue: number;
-  rating: number;
-  totalReviews: number;
-}
-
-interface TimeRecord {
-  id: string;
-  staff: string;
-  role: string;
-  date: string;
-  clockIn: string;
-  clockOut: string;
-  hoursWorked: number;
-  overtime: number;
+  completionRate: number;
+  ordersToday: number;
+  ordersThisWeek: number;
+  ordersThisMonth: number;
+  topSellingItem: string;
 }
 
 export function StaffPerformanceReports() {
   const [selectedRole, setSelectedRole] = useState('all');
   const [period, setPeriod] = useState('week');
+  const [isLoading, setIsLoading] = useState(true);
+  const [staffPerformance, setStaffPerformance] = useState<StaffMember[]>([]);
+  const [summaryData, setSummaryData] = useState<{ totalSales: number; totalOrders: number; totalEmployees: number }>({
+    totalSales: 0,
+    totalOrders: 0,
+    totalEmployees: 0
+  });
   const { toast } = useToast();
 
-  const staffPerformance: StaffMember[] = useMemo(() => [
-    {
-      id: '1',
-      name: 'John Waiter',
-      role: 'waiter',
-      sales: 234000,
-      orders: 156,
-      avgOrderValue: 1500,
-      rating: 4.8,
-      totalReviews: 45
-    },
-    {
-      id: '2',
-      name: 'Mary Server',
-      role: 'waiter',
-      sales: 198000,
-      orders: 132,
-      avgOrderValue: 1500,
-      rating: 4.6,
-      totalReviews: 38
-    },
-    {
-      id: '3',
-      name: 'Chef Mike',
-      role: 'chef',
-      sales: 456000,
-      orders: 304,
-      avgOrderValue: 1500,
-      rating: 4.9,
-      totalReviews: 67
-    },
-    {
-      id: '4',
-      name: 'Sarah Chef',
-      role: 'chef',
-      sales: 423000,
-      orders: 282,
-      avgOrderValue: 1500,
-      rating: 4.7,
-      totalReviews: 56
-    },
-    {
-      id: '5',
-      name: 'Tom Cleaner',
-      role: 'cleaner',
-      sales: 0,
-      orders: 89,
-      avgOrderValue: 0,
-      rating: 4.5,
-      totalReviews: 23
-    },
-    {
-      id: '6',
-      name: 'Lisa Receptionist',
-      role: 'manager',
-      sales: 567000,
-      orders: 234,
-      avgOrderValue: 2423,
-      rating: 4.9,
-      totalReviews: 78
+  useEffect(() => {
+    fetchStaffData();
+  }, [period, selectedRole]);
+
+  const fetchStaffData = async () => {
+    try {
+      setIsLoading(true);
+      const dateRange = reportsService.getDateRange(period as 'today' | 'week' | 'month' | 'year');
+
+      const data = await reportsService.getEmployeeSales(
+        dateRange.start,
+        dateRange.end,
+        undefined,
+        undefined,
+        selectedRole === 'all' ? undefined : selectedRole
+      );
+
+      // Transform API data to our interface
+      const transformedStaff: StaffMember[] = data.employees.map((emp: EmployeeSalesData) => ({
+        id: emp.employee_id,
+        name: emp.employee_name,
+        email: emp.email,
+        role: emp.role,
+        department: emp.department,
+        sales: emp.total_sales,
+        orders: emp.total_orders,
+        completedOrders: emp.completed_orders,
+        avgOrderValue: emp.avg_order_value,
+        completionRate: emp.completion_rate,
+        ordersToday: emp.orders_today,
+        ordersThisWeek: emp.orders_this_week,
+        ordersThisMonth: emp.orders_this_month,
+        topSellingItem: emp.top_selling_item
+      }));
+
+      setStaffPerformance(transformedStaff);
+      setSummaryData({
+        totalSales: data.total_sales,
+        totalOrders: data.total_orders,
+        totalEmployees: data.total_employees
+      });
+
+    } catch (error) {
+      console.error('Error fetching staff performance:', error);
+      toast({
+        title: 'Error loading data',
+        description: 'Failed to fetch staff performance data',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
     }
-  ], []);
-
-  const timeRecords: TimeRecord[] = useMemo(() => [
-    {
-      id: '1',
-      staff: 'John Waiter',
-      role: 'waiter',
-      date: '2025-12-25',
-      clockIn: '08:00',
-      clockOut: '16:00',
-      hoursWorked: 8,
-      overtime: 0
-    },
-    {
-      id: '2',
-      staff: 'Mary Server',
-      role: 'waiter',
-      date: '2025-12-25',
-      clockIn: '09:00',
-      clockOut: '18:30',
-      hoursWorked: 9.5,
-      overtime: 1.5
-    },
-    {
-      id: '3',
-      staff: 'Chef Mike',
-      role: 'chef',
-      date: '2025-12-25',
-      clockIn: '06:00',
-      clockOut: '14:00',
-      hoursWorked: 8,
-      overtime: 0
-    },
-    {
-      id: '4',
-      staff: 'Sarah Chef',
-      role: 'chef',
-      date: '2025-12-25',
-      clockIn: '14:00',
-      clockOut: '23:00',
-      hoursWorked: 9,
-      overtime: 1
-    },
-    {
-      id: '5',
-      staff: 'Tom Cleaner',
-      role: 'cleaner',
-      date: '2025-12-25',
-      clockIn: '07:00',
-      clockOut: '15:00',
-      hoursWorked: 8,
-      overtime: 0
-    },
-    {
-      id: '6',
-      staff: 'Lisa Receptionist',
-      role: 'manager',
-      date: '2025-12-25',
-      clockIn: '08:00',
-      clockOut: '17:00',
-      hoursWorked: 9,
-      overtime: 1
-    }
-  ], []);
-
-  const orderProcessingTimes = useMemo(() => [
-    { staff: 'John Waiter', avgProcessTime: 12, fastestOrder: 5, slowestOrder: 25, efficiency: 92 },
-    { staff: 'Mary Server', avgProcessTime: 15, fastestOrder: 7, slowestOrder: 30, efficiency: 88 },
-    { staff: 'Chef Mike', avgProcessTime: 18, fastestOrder: 10, slowestOrder: 35, efficiency: 95 },
-    { staff: 'Sarah Chef', avgProcessTime: 20, fastestOrder: 12, slowestOrder: 38, efficiency: 90 },
-    { staff: 'Tom Cleaner', avgProcessTime: 25, fastestOrder: 15, slowestOrder: 45, efficiency: 85 },
-    { staff: 'Lisa Receptionist', avgProcessTime: 10, fastestOrder: 5, slowestOrder: 20, efficiency: 97 }
-  ], []);
-
-  const customerRatings = useMemo(() => [
-    { staff: 'John Waiter', rating: 4.8, reviews: 45, positive: 42, negative: 3, comments: [
-      { rating: 5, comment: 'Excellent service, very attentive' },
-      { rating: 5, comment: 'Quick and professional' },
-      { rating: 3, comment: 'Service was okay' }
-    ]},
-    { staff: 'Mary Server', rating: 4.6, reviews: 38, positive: 34, negative: 4, comments: [
-      { rating: 5, comment: 'Very friendly and helpful' },
-      { rating: 4, comment: 'Good service overall' }
-    ]},
-    { staff: 'Chef Mike', rating: 4.9, reviews: 67, positive: 65, negative: 2, comments: [
-      { rating: 5, comment: 'Amazing food quality' },
-      { rating: 5, comment: 'Best chef in town!' },
-      { rating: 4, comment: 'Delicious meals' }
-    ]},
-    { staff: 'Sarah Chef', rating: 4.7, reviews: 56, positive: 52, negative: 4, comments: [
-      { rating: 5, comment: 'Consistently good food' },
-      { rating: 4, comment: 'Great taste' }
-    ]},
-    { staff: 'Tom Cleaner', rating: 4.5, reviews: 23, positive: 21, negative: 2, comments: [
-      { rating: 5, comment: 'Rooms are spotless' },
-      { rating: 4, comment: 'Very clean' }
-    ]},
-    { staff: 'Lisa Receptionist', rating: 4.9, reviews: 78, positive: 76, negative: 2, comments: [
-      { rating: 5, comment: 'Super helpful and kind' },
-      { rating: 5, comment: 'Made check-in seamless' }
-    ]}
-  ], []);
+  };
 
   const filteredStaff = useMemo(() => {
     if (selectedRole === 'all') return staffPerformance;
     return staffPerformance.filter(staff => staff.role === selectedRole);
   }, [selectedRole, staffPerformance]);
 
+  // Get unique roles from staff data
+  const availableRoles = useMemo(() => {
+    const roles = new Set(staffPerformance.map(s => s.role));
+    return Array.from(roles);
+  }, [staffPerformance]);
+
   const topPerformers = useMemo(() =>
-    [...staffPerformance].sort((a, b) => b.sales - a.sales).slice(0, 3),
-    [staffPerformance]
+    [...filteredStaff].sort((a, b) => b.sales - a.sales).slice(0, 5),
+    [filteredStaff]
   );
 
-  const totalSales = useMemo(() =>
-    staffPerformance.reduce((sum, staff) => sum + staff.sales, 0),
-    [staffPerformance]
+  const avgTeamSales = useMemo(() =>
+    filteredStaff.length > 0
+      ? filteredStaff.reduce((sum, staff) => sum + staff.sales, 0) / filteredStaff.length
+      : 0,
+    [filteredStaff]
   );
 
-  const avgRating = useMemo(() =>
-    staffPerformance.reduce((sum, staff) => sum + staff.rating, 0) / staffPerformance.length,
-    [staffPerformance]
-  );
-
-  const totalOvertimeHours = useMemo(() =>
-    timeRecords.reduce((sum, record) => sum + record.overtime, 0),
-    [timeRecords]
+  const avgCompletionRate = useMemo(() =>
+    filteredStaff.length > 0
+      ? filteredStaff.reduce((sum, staff) => sum + staff.completionRate, 0) / filteredStaff.length
+      : 0,
+    [filteredStaff]
   );
 
   const handleExport = (format: string) => {
@@ -231,12 +129,33 @@ export function StaffPerformanceReports() {
     });
   };
 
-  const getRatingColor = (rating: number) => {
-    if (rating >= 4.5) return 'text-green-600';
-    if (rating >= 4.0) return 'text-blue-600';
-    if (rating >= 3.5) return 'text-orange-600';
-    return 'text-red-600';
+  const handleRefresh = () => {
+    fetchStaffData();
+    toast({
+      title: "Refreshing data",
+      description: "Loading latest staff performance data..."
+    });
   };
+
+  const getRoleBadgeVariant = (role: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (role) {
+      case 'admin': return 'destructive';
+      case 'manager': return 'default';
+      case 'waiter': return 'secondary';
+      case 'chef': return 'outline';
+      case 'cleaner': return 'secondary';
+      default: return 'outline';
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading staff performance data...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -246,14 +165,12 @@ export function StaffPerformanceReports() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Active Staff
+              Total Staff
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{staffPerformance.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              All departments
-            </p>
+            <div className="text-2xl font-bold">{summaryData.totalEmployees}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active employees</p>
           </CardContent>
         </Card>
 
@@ -262,44 +179,35 @@ export function StaffPerformanceReports() {
             <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              KES {totalSales.toLocaleString()}
-            </div>
+            <div className="text-2xl font-bold">KES {summaryData.totalSales.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              This {period}
+              {period === 'today' ? 'Today' :
+               period === 'week' ? 'Last 7 days' :
+               period === 'month' ? 'Last 30 days' : 'This year'}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Star className="h-4 w-4" />
-              Avg Rating
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {avgRating.toFixed(1)} ★
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Based on customer reviews
-            </p>
+            <div className="text-2xl font-bold">{summaryData.totalOrders}</div>
+            <p className="text-xs text-muted-foreground mt-1">Orders processed</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Overtime Hours
+              <TrendingUp className="h-4 w-4" />
+              Avg Completion Rate
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalOvertimeHours}h</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              This week
-            </p>
+            <div className="text-2xl font-bold text-green-600">{avgCompletionRate.toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground mt-1">Order completion</p>
           </CardContent>
         </Card>
       </div>
@@ -308,307 +216,292 @@ export function StaffPerformanceReports() {
       <Card>
         <CardHeader>
           <CardTitle>Report Filters</CardTitle>
+          <CardDescription>Filter staff performance data (real-time from database)</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-4">
-            <div className="flex-1">
+            <div className="w-48">
               <Select value={selectedRole} onValueChange={setSelectedRole}>
                 <SelectTrigger>
                   <SelectValue placeholder="Filter by role" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="waiter">Waiters</SelectItem>
-                  <SelectItem value="chef">Chefs</SelectItem>
-                  <SelectItem value="cleaner">Cleaners</SelectItem>
-                  <SelectItem value="manager">Managers</SelectItem>
+                  {availableRoles.map(role => (
+                    <SelectItem key={role} value={role} className="capitalize">{role}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex-1">
+            <div className="w-48">
               <Select value={period} onValueChange={setPeriod}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select period" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="week">This Week</SelectItem>
-                  <SelectItem value="month">This Month</SelectItem>
-                  <SelectItem value="quarter">This Quarter</SelectItem>
+                  <SelectItem value="week">Last 7 Days</SelectItem>
+                  <SelectItem value="month">Last 30 Days</SelectItem>
+                  <SelectItem value="year">This Year</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            <Button onClick={handleRefresh} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
             <Button onClick={() => handleExport('pdf')} variant="outline">
               <Download className="h-4 w-4 mr-2" />
               Export PDF
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Top Performers */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Award className="h-5 w-5 text-yellow-500" />
-            Top Performers
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {topPerformers.map((staff, index) => (
-              <div key={staff.id} className="p-4 border rounded-lg">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="font-semibold">{staff.name}</p>
-                    <p className="text-sm text-muted-foreground capitalize">{staff.role}</p>
-                  </div>
-                  <Badge variant={index === 0 ? 'default' : 'secondary'}>
-                    #{index + 1}
-                  </Badge>
-                </div>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Sales:</span>
-                    <span className="font-semibold">KES {staff.sales.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Orders:</span>
-                    <span>{staff.orders}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Rating:</span>
-                    <span className={getRatingColor(staff.rating)}>
-                      {staff.rating} ★
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
+            <Button onClick={() => handleExport('excel')} variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Export Excel
+            </Button>
           </div>
         </CardContent>
       </Card>
 
       {/* Detailed Reports */}
       <Tabs defaultValue="sales" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="sales">
             <TrendingUp className="h-4 w-4 mr-2" />
-            Sales & Activity
+            Sales Performance
           </TabsTrigger>
-          <TabsTrigger value="attendance">
+          <TabsTrigger value="top">
+            <Award className="h-4 w-4 mr-2" />
+            Top Performers
+          </TabsTrigger>
+          <TabsTrigger value="activity">
             <Clock className="h-4 w-4 mr-2" />
-            Attendance
-          </TabsTrigger>
-          <TabsTrigger value="efficiency">
-            Order Processing
-          </TabsTrigger>
-          <TabsTrigger value="ratings">
-            <Star className="h-4 w-4 mr-2" />
-            Ratings
+            Activity Summary
           </TabsTrigger>
         </TabsList>
 
-        {/* Sales & Activity Tab */}
+        {/* Sales Performance Tab */}
         <TabsContent value="sales" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Individual Sales Performance</CardTitle>
-              <CardDescription>Track sales and order activity by staff member</CardDescription>
+              <CardTitle>Staff Sales Performance</CardTitle>
+              <CardDescription>Individual sales metrics from the database</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Staff Member</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Total Sales</TableHead>
-                    <TableHead>Orders</TableHead>
-                    <TableHead>Avg Order Value</TableHead>
-                    <TableHead>Performance</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStaff.map((staff) => {
-                    const performanceScore = (staff.sales / totalSales) * 100;
-                    return (
+              {filteredStaff.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No staff data available for this period
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Total Sales</TableHead>
+                      <TableHead>Orders</TableHead>
+                      <TableHead>Completed</TableHead>
+                      <TableHead>Avg Order</TableHead>
+                      <TableHead>Completion %</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredStaff.map((staff) => (
                       <TableRow key={staff.id}>
                         <TableCell className="font-medium">{staff.name}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="capitalize">{staff.role}</Badge>
+                          <Badge variant={getRoleBadgeVariant(staff.role)} className="capitalize">
+                            {staff.role}
+                          </Badge>
                         </TableCell>
+                        <TableCell>{staff.department}</TableCell>
                         <TableCell>KES {staff.sales.toLocaleString()}</TableCell>
                         <TableCell>{staff.orders}</TableCell>
+                        <TableCell>{staff.completedOrders}</TableCell>
+                        <TableCell>KES {staff.avgOrderValue.toLocaleString()}</TableCell>
                         <TableCell>
-                          {staff.sales > 0 ? `KES ${staff.avgOrderValue.toLocaleString()}` : 'N/A'}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{performanceScore.toFixed(1)}%</span>
-                            <div className="w-20 bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-primary h-2 rounded-full"
-                                style={{ width: `${Math.min(performanceScore * 2, 100)}%` }}
-                              />
-                            </div>
-                          </div>
+                          <span className={staff.completionRate >= 80 ? 'text-green-600' : staff.completionRate >= 50 ? 'text-orange-600' : 'text-red-600'}>
+                            {staff.completionRate.toFixed(1)}%
+                          </span>
                         </TableCell>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+
+              <div className="mt-4 p-4 bg-muted rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Team Average Sales</span>
+                  <span className="text-2xl font-bold">
+                    KES {Math.round(avgTeamSales).toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Attendance Tab */}
-        <TabsContent value="attendance" className="space-y-4">
+        {/* Top Performers Tab */}
+        <TabsContent value="top" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Clock-In/Out Records</CardTitle>
-              <CardDescription>Track staff attendance and working hours</CardDescription>
+              <CardTitle>Top Performers</CardTitle>
+              <CardDescription>Highest performing staff members by sales</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Staff Member</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Clock In</TableHead>
-                    <TableHead>Clock Out</TableHead>
-                    <TableHead>Hours Worked</TableHead>
-                    <TableHead>Overtime</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {timeRecords.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="font-medium">{record.staff}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">{record.role}</Badge>
-                      </TableCell>
-                      <TableCell>{record.date}</TableCell>
-                      <TableCell>{record.clockIn}</TableCell>
-                      <TableCell>{record.clockOut}</TableCell>
-                      <TableCell>{record.hoursWorked}h</TableCell>
-                      <TableCell>
-                        {record.overtime > 0 ? (
-                          <span className="text-orange-600 font-semibold">
-                            +{record.overtime}h
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Efficiency Tab */}
-        <TabsContent value="efficiency" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Order Processing Times</CardTitle>
-              <CardDescription>Measure efficiency and speed metrics</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Staff Member</TableHead>
-                    <TableHead>Avg Time (min)</TableHead>
-                    <TableHead>Fastest</TableHead>
-                    <TableHead>Slowest</TableHead>
-                    <TableHead>Efficiency Score</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orderProcessingTimes.map((record) => (
-                    <TableRow key={record.staff}>
-                      <TableCell className="font-medium">{record.staff}</TableCell>
-                      <TableCell>{record.avgProcessTime} min</TableCell>
-                      <TableCell className="text-green-600">
-                        {record.fastestOrder} min
-                      </TableCell>
-                      <TableCell className="text-red-600">
-                        {record.slowestOrder} min
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{record.efficiency}%</span>
-                          <div className="w-20 bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-green-500 h-2 rounded-full"
-                              style={{ width: `${record.efficiency}%` }}
-                            />
+              {topPerformers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No performance data available
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {topPerformers.map((staff, index) => (
+                    <div
+                      key={staff.id}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                          index === 0 ? 'bg-yellow-100 text-yellow-800' :
+                          index === 1 ? 'bg-gray-100 text-gray-800' :
+                          index === 2 ? 'bg-orange-100 text-orange-800' :
+                          'bg-muted text-muted-foreground'
+                        }`}>
+                          #{index + 1}
+                        </div>
+                        <div>
+                          <p className="font-semibold">{staff.name}</p>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Badge variant={getRoleBadgeVariant(staff.role)} className="capitalize text-xs">
+                              {staff.role}
+                            </Badge>
+                            <span>•</span>
+                            <span>{staff.orders} orders</span>
+                            {staff.topSellingItem && staff.topSellingItem !== 'N/A' && (
+                              <>
+                                <span>•</span>
+                                <span>Top: {staff.topSellingItem}</span>
+                              </>
+                            )}
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={record.efficiency >= 90 ? 'default' : 'secondary'}>
-                          {record.efficiency >= 90 ? 'Excellent' : 'Good'}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-bold">KES {staff.sales.toLocaleString()}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {staff.completionRate.toFixed(0)}% completion rate
+                        </p>
+                      </div>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              )}
+
+              <div className="mt-6 grid grid-cols-3 gap-4">
+                <div className="p-4 bg-yellow-50 rounded-lg text-center">
+                  <Award className="h-8 w-8 mx-auto mb-2 text-yellow-600" />
+                  <p className="text-sm text-muted-foreground">Top Performer</p>
+                  <p className="font-bold">{topPerformers[0]?.name || 'N/A'}</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg text-center">
+                  <TrendingUp className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                  <p className="text-sm text-muted-foreground">Highest Sales</p>
+                  <p className="font-bold">KES {(topPerformers[0]?.sales || 0).toLocaleString()}</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-lg text-center">
+                  <Users className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+                  <p className="text-sm text-muted-foreground">Most Orders</p>
+                  <p className="font-bold">{Math.max(...filteredStaff.map(s => s.orders), 0)} orders</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Ratings Tab */}
-        <TabsContent value="ratings" className="space-y-4">
+        {/* Activity Summary Tab */}
+        <TabsContent value="activity" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Customer Ratings by Staff Member</CardTitle>
-              <CardDescription>Monitor customer satisfaction and feedback</CardDescription>
+              <CardTitle>Staff Activity Summary</CardTitle>
+              <CardDescription>Order activity breakdown by time period</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Staff Member</TableHead>
-                    <TableHead>Avg Rating</TableHead>
-                    <TableHead>Total Reviews</TableHead>
-                    <TableHead>Positive</TableHead>
-                    <TableHead>Negative</TableHead>
-                    <TableHead>Recent Comments</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {customerRatings.map((rating) => (
-                    <TableRow key={rating.staff}>
-                      <TableCell className="font-medium">{rating.staff}</TableCell>
-                      <TableCell>
-                        <span className={`font-semibold ${getRatingColor(rating.rating)}`}>
-                          {rating.rating} ★
-                        </span>
-                      </TableCell>
-                      <TableCell>{rating.reviews}</TableCell>
-                      <TableCell className="text-green-600">{rating.positive}</TableCell>
-                      <TableCell className="text-red-600">{rating.negative}</TableCell>
-                      <TableCell>
-                        <div className="space-y-1 max-w-xs">
-                          {rating.comments.slice(0, 2).map((comment, idx) => (
-                            <div key={idx} className="text-xs text-muted-foreground">
-                              <span className="font-semibold">{comment.rating}★:</span>{' '}
-                              {comment.comment}
-                            </div>
-                          ))}
-                        </div>
-                      </TableCell>
+              {filteredStaff.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No activity data available
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Orders Today</TableHead>
+                      <TableHead>Orders This Week</TableHead>
+                      <TableHead>Orders This Month</TableHead>
+                      <TableHead>Top Selling Item</TableHead>
+                      <TableHead>Total Sales</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredStaff.map((staff) => (
+                      <TableRow key={staff.id}>
+                        <TableCell className="font-medium">{staff.name}</TableCell>
+                        <TableCell>
+                          <Badge variant={getRoleBadgeVariant(staff.role)} className="capitalize">
+                            {staff.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className={staff.ordersToday > 0 ? 'text-green-600 font-semibold' : ''}>
+                            {staff.ordersToday}
+                          </span>
+                        </TableCell>
+                        <TableCell>{staff.ordersThisWeek}</TableCell>
+                        <TableCell>{staff.ordersThisMonth}</TableCell>
+                        <TableCell>
+                          {staff.topSellingItem !== 'N/A' ? (
+                            <Badge variant="outline">{staff.topSellingItem}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          KES {staff.sales.toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+
+              <div className="mt-6 grid grid-cols-4 gap-4">
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">Active Today</p>
+                  <p className="text-2xl font-bold">
+                    {filteredStaff.filter(s => s.ordersToday > 0).length}
+                  </p>
+                </div>
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">Orders Today</p>
+                  <p className="text-2xl font-bold">
+                    {filteredStaff.reduce((sum, s) => sum + s.ordersToday, 0)}
+                  </p>
+                </div>
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">Orders This Week</p>
+                  <p className="text-2xl font-bold">
+                    {filteredStaff.reduce((sum, s) => sum + s.ordersThisWeek, 0)}
+                  </p>
+                </div>
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">Orders This Month</p>
+                  <p className="text-2xl font-bold">
+                    {filteredStaff.reduce((sum, s) => sum + s.ordersThisMonth, 0)}
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

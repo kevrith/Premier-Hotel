@@ -3,10 +3,16 @@ Check current database schema
 Verifies what tables and columns exist in Supabase
 """
 import requests
+import os
+import sys
 
 # Supabase REST API details
-SUPABASE_URL = "https://kgkafgrdczbfktzzqrfu.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtna2FmZ3JkY3piZmt0enpxcmZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQyNjY4MzMsImV4cCI6MjA0OTg0MjgzM30.TQ61cIZ5k1YGAjOm75aPTzVs7P5mNu6NXmq-pf0tg6g"
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://njhjpxfozgpoiqwksple.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_KEY:
+    print("❌ ERROR: SUPABASE_KEY environment variable not set")
+    sys.exit(1)
 
 def check_table_exists(table_name):
     """Check if a table exists by trying to query it"""

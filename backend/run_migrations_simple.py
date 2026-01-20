@@ -9,8 +9,13 @@ import os
 from pathlib import Path
 
 # Your Supabase credentials
-SUPABASE_URL = "https://njhjpxfozgpoiqwksple.supabase.co"
-SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qaGpweGZvemdwb2lxd2tzcGxlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTQ0ODk4MCwiZXhwIjoyMDgxMDI0OTgwfQ.bjmZ4q_bbthcszDn55ciS2RbctYaMiDvGhCRz5lTx1Y"
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://njhjpxfozgpoiqwksple.supabase.co")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_SERVICE_KEY:
+    print("❌ ERROR: SUPABASE_SERVICE_ROLE_KEY environment variable not set")
+    import sys
+    sys.exit(1)
 
 def execute_sql(sql_query):
     """Execute SQL using Supabase REST API"""
