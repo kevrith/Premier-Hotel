@@ -92,8 +92,8 @@ export function HeroSection() {
             isTransitioning ? 'opacity-0' : 'opacity-100'
           }`}
         />
-        {/* 80% opacity overlay - Change opacity here: opacity-80 means 80% opacity (20% transparent) */}
-        <div className="absolute inset-0 bg-black opacity-80"></div>
+        {/* 50% opacity overlay - Enterprise level brightness: opacity-50 means 50% opacity (50% transparent) */}
+        <div className="absolute inset-0 bg-black opacity-50"></div>
       </div>
 
       {/* Content */}

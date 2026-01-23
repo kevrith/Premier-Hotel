@@ -201,6 +201,35 @@ export interface InventoryAnalytics {
   stockout_rate: number;
 }
 
+export interface HistoricalStockItem {
+  id: string;
+  sku: string;
+  name: string;
+  category_id?: string;
+  category_name: string;
+  unit: string;
+  current_quantity: number;
+  historical_quantity: number;
+  quantity_change: number;
+  unit_cost: number;
+  historical_value: number;
+  movements_since: number;
+}
+
+export interface HistoricalStockSummary {
+  total_items: number;
+  total_historical_value: number;
+  total_current_value: number;
+  value_change: number;
+  items_with_changes: number;
+}
+
+export interface HistoricalStockResponse {
+  as_of_date: string;
+  items: HistoricalStockItem[];
+  summary: HistoricalStockSummary;
+}
+
 // =====================================================
 // INVENTORY SERVICE CLASS
 // =====================================================
@@ -458,6 +487,20 @@ class InventoryService {
     if (params?.end_date) queryParams.append('end_date', params.end_date);
 
     const response = await apiClient.get<InventoryAnalytics>(`/inventory/analytics?${queryParams.toString()}`);
+    return response.data;
+  }
+
+  // ----- HISTORICAL STOCK -----
+
+  async getHistoricalStock(params: {
+    as_of_date: string;
+    category_id?: string;
+  }): Promise<HistoricalStockResponse> {
+    const queryParams = new URLSearchParams();
+    queryParams.append('as_of_date', params.as_of_date);
+    if (params.category_id) queryParams.append('category_id', params.category_id);
+
+    const response = await apiClient.get<HistoricalStockResponse>(`/inventory/reports/historical-stock?${queryParams.toString()}`);
     return response.data;
   }
 }

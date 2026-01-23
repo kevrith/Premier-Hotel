@@ -1,216 +1,174 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, TrendingUp, Star, MessageSquare, Download, Gift } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Users, TrendingUp, Download, Loader2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import reportsService, { TopCustomer, BookingsStats } from '@/lib/api/reports';
+import apiClient from '@/lib/api/client';
+
+interface CustomerData {
+  id: string;
+  name: string;
+  email: string;
+  totalSpent: number;
+  transactionCount: number;
+  avgTransaction: number;
+}
+
+interface BookingCustomer {
+  customerId: string;
+  customerName: string;
+  totalBookings: number;
+  totalNights: number;
+  avgStayDuration: number;
+  preferredRoomType: string;
+  totalSpent: number;
+}
 
 export function CustomerInsightsReports() {
+  const [period, setPeriod] = useState('month');
+  const [isLoading, setIsLoading] = useState(true);
+  const [topCustomers, setTopCustomers] = useState<CustomerData[]>([]);
+  const [bookingCustomers, setBookingCustomers] = useState<BookingCustomer[]>([]);
+  const [bookingsStats, setBookingsStats] = useState<BookingsStats | null>(null);
+  const [totalCustomers, setTotalCustomers] = useState(0);
   const { toast } = useToast();
 
-  const orderPatterns = useMemo(() => [
-    {
-      customer: 'Alice Johnson',
-      totalOrders: 45,
-      avgOrderValue: 3500,
-      totalSpent: 157500,
-      favoriteCategory: 'Room Bookings',
-      lastVisit: '2025-12-24',
-      frequency: 'Weekly'
-    },
-    {
-      customer: 'Bob Smith',
-      totalOrders: 32,
-      avgOrderValue: 2800,
-      totalSpent: 89600,
-      favoriteCategory: 'Restaurant',
-      lastVisit: '2025-12-25',
-      frequency: 'Bi-weekly'
-    },
-    {
-      customer: 'Carol White',
-      totalOrders: 67,
-      avgOrderValue: 4200,
-      totalSpent: 281400,
-      favoriteCategory: 'Events & Catering',
-      lastVisit: '2025-12-23',
-      frequency: 'Weekly'
-    },
-    {
-      customer: 'David Brown',
-      totalOrders: 23,
-      avgOrderValue: 5600,
-      totalSpent: 128800,
-      favoriteCategory: 'Room Bookings',
-      lastVisit: '2025-12-20',
-      frequency: 'Monthly'
-    },
-    {
-      customer: 'Emma Davis',
-      totalOrders: 89,
-      avgOrderValue: 2100,
-      totalSpent: 186900,
-      favoriteCategory: 'Restaurant',
-      lastVisit: '2025-12-25',
-      frequency: 'Daily'
-    }
-  ], []);
+  useEffect(() => {
+    fetchData();
+  }, [period]);
 
-  const bookingFrequency = useMemo(() => [
-    {
-      customer: 'Alice Johnson',
-      roomBookings: 12,
-      avgStayDuration: 3.5,
-      preferredRoomType: 'Deluxe Suite',
-      totalNights: 42,
-      seasonalPreference: 'Summer'
-    },
-    {
-      customer: 'Bob Smith',
-      roomBookings: 8,
-      avgStayDuration: 2.0,
-      preferredRoomType: 'Standard Room',
-      totalNights: 16,
-      seasonalPreference: 'Winter'
-    },
-    {
-      customer: 'Carol White',
-      roomBookings: 18,
-      avgStayDuration: 4.2,
-      preferredRoomType: 'Presidential Suite',
-      totalNights: 75,
-      seasonalPreference: 'All Year'
-    },
-    {
-      customer: 'David Brown',
-      roomBookings: 6,
-      avgStayDuration: 5.0,
-      preferredRoomType: 'Deluxe Suite',
-      totalNights: 30,
-      seasonalPreference: 'Spring'
-    }
-  ], []);
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      const dateRange = reportsService.getDateRange(period as 'today' | 'week' | 'month' | 'year');
 
-  const loyaltyProgram = useMemo(() => [
-    {
-      customer: 'Alice Johnson',
-      memberSince: '2024-01-15',
-      tier: 'Gold',
-      pointsEarned: 15750,
-      pointsRedeemed: 5000,
-      pointsBalance: 10750,
-      rewardsUsed: 8
-    },
-    {
-      customer: 'Bob Smith',
-      memberSince: '2024-06-10',
-      tier: 'Silver',
-      pointsEarned: 8960,
-      pointsRedeemed: 3000,
-      pointsBalance: 5960,
-      rewardsUsed: 4
-    },
-    {
-      customer: 'Carol White',
-      memberSince: '2023-11-20',
-      tier: 'Platinum',
-      pointsEarned: 28140,
-      pointsRedeemed: 12000,
-      pointsBalance: 16140,
-      rewardsUsed: 15
-    },
-    {
-      customer: 'David Brown',
-      memberSince: '2024-09-05',
-      tier: 'Silver',
-      pointsEarned: 12880,
-      pointsRedeemed: 4000,
-      pointsBalance: 8880,
-      rewardsUsed: 5
-    },
-    {
-      customer: 'Emma Davis',
-      memberSince: '2024-03-12',
-      tier: 'Gold',
-      pointsEarned: 18690,
-      pointsRedeemed: 7000,
-      pointsBalance: 11690,
-      rewardsUsed: 10
-    }
-  ], []);
+      // Fetch data in parallel
+      const [topCustomersData, bookingsData, profilesResponse] = await Promise.all([
+        reportsService.getTopCustomers(20, dateRange.start, dateRange.end),
+        reportsService.getBookingsStats(dateRange.start, dateRange.end),
+        apiClient.get('/admin/users?role=customer&limit=100').catch(() => ({ data: [] }))
+      ]);
 
-  const feedbackAnalysis = useMemo(() => [
-    {
-      category: 'Service Quality',
-      positive: 234,
-      neutral: 45,
-      negative: 12,
-      avgRating: 4.6,
-      topComments: [
-        'Excellent and attentive staff',
-        'Quick service',
-        'Very professional team'
-      ]
-    },
-    {
-      category: 'Food Quality',
-      positive: 198,
-      neutral: 38,
-      negative: 8,
-      avgRating: 4.8,
-      topComments: [
-        'Delicious meals',
-        'Fresh ingredients',
-        'Great variety'
-      ]
-    },
-    {
-      category: 'Room Cleanliness',
-      positive: 267,
-      neutral: 23,
-      negative: 5,
-      avgRating: 4.9,
-      topComments: [
-        'Spotless rooms',
-        'Attention to detail',
-        'Very clean facilities'
-      ]
-    },
-    {
-      category: 'Value for Money',
-      positive: 176,
-      neutral: 67,
-      negative: 18,
-      avgRating: 4.3,
-      topComments: [
-        'Reasonable prices',
-        'Good quality for price',
-        'Worth the cost'
-      ]
-    },
-    {
-      category: 'Amenities',
-      positive: 145,
-      neutral: 54,
-      negative: 12,
-      avgRating: 4.4,
-      topComments: [
-        'Great facilities',
-        'Good wifi',
-        'Nice gym and pool'
-      ]
-    }
-  ], []);
+      // Build user lookup map
+      const profiles = profilesResponse.data || [];
+      const profileMap = new Map(profiles.map((p: any) => [p.id, p]));
 
-  const totalCustomers = orderPatterns.length;
+      // Transform top customers data
+      const transformedCustomers: CustomerData[] = topCustomersData.customers.map((customer: TopCustomer) => {
+        const profile = profileMap.get(customer.user_id) as any;
+        return {
+          id: customer.user_id,
+          name: profile?.full_name || profile?.email || 'Unknown Customer',
+          email: profile?.email || '',
+          totalSpent: customer.total_spent,
+          transactionCount: customer.transaction_count,
+          avgTransaction: customer.average_transaction
+        };
+      });
+
+      setTopCustomers(transformedCustomers);
+      setBookingsStats(bookingsData);
+      setTotalCustomers(profiles.length);
+
+      // Fetch booking customers (get customers with bookings)
+      try {
+        const bookingsResponse = await apiClient.get(`/bookings?start_date=${dateRange.start}&end_date=${dateRange.end}`);
+        const bookings = bookingsResponse.data || [];
+
+        // Aggregate bookings by customer
+        const customerBookings = new Map<string, {
+          bookings: number;
+          nights: number;
+          spent: number;
+          roomTypes: Record<string, number>;
+          customerId: string;
+          customerName: string;
+        }>();
+
+        bookings.forEach((booking: any) => {
+          const customerId = booking.customer_id || booking.user_id;
+          if (!customerId) return;
+
+          const profile = profileMap.get(customerId) as any;
+          const existing = customerBookings.get(customerId) || {
+            bookings: 0,
+            nights: 0,
+            spent: 0,
+            roomTypes: {},
+            customerId,
+            customerName: profile?.full_name || profile?.email || 'Unknown'
+          };
+
+          existing.bookings++;
+          existing.spent += parseFloat(booking.total_amount || 0);
+
+          // Calculate nights
+          if (booking.check_in && booking.check_out) {
+            const checkIn = new Date(booking.check_in);
+            const checkOut = new Date(booking.check_out);
+            const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            existing.nights += nights;
+          }
+
+          // Track room type preference
+          const roomType = booking.room_type || 'Standard';
+          existing.roomTypes[roomType] = (existing.roomTypes[roomType] || 0) + 1;
+
+          customerBookings.set(customerId, existing);
+        });
+
+        // Convert to array and find preferred room types
+        const bookingCustomersData: BookingCustomer[] = Array.from(customerBookings.values())
+          .map(data => {
+            // Find most common room type
+            const preferredRoomType = Object.entries(data.roomTypes)
+              .sort((a, b) => b[1] - a[1])[0]?.[0] || 'Standard';
+
+            return {
+              customerId: data.customerId,
+              customerName: data.customerName,
+              totalBookings: data.bookings,
+              totalNights: data.nights,
+              avgStayDuration: data.bookings > 0 ? data.nights / data.bookings : 0,
+              preferredRoomType,
+              totalSpent: data.spent
+            };
+          })
+          .sort((a, b) => b.totalBookings - a.totalBookings)
+          .slice(0, 20);
+
+        setBookingCustomers(bookingCustomersData);
+      } catch (error) {
+        console.error('Error fetching bookings:', error);
+        setBookingCustomers([]);
+      }
+
+    } catch (error) {
+      console.error('Error fetching customer insights:', error);
+      toast({
+        title: 'Error loading data',
+        description: 'Failed to fetch customer insights data',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const totalRevenue = useMemo(() =>
-    orderPatterns.reduce((sum, customer) => sum + customer.totalSpent, 0),
-    [orderPatterns]
+    topCustomers.reduce((sum, customer) => sum + customer.totalSpent, 0),
+    [topCustomers]
   );
-  const avgCustomerValue = totalRevenue / totalCustomers;
-  const totalLoyaltyMembers = loyaltyProgram.length;
+
+  const avgCustomerValue = useMemo(() =>
+    topCustomers.length > 0 ? totalRevenue / topCustomers.length : 0,
+    [totalRevenue, topCustomers]
+  );
 
   const handleExport = (format: string) => {
     toast({
@@ -219,14 +177,22 @@ export function CustomerInsightsReports() {
     });
   };
 
-  const getTierColor = (tier: string) => {
-    switch (tier.toLowerCase()) {
-      case 'platinum': return 'bg-purple-500';
-      case 'gold': return 'bg-yellow-500';
-      case 'silver': return 'bg-gray-400';
-      default: return 'bg-blue-500';
-    }
+  const handleRefresh = () => {
+    fetchData();
+    toast({
+      title: "Refreshing data",
+      description: "Loading latest customer data..."
+    });
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading customer insights...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -236,27 +202,41 @@ export function CustomerInsightsReports() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Total Customers
+              Top Customers
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalCustomers}</div>
+            <div className="text-2xl font-bold">{topCustomers.length}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Active this month
+              With transactions in period
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Customer Lifetime Value</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              KES {totalRevenue.toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              From top customers
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Avg Customer Value</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               KES {Math.round(avgCustomerValue).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Average per customer
+              Per customer
             </p>
           </CardContent>
         </Card>
@@ -264,41 +244,44 @@ export function CustomerInsightsReports() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Gift className="h-4 w-4" />
-              Loyalty Members
+              <TrendingUp className="h-4 w-4" />
+              Total Bookings
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalLoyaltyMembers}</div>
+            <div className="text-2xl font-bold">{bookingsStats?.summary.total_bookings || 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              Enrolled in program
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Star className="h-4 w-4" />
-              Customer Satisfaction
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">4.6 ★</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Overall rating
+              In selected period
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Export Button */}
+      {/* Filters and Export */}
       <Card>
         <CardHeader>
-          <CardTitle>Export Options</CardTitle>
+          <CardTitle>Report Options</CardTitle>
+          <CardDescription>Filter data and export reports (real-time from database)</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-4">
+            <div className="w-48">
+              <Select value={period} onValueChange={setPeriod}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="week">Last 7 Days</SelectItem>
+                  <SelectItem value="month">Last 30 Days</SelectItem>
+                  <SelectItem value="year">This Year</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleRefresh} variant="outline">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
             <Button onClick={() => handleExport('pdf')} variant="outline">
               <Download className="h-4 w-4 mr-2" />
               Export PDF
@@ -312,85 +295,86 @@ export function CustomerInsightsReports() {
       </Card>
 
       {/* Detailed Reports */}
-      <Tabs defaultValue="patterns" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="patterns">
+      <Tabs defaultValue="spending" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="spending">
             <TrendingUp className="h-4 w-4 mr-2" />
-            Order Patterns
+            Top Spenders
           </TabsTrigger>
           <TabsTrigger value="bookings">
             Room Bookings
           </TabsTrigger>
-          <TabsTrigger value="loyalty">
-            <Gift className="h-4 w-4 mr-2" />
-            Loyalty Program
-          </TabsTrigger>
-          <TabsTrigger value="feedback">
-            <MessageSquare className="h-4 w-4 mr-2" />
-            Feedback
+          <TabsTrigger value="summary">
+            Summary Stats
           </TabsTrigger>
         </TabsList>
 
-        {/* Order Patterns Tab */}
-        <TabsContent value="patterns" className="space-y-4">
+        {/* Top Spenders Tab */}
+        <TabsContent value="spending" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Customer Ordering Patterns</CardTitle>
+              <CardTitle>Top Customers by Spending</CardTitle>
               <CardDescription>
-                Analyze customer behavior and spending habits
+                Customers ranked by total transaction value
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Total Orders</TableHead>
-                    <TableHead>Total Spent</TableHead>
-                    <TableHead>Avg Order Value</TableHead>
-                    <TableHead>Favorite Category</TableHead>
-                    <TableHead>Frequency</TableHead>
-                    <TableHead>Last Visit</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orderPatterns.map((customer) => (
-                    <TableRow key={customer.customer}>
-                      <TableCell className="font-medium">{customer.customer}</TableCell>
-                      <TableCell>{customer.totalOrders}</TableCell>
-                      <TableCell className="font-semibold">
-                        KES {customer.totalSpent.toLocaleString()}
-                      </TableCell>
-                      <TableCell>KES {customer.avgOrderValue.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{customer.favoriteCategory}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge>{customer.frequency}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {customer.lastVisit}
-                      </TableCell>
+              {topCustomers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No customer transaction data available for this period
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Rank</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Total Spent</TableHead>
+                      <TableHead>Transactions</TableHead>
+                      <TableHead>Avg Transaction</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {topCustomers.map((customer, index) => (
+                      <TableRow key={customer.id}>
+                        <TableCell>
+                          <Badge variant={index < 3 ? 'default' : 'outline'}>
+                            #{index + 1}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{customer.name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {customer.email}
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          KES {customer.totalSpent.toLocaleString()}
+                        </TableCell>
+                        <TableCell>{customer.transactionCount}</TableCell>
+                        <TableCell>KES {Math.round(customer.avgTransaction).toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
 
               <div className="mt-6 grid grid-cols-3 gap-4">
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <p className="text-sm text-muted-foreground mb-1">High-Value Customers</p>
                   <p className="text-xl font-bold text-blue-600">
-                    {orderPatterns.filter(c => c.totalSpent > 150000).length}
+                    {topCustomers.filter(c => c.totalSpent > 50000).length}
                   </p>
+                  <p className="text-xs text-muted-foreground">Spent over KES 50,000</p>
                 </div>
                 <div className="p-4 bg-green-50 rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">Frequent Visitors</p>
+                  <p className="text-sm text-muted-foreground mb-1">Frequent Customers</p>
                   <p className="text-xl font-bold text-green-600">
-                    {orderPatterns.filter(c => c.frequency === 'Daily' || c.frequency === 'Weekly').length}
+                    {topCustomers.filter(c => c.transactionCount >= 5).length}
                   </p>
+                  <p className="text-xs text-muted-foreground">5+ transactions</p>
                 </div>
                 <div className="p-4 bg-purple-50 rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">Total Revenue</p>
+                  <p className="text-sm text-muted-foreground mb-1">Total Customer Revenue</p>
                   <p className="text-xl font-bold text-purple-600">
                     KES {totalRevenue.toLocaleString()}
                   </p>
@@ -404,220 +388,182 @@ export function CustomerInsightsReports() {
         <TabsContent value="bookings" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Room Booking Frequency</CardTitle>
+              <CardTitle>Customer Booking Patterns</CardTitle>
               <CardDescription>
-                Track customer booking patterns and preferences
+                Track customer room booking frequency and preferences
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Total Bookings</TableHead>
-                    <TableHead>Total Nights</TableHead>
-                    <TableHead>Avg Stay Duration</TableHead>
-                    <TableHead>Preferred Room Type</TableHead>
-                    <TableHead>Seasonal Preference</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {bookingFrequency.map((booking) => (
-                    <TableRow key={booking.customer}>
-                      <TableCell className="font-medium">{booking.customer}</TableCell>
-                      <TableCell>{booking.roomBookings}</TableCell>
-                      <TableCell>{booking.totalNights} nights</TableCell>
-                      <TableCell>{booking.avgStayDuration} days</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{booking.preferredRoomType}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge>{booking.seasonalPreference}</Badge>
-                      </TableCell>
+              {bookingCustomers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No booking data available for this period
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Total Bookings</TableHead>
+                      <TableHead>Total Nights</TableHead>
+                      <TableHead>Avg Stay</TableHead>
+                      <TableHead>Preferred Room</TableHead>
+                      <TableHead>Total Spent</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              <div className="mt-6 grid grid-cols-2 gap-4">
-                <div className="p-4 border rounded-lg">
-                  <h4 className="font-semibold mb-3">Most Popular Room Types</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Deluxe Suite</span>
-                      <Badge>2 bookings</Badge>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span>Presidential Suite</span>
-                      <Badge>1 booking</Badge>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span>Standard Room</span>
-                      <Badge>1 booking</Badge>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-4 border rounded-lg">
-                  <h4 className="font-semibold mb-3">Booking Statistics</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Bookings:</span>
-                      <span className="font-semibold">
-                        {bookingFrequency.reduce((sum, b) => sum + b.roomBookings, 0)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Nights:</span>
-                      <span className="font-semibold">
-                        {bookingFrequency.reduce((sum, b) => sum + b.totalNights, 0)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Avg Stay:</span>
-                      <span className="font-semibold">
-                        {(bookingFrequency.reduce((sum, b) => sum + b.avgStayDuration, 0) / bookingFrequency.length).toFixed(1)} days
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Loyalty Program Tab */}
-        <TabsContent value="loyalty" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Loyalty Program Usage</CardTitle>
-              <CardDescription>
-                Track member activity and reward redemption
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Tier</TableHead>
-                    <TableHead>Member Since</TableHead>
-                    <TableHead>Points Earned</TableHead>
-                    <TableHead>Points Redeemed</TableHead>
-                    <TableHead>Balance</TableHead>
-                    <TableHead>Rewards Used</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loyaltyProgram.map((member) => (
-                    <TableRow key={member.customer}>
-                      <TableCell className="font-medium">{member.customer}</TableCell>
-                      <TableCell>
-                        <Badge className={getTierColor(member.tier)}>
-                          {member.tier}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {member.memberSince}
-                      </TableCell>
-                      <TableCell>{member.pointsEarned.toLocaleString()}</TableCell>
-                      <TableCell className="text-orange-600">
-                        {member.pointsRedeemed.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        {member.pointsBalance.toLocaleString()}
-                      </TableCell>
-                      <TableCell>{member.rewardsUsed}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-
-              <div className="mt-6 grid grid-cols-3 gap-4">
-                <div className="p-4 bg-purple-50 rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">Platinum Members</p>
-                  <p className="text-xl font-bold text-purple-600">
-                    {loyaltyProgram.filter(m => m.tier === 'Platinum').length}
-                  </p>
-                </div>
-                <div className="p-4 bg-yellow-50 rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">Gold Members</p>
-                  <p className="text-xl font-bold text-yellow-600">
-                    {loyaltyProgram.filter(m => m.tier === 'Gold').length}
-                  </p>
-                </div>
-                <div className="p-4 bg-gray-100 rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-1">Silver Members</p>
-                  <p className="text-xl font-bold text-gray-600">
-                    {loyaltyProgram.filter(m => m.tier === 'Silver').length}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Feedback Tab */}
-        <TabsContent value="feedback" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Customer Feedback Analysis</CardTitle>
-              <CardDescription>
-                Analyze customer sentiment and satisfaction
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Positive</TableHead>
-                    <TableHead>Neutral</TableHead>
-                    <TableHead>Negative</TableHead>
-                    <TableHead>Avg Rating</TableHead>
-                    <TableHead>Sentiment</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {feedbackAnalysis.map((feedback) => {
-                    const total = feedback.positive + feedback.neutral + feedback.negative;
-                    const positivePercent = (feedback.positive / total) * 100;
-                    return (
-                      <TableRow key={feedback.category}>
-                        <TableCell className="font-medium">{feedback.category}</TableCell>
-                        <TableCell className="text-green-600">{feedback.positive}</TableCell>
-                        <TableCell className="text-gray-600">{feedback.neutral}</TableCell>
-                        <TableCell className="text-red-600">{feedback.negative}</TableCell>
+                  </TableHeader>
+                  <TableBody>
+                    {bookingCustomers.map((customer) => (
+                      <TableRow key={customer.customerId}>
+                        <TableCell className="font-medium">{customer.customerName}</TableCell>
+                        <TableCell>{customer.totalBookings}</TableCell>
+                        <TableCell>{customer.totalNights} nights</TableCell>
+                        <TableCell>{customer.avgStayDuration.toFixed(1)} nights</TableCell>
                         <TableCell>
-                          <span className="font-semibold">{feedback.avgRating} ★</span>
+                          <Badge variant="outline">{customer.preferredRoomType}</Badge>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Badge variant={positivePercent >= 80 ? 'default' : 'secondary'}>
-                              {positivePercent.toFixed(0)}% Positive
-                            </Badge>
-                          </div>
+                        <TableCell className="font-semibold">
+                          KES {customer.totalSpent.toLocaleString()}
                         </TableCell>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
 
-              <div className="mt-6 space-y-4">
-                <h4 className="font-semibold">Top Customer Comments by Category</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {feedbackAnalysis.slice(0, 4).map((feedback) => (
-                    <div key={feedback.category} className="p-4 border rounded-lg">
-                      <h5 className="font-medium mb-2">{feedback.category}</h5>
-                      <ul className="space-y-1 text-sm text-muted-foreground">
-                        {feedback.topComments.map((comment, idx) => (
-                          <li key={idx}>• {comment}</li>
-                        ))}
-                      </ul>
+              {bookingsStats && (
+                <div className="mt-6 grid grid-cols-2 gap-4">
+                  <div className="p-4 border rounded-lg">
+                    <h4 className="font-semibold mb-3">Booking Statistics</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Bookings:</span>
+                        <span className="font-semibold">{bookingsStats.summary.total_bookings}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Revenue:</span>
+                        <span className="font-semibold">KES {bookingsStats.summary.total_revenue.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Avg Booking Value:</span>
+                        <span className="font-semibold">KES {Math.round(bookingsStats.summary.average_booking_value).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Avg Stay Duration:</span>
+                        <span className="font-semibold">{bookingsStats.summary.average_stay_duration} nights</span>
+                      </div>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="p-4 border rounded-lg">
+                    <h4 className="font-semibold mb-3">Bookings by Room Type</h4>
+                    <div className="space-y-2 text-sm">
+                      {Object.entries(bookingsStats.by_room_type || {}).map(([roomType, count]) => (
+                        <div key={roomType} className="flex justify-between">
+                          <span className="text-muted-foreground capitalize">{roomType}:</span>
+                          <Badge>{count as number} bookings</Badge>
+                        </div>
+                      ))}
+                      {Object.keys(bookingsStats.by_room_type || {}).length === 0 && (
+                        <p className="text-muted-foreground">No room type data available</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Summary Stats Tab */}
+        <TabsContent value="summary" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Customer Insights Summary</CardTitle>
+              <CardDescription>
+                Overall customer statistics and trends
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="p-4 bg-muted rounded-lg text-center">
+                  <p className="text-sm text-muted-foreground">Total Customers</p>
+                  <p className="text-3xl font-bold">{totalCustomers}</p>
+                </div>
+                <div className="p-4 bg-muted rounded-lg text-center">
+                  <p className="text-sm text-muted-foreground">Active This Period</p>
+                  <p className="text-3xl font-bold">{topCustomers.length}</p>
+                </div>
+                <div className="p-4 bg-muted rounded-lg text-center">
+                  <p className="text-sm text-muted-foreground">Avg Revenue/Customer</p>
+                  <p className="text-3xl font-bold">KES {Math.round(avgCustomerValue).toLocaleString()}</p>
+                </div>
+                <div className="p-4 bg-muted rounded-lg text-center">
+                  <p className="text-sm text-muted-foreground">Room Bookings</p>
+                  <p className="text-3xl font-bold">{bookingsStats?.summary.total_bookings || 0}</p>
                 </div>
               </div>
+
+              {bookingsStats && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 border rounded-lg">
+                    <h4 className="font-semibold mb-3">Booking Status Breakdown</h4>
+                    <div className="space-y-2">
+                      {Object.entries(bookingsStats.by_status || {}).map(([status, count]) => (
+                        <div key={status} className="flex justify-between items-center">
+                          <span className="capitalize">{status}</span>
+                          <Badge variant={
+                            status === 'confirmed' || status === 'checked_in' ? 'default' :
+                            status === 'cancelled' ? 'destructive' : 'secondary'
+                          }>
+                            {count as number}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-4 border rounded-lg">
+                    <h4 className="font-semibold mb-3">Customer Engagement</h4>
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>High-Value (50K+)</span>
+                          <span>{topCustomers.filter(c => c.totalSpent > 50000).length} customers</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-green-500 h-2 rounded-full"
+                            style={{ width: `${(topCustomers.filter(c => c.totalSpent > 50000).length / topCustomers.length) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>Regular (5+ trans)</span>
+                          <span>{topCustomers.filter(c => c.transactionCount >= 5).length} customers</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-500 h-2 rounded-full"
+                            style={{ width: `${(topCustomers.filter(c => c.transactionCount >= 5).length / topCustomers.length) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>New Customers</span>
+                          <span>{topCustomers.filter(c => c.transactionCount === 1).length} customers</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-purple-500 h-2 rounded-full"
+                            style={{ width: `${(topCustomers.filter(c => c.transactionCount === 1).length / topCustomers.length) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

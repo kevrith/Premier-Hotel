@@ -5,9 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, TrendingDown, AlertTriangle, RefreshCw, Download, Loader2 } from 'lucide-react';
+import { Package, TrendingDown, AlertTriangle, RefreshCw, Download, Loader2, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { inventoryService, InventoryItem, InventoryCategory, StockMovement, Supplier } from '@/lib/api/inventory';
+import HistoricalStockViewer from './HistoricalStockViewer';
 
 interface DisplayInventoryItem {
   id: string;
@@ -389,10 +390,14 @@ export function InventoryReports() {
 
       {/* Detailed Reports */}
       <Tabs defaultValue="stock" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="stock">
             <Package className="h-4 w-4 mr-2" />
             Stock Levels
+          </TabsTrigger>
+          <TabsTrigger value="historical">
+            <Calendar className="h-4 w-4 mr-2" />
+            Historical Stock
           </TabsTrigger>
           <TabsTrigger value="movements">
             Stock Movements
@@ -463,6 +468,11 @@ export function InventoryReports() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Historical Stock Tab */}
+        <TabsContent value="historical" className="space-y-4">
+          <HistoricalStockViewer />
         </TabsContent>
 
         {/* Stock Movements Tab */}
