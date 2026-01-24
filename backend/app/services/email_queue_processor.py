@@ -243,19 +243,51 @@ class EmailQueueProcessor:
     async def _process_batch(self):
         """Process a batch of emails with retry logic"""
         try:
-            # Get emails that need processing
-            current_time = datetime.utcnow().isoformat()
+            # Get emails that need processing (simplified approach)
+            current_time = datetime.utcnow()
 
-            result = (
+            # First get pending emails
+            pending_result = (
                 self.supabase.table("email_queue")
                 .select("*")
-                .in_("status", ["pending", "failed"])
-                .or_(f"scheduled_for.is.null,scheduled_for.lte.{current_time}")
+                .eq("status", "pending")
                 .limit(self.batch_size)
                 .execute()
             )
 
-            emails = result.data
+            # Get failed emails and filter in Python (avoid complex Supabase OR queries)
+            failed_result = (
+                self.supabase.table("email_queue")
+                .select("*")
+                .eq("status", "failed")
+                .limit(self.batch_size * 2)  # Get more to account for filtering
+                .execute()
+            )
+
+            # Filter failed emails based on scheduling
+            failed_emails = []
+            for email in (failed_result.data or []):
+                scheduled_for = email.get("scheduled_for")
+                if scheduled_for is None or datetime.fromisoformat(scheduled_for.replace('Z', '+00:00')) <= current_time:
+                    failed_emails.append(email)
+                    if len(failed_emails) >= self.batch_size:
+                        break
+
+            # Combine results
+            emails = (pending_result.data or []) + failed_emails
+
+            # Remove duplicates (if any email appears in both queries)
+            seen_ids = set()
+            unique_emails = []
+            for email in emails:
+                email_id = email.get("id")
+                if email_id not in seen_ids:
+                    seen_ids.add(email_id)
+                    unique_emails.append(email)
+
+            # Limit to batch size
+            emails = unique_emails[:self.batch_size]
+
             if not emails:
                 logger.debug("No pending emails in queue")
                 return
