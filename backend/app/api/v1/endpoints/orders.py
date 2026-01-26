@@ -4,7 +4,7 @@ Order Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import Optional, List
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_supabase_admin
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderStatusUpdate
 from app.middleware.auth import get_current_user, require_staff, require_chef
 from datetime import datetime, timedelta
@@ -35,6 +35,7 @@ async def get_all_orders(
     location_type: Optional[str] = None,
     current_user: dict = Depends(require_staff),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
     Get all orders (Staff only)
@@ -42,7 +43,8 @@ async def get_all_orders(
     - Returns all orders with optional filters
     """
     try:
-        query = supabase.table("orders").select("*")
+        # Use admin client to bypass RLS
+        query = supabase_admin.table("orders").select("*")
 
         # Apply filters
         if status:
@@ -69,6 +71,7 @@ async def get_my_orders(
     limit: int = Query(100, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
     Get current user's orders
@@ -76,8 +79,9 @@ async def get_my_orders(
     - Returns orders for the authenticated user
     """
     try:
+        # Use admin client to bypass RLS
         response = (
-            supabase.table("orders")
+            supabase_admin.table("orders")
             .select("*")
             .eq("customer_id", current_user["id"])
             .range(skip, skip + limit - 1)
@@ -98,18 +102,20 @@ async def get_my_orders(
 async def get_kitchen_orders(
     current_user: dict = Depends(require_chef),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
     Get kitchen orders (Chef/Manager/Admin only)
 
-    - Returns active orders that need to be prepared
-    - Includes orders with status: pending, confirmed, preparing
+    - Returns active orders for kitchen display
+    - Includes orders with status: pending, confirmed, preparing, ready
     """
     try:
+        # Use admin client to bypass RLS
         response = (
-            supabase.table("orders")
+            supabase_admin.table("orders")
             .select("*")
-            .in_("status", ["pending", "confirmed", "preparing"])
+            .in_("status", ["pending", "confirmed", "preparing", "ready"])
             .order("priority", desc=True)
             .order("created_at", desc=False)
             .execute()
@@ -129,6 +135,7 @@ async def get_order(
     order_id: str,
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
     Get order by ID
@@ -137,7 +144,8 @@ async def get_order(
     - Users can only see their own orders, staff can see all
     """
     try:
-        response = supabase.table("orders").select("*").eq("id", order_id).execute()
+        # Use admin client to bypass RLS
+        response = supabase_admin.table("orders").select("*").eq("id", order_id).execute()
 
         if not response.data:
             raise HTTPException(
@@ -175,6 +183,7 @@ async def create_order(
     order_data: OrderCreate,
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
     Create a new order
@@ -185,14 +194,24 @@ async def create_order(
     try:
         # Validate items exist and are available
         item_ids = [item.menu_item_id for item in order_data.items]
+        print(f"[DEBUG] Order creation - Looking for menu items with IDs: {item_ids}")
+
+        # Use admin client to bypass RLS when reading menu items
         menu_items_response = (
-            supabase.table("menu_items").select("*").in_("id", item_ids).execute()
+            supabase_admin.table("menu_items").select("*").in_("id", item_ids).execute()
         )
 
+        print(f"[DEBUG] Found {len(menu_items_response.data)} menu items in database")
+        if menu_items_response.data:
+            found_ids = [item['id'] for item in menu_items_response.data]
+            print(f"[DEBUG] Found item IDs: {found_ids}")
+
         if len(menu_items_response.data) != len(item_ids):
+            missing_ids = set(item_ids) - set(item['id'] for item in menu_items_response.data)
+            print(f"[DEBUG] Missing menu item IDs: {missing_ids}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Some menu items not found",
+                detail=f"Some menu items not found. Missing IDs: {list(missing_ids)}",
             )
 
         # Check all items are available
@@ -272,7 +291,8 @@ async def create_order(
             "table_number": order_data.location if order_data.location_type == "table" else None,
         }
 
-        response = supabase.table("orders").insert(order_dict).execute()
+        # Use admin client to bypass RLS for order insertion
+        response = supabase_admin.table("orders").insert(order_dict).execute()
 
         if not response.data:
             raise HTTPException(
@@ -329,7 +349,8 @@ async def update_order_status(
     status_data: OrderStatusUpdate,
     current_user: dict = Depends(require_staff),
     supabase: Client = Depends(get_supabase),
-    db_pool: asyncpg.Pool = Depends(get_db_pool),
+    supabase_admin: Client = Depends(get_supabase_admin),
+    db_pool: Optional[asyncpg.Pool] = Depends(get_db_pool),
 ):
     """
     Update order status (Staff only)
@@ -338,8 +359,8 @@ async def update_order_status(
     - Validates status transitions
     """
     try:
-        # Get existing order
-        existing_response = supabase.table("orders").select("*").eq("id", order_id).execute()
+        # Get existing order (use admin to bypass RLS)
+        existing_response = supabase_admin.table("orders").select("*").eq("id", order_id).execute()
 
         if not existing_response.data:
             raise HTTPException(
@@ -390,8 +411,8 @@ async def update_order_status(
         elif new_status == "cancelled":
             update_data["cancelled_at"] = datetime.utcnow().isoformat()
 
-        # Update order
-        response = supabase.table("orders").update(update_data).eq("id", order_id).execute()
+        # Update order (use admin to bypass RLS)
+        response = supabase_admin.table("orders").update(update_data).eq("id", order_id).execute()
 
         if not response.data:
             raise HTTPException(
@@ -438,8 +459,8 @@ async def update_order_status(
                 "timestamp": datetime.utcnow().isoformat()
             })
 
-        # Trigger QuickBooks sync if order is completed
-        if new_status == "completed":
+        # Trigger QuickBooks sync if order is completed and db_pool is available
+        if new_status == "completed" and db_pool is not None:
             try:
                 sync_service = QuickBooksSyncService(db_pool)
                 # Run sync in background to not block the response
@@ -467,6 +488,7 @@ async def update_order(
     order_data: OrderUpdate,
     current_user: dict = Depends(require_staff),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
     Update order (Staff only)
@@ -474,8 +496,8 @@ async def update_order(
     - Updates order details like assigned staff and priority
     """
     try:
-        # Get existing order
-        existing_response = supabase.table("orders").select("*").eq("id", order_id).execute()
+        # Get existing order (use admin to bypass RLS)
+        existing_response = supabase_admin.table("orders").select("*").eq("id", order_id).execute()
 
         if not existing_response.data:
             raise HTTPException(
@@ -489,8 +511,8 @@ async def update_order(
         if not update_data:
             return OrderResponse(**existing_response.data[0])
 
-        # Update order
-        response = supabase.table("orders").update(update_data).eq("id", order_id).execute()
+        # Update order (use admin to bypass RLS)
+        response = supabase_admin.table("orders").update(update_data).eq("id", order_id).execute()
 
         if not response.data:
             raise HTTPException(

@@ -1,7 +1,41 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { MenuItem } from '@/types';
 
-const useCartStore = create(
+interface CartItem {
+  id: string;
+  itemId: string;
+  name: string;
+  basePrice: number;
+  quantity: number;
+  customizations: Array<{
+    id: string;
+    name: string;
+    value: any;
+    priceModifier: number;
+  }>;
+  specialInstructions: string;
+  subtotal: number;
+}
+
+interface CartStore {
+  items: CartItem[];
+  location: string | null;
+  specialInstructions: string;
+  addItem: (item: CartItem) => void;
+  removeItem: (id: string) => void;
+  updateQuantity: (id: string, quantity: number) => void;
+  updateCustomizations: (id: string, customizations: CartItem['customizations']) => void;
+  clearCart: () => void;
+  setLocation: (location: string | null) => void;
+  setSpecialInstructions: (instructions: string) => void;
+  getSubtotal: () => number;
+  getTax: () => number;
+  getTotal: () => number;
+  getItemCount: () => number;
+}
+
+const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       // State
@@ -73,7 +107,7 @@ const useCartStore = create(
         }));
       },
 
-      updateCustomizations: (id, customizations) => {
+      updateCustomizations: (id: string, customizations: CartItem['customizations']) => {
         set((state) => ({
           items: state.items.map((item) =>
             item.id === id

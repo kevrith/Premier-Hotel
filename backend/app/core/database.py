@@ -50,20 +50,28 @@ class DatabasePool:
             cls._pool = None
 
 
-async def get_db_pool() -> asyncpg.Pool:
+async def get_db_pool() -> Optional[asyncpg.Pool]:
     """
     Dependency for FastAPI endpoints to get database pool.
 
+    Returns None if pool cannot be created (e.g., Supabase blocks direct connections).
+
     Usage:
         @app.get("/endpoint")
-        async def endpoint(db_pool: asyncpg.Pool = Depends(get_db_pool)):
-            async with db_pool.acquire() as conn:
-                result = await conn.fetchrow("SELECT * FROM table")
+        async def endpoint(db_pool: Optional[asyncpg.Pool] = Depends(get_db_pool)):
+            if db_pool:
+                async with db_pool.acquire() as conn:
+                    result = await conn.fetchrow("SELECT * FROM table")
 
     Returns:
-        asyncpg.Pool: Database connection pool
+        Optional[asyncpg.Pool]: Database connection pool or None
     """
-    return await DatabasePool.get_pool()
+    try:
+        return await DatabasePool.get_pool()
+    except Exception as e:
+        # Supabase blocks direct PostgreSQL connections from external IPs
+        print(f"[WARNING] Database pool unavailable: {e}")
+        return None
 
 
 async def init_db():

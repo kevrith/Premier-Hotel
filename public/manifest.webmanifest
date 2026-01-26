@@ -8,6 +8,11 @@
   "theme_color": "#1E40AF",
   "orientation": "portrait-primary",
   "categories": ["hospitality", "business"],
+  "prefer_related_applications": false,
+  "display_override": ["window-controls-overlay", "standalone"],
+  "edge_side_panel": {
+    "preferred_width": 400
+  },
   "icons": [
     {
       "src": "/icons/icon-72x72.png",
@@ -32,6 +37,22 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/images/A1.jpeg",
+      "sizes": "1280x720",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Premier Hotel Luxury Rooms"
+    },
+    {
+      "src": "/images/F1.jpeg",
+      "sizes": "640x1136",
+      "type": "image/jpeg",
+      "form_factor": "narrow",
+      "label": "Fine Dining Experience"
     }
   ]
 }

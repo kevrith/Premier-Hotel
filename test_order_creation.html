@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Order Creation</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .test-section { margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Test Order Creation API</h1>
+    
+    <div class="test-section">
+        <h2>Step 1: Get Menu Items</h2>
+        <button onclick="getMenuItems()">Fetch Menu Items</button>
+        <div id="menu-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 2: Create Test Order</h2>
+        <button onclick="createTestOrder()">Create Test Order</button>
+        <div id="order-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Step 3: Check Order</h2>
+        <input type="text" id="orderId" placeholder="Order ID from Step 2">
+        <button onclick="getOrder()">Get Order Details</button>
+        <div id="order-details"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api/v1';
+        let menuItems = [];
+        let testOrderId = null;
+
+        async function getMenuItems() {
+            const resultDiv = document.getElementById('menu-result');
+            resultDiv.innerHTML = '<span class="info">Fetching menu items...</span>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/menu/items`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    menuItems = data;
+                    resultDiv.innerHTML = `<span class="success">✅ Found ${menuItems.length} menu items</span>
+                        <pre>${JSON.stringify(menuItems.slice(0, 3), null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Error: ${data.detail || 'Unknown error'}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Network error: ${error.message}</span>`;
+            }
+        }
+
+        async function createTestOrder() {
+            const resultDiv = document.getElementById('order-result');
+            resultDiv.innerHTML = '<span class="info">Creating test order...</span>';
+
+            if (menuItems.length === 0) {
+                resultDiv.innerHTML = '<span class="error">❌ Please fetch menu items first</span>';
+                return;
+            }
+
+            // Use first available menu item
+            const menuItem = menuItems.find(item => item.is_available || item.available);
+            if (!menuItem) {
+                resultDiv.innerHTML = '<span class="error">❌ No available menu items found</span>';
+                return;
+            }
+
+            const orderData = {
+                location: 'T-12',
+                location_type: 'table',
+                items: [{
+                    menu_item_id: menuItem.id,
+                    name: menuItem.name,
+                    quantity: 2,
+                    price: menuItem.base_price || menuItem.price || 1000,
+                    customizations: {},
+                    special_instructions: 'Test order'
+                }],
+                special_instructions: 'Customer: Test Customer, Phone: +254712345678',
+                customer_name: 'Test Customer',
+                customer_phone: '+254712345678',
+                order_type: 'dine_in'
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/orders`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(orderData)
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    testOrderId = data.id;
+                    resultDiv.innerHTML = `<span class="success">✅ Order created successfully!</span>
+                        <p><strong>Order ID:</strong> ${testOrderId}</p>
+                        <p><strong>Order Number:</strong> ${data.order_number}</p>
+                        <p><strong>Total:</strong> KES ${data.total_amount}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Error creating order: ${data.detail || 'Unknown error'}</span>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Network error: ${error.message}</span>`;
+            }
+        }
+
+        async function getOrder() {
+            const resultDiv = document.getElementById('order-details');
+            const orderId = document.getElementById('orderId').value.trim();
+            
+            if (!orderId) {
+                resultDiv.innerHTML = '<span class="error">❌ Please enter an order ID</span>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<span class="info">Fetching order details...</span>';
+
+            try {
+                const response = await fetch(`${API_BASE}/orders/${orderId}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `<span class="success">✅ Order found!</span>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Error: ${data.detail || 'Order not found'}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Network error: ${error.message}</span>`;
+            }
+        }
+    </script>
+</body>
+</html>

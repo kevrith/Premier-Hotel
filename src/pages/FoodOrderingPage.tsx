@@ -502,17 +502,17 @@ export default function FoodOrderingPage() {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <div className="container mx-auto px-4 py-6 pb-32">
+      <div className="mobile-container py-4 sm:py-6 pb-24 sm:pb-32">
         {/* Header Section */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
             <div>
-              <h1 className="text-3xl font-bold">Order Food</h1>
-              <p className="text-muted-foreground">Delicious meals delivered to your location</p>
+              <h1 className="responsive-heading">Order Food</h1>
+              <p className="text-muted-foreground text-sm sm:text-base">Delicious meals delivered to your location</p>
             </div>
 
             {isOffline && (
-              <Badge variant="destructive" className="text-sm">
+              <Badge variant="destructive" className="text-xs sm:text-sm w-fit">
                 Offline - Cash Only
               </Badge>
             )}
@@ -521,31 +521,31 @@ export default function FoodOrderingPage() {
           {/* Location Banner */}
           {selectedLocation ? (
             <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium">Delivering to</p>
-                    <p className="text-sm text-muted-foreground">
+              <CardContent className="p-3 sm:p-4 flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm sm:text-base">Delivering to</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground truncate">
                       {selectedLocation.type} {selectedLocation.number}
                     </p>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setShowLocationSelector(true)}>
+                <Button variant="outline" size="sm" onClick={() => setShowLocationSelector(true)} className="touch-button flex-shrink-0">
                   Change
                 </Button>
               </CardContent>
             </Card>
           ) : (
             <Card className="bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800">
-              <CardContent className="p-4 flex items-center justify-between">
+              <CardContent className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-orange-600" />
-                  <p className="font-medium text-orange-900 dark:text-orange-100">
+                  <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 flex-shrink-0" />
+                  <p className="font-medium text-orange-900 dark:text-orange-100 text-sm sm:text-base">
                     Select your location to start ordering
                   </p>
                 </div>
-                <Button onClick={() => setShowLocationSelector(true)} variant="default">
+                <Button onClick={() => setShowLocationSelector(true)} variant="default" className="touch-button w-full sm:w-auto">
                   Set Location
                 </Button>
               </CardContent>
@@ -555,9 +555,9 @@ export default function FoodOrderingPage() {
 
         {/* Active Orders */}
         {activeOrders.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
-              <Clock className="h-5 w-5" />
+          <div className="mb-4 sm:mb-6">
+            <h2 className="responsive-subheading mb-3 flex items-center gap-2">
+              <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
               Active Orders
             </h2>
             <OrderTracking orders={activeOrders} />
@@ -565,21 +565,21 @@ export default function FoodOrderingPage() {
         )}
 
         {/* Search and Filters */}
-        <div className="mb-6 space-y-4">
-          <div className="flex gap-3">
+        <div className="mb-4 sm:mb-6 space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search for dishes..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 touch-button"
               />
             </div>
             <Button
               variant={showFavorites ? 'default' : 'outline'}
               onClick={() => setShowFavorites(!showFavorites)}
-              className="gap-2"
+              className="gap-2 touch-button w-full sm:w-auto"
             >
               <Heart className={`h-4 w-4 ${showFavorites ? 'fill-current' : ''}`} />
               Favorites
@@ -614,12 +614,12 @@ export default function FoodOrderingPage() {
         </div>
 
         {/* Category Tabs */}
-        <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="mb-6">
-          <TabsList className="grid w-full grid-cols-5 h-auto">
+        <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="mb-4 sm:mb-6">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5 h-auto gap-1">
             {categories.map(cat => (
-              <TabsTrigger key={cat.id} value={cat.id} className="flex-col gap-1 py-3">
-                <span className="text-2xl">{cat.icon}</span>
-                <span className="text-xs">{cat.name}</span>
+              <TabsTrigger key={cat.id} value={cat.id} className="flex-col gap-1 py-2 sm:py-3 text-xs sm:text-sm">
+                <span className="text-lg sm:text-2xl">{cat.icon}</span>
+                <span className="text-xs leading-tight">{cat.name}</span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -636,15 +636,15 @@ export default function FoodOrderingPage() {
         ) : isLoading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading delicious options...</p>
+            <p className="text-muted-foreground text-sm sm:text-base">Loading delicious options...</p>
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="text-center py-12">
-            <Filter className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <p className="text-muted-foreground">No items found matching your criteria</p>
+            <Filter className="h-12 w-12 sm:h-16 sm:w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <p className="text-muted-foreground text-sm sm:text-base">No items found matching your criteria</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="mobile-grid">
             {filteredItems.map(item => (
               <MenuItem
                 key={item.id}

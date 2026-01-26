@@ -312,22 +312,22 @@ export default function RoomBooking() {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <div className="container mx-auto px-4 py-8 mt-16">
+      <div className="mobile-container py-6 sm:py-8 mt-14 sm:mt-16">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-          <Link to="/" className="hover:text-primary">Home</Link>
+        <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-4 sm:mb-6 overflow-x-auto">
+          <Link to="/" className="hover:text-primary whitespace-nowrap">Home</Link>
           <span>/</span>
-          <Link to="/rooms" className="hover:text-primary">Rooms</Link>
+          <Link to="/rooms" className="hover:text-primary whitespace-nowrap">Rooms</Link>
           <span>/</span>
-          <Link to={`/rooms/${room.id}`} className="hover:text-primary">{room.type}</Link>
+          <Link to={`/rooms/${room.id}`} className="hover:text-primary whitespace-nowrap truncate">{room.type}</Link>
           <span>/</span>
-          <span className="text-foreground">Booking</span>
+          <span className="text-foreground whitespace-nowrap">Booking</span>
         </nav>
 
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">Complete Your Booking</h1>
-          <p className="text-muted-foreground">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="responsive-heading mb-2">Complete Your Booking</h1>
+          <p className="text-muted-foreground text-sm sm:text-base">
             Step {step} of 3 - {step === 1 ? 'Dates & Guests' : step === 2 ? 'Guest Information' : 'Payment'}
           </p>
 
@@ -353,24 +353,24 @@ export default function RoomBooking() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 sm:gap-8">
           {/* Main Form */}
-          <div className="lg:col-span-2">
+          <div className="xl:col-span-2">
             <form onSubmit={handleSubmit}>
               {/* Step 1: Dates & Guests */}
               {step === 1 && (
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Calendar className="h-5 w-5" />
+                  <CardHeader className="mobile-card">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                      <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />
                       Select Dates & Guests
                     </CardTitle>
-                    <CardDescription>Choose your check-in and check-out dates</CardDescription>
+                    <CardDescription className="text-sm">Choose your check-in and check-out dates</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <CardContent className="mobile-card space-y-4 sm:space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="checkIn">Check-in Date</Label>
+                        <Label htmlFor="checkIn" className="text-sm font-medium">Check-in Date</Label>
                         <Input
                           id="checkIn"
                           name="checkIn"
@@ -378,7 +378,7 @@ export default function RoomBooking() {
                           value={formData.checkIn}
                           onChange={handleChange}
                           min={format(new Date(), 'yyyy-MM-dd')}
-                          className={errors.checkIn ? 'border-red-500' : ''}
+                          className={`touch-button ${errors.checkIn ? 'border-red-500' : ''}`}
                         />
                         {errors.checkIn && (
                           <p className="text-sm text-red-500">{errors.checkIn}</p>
@@ -668,21 +668,21 @@ export default function RoomBooking() {
               )}
 
               {/* Navigation Buttons */}
-              <div className="flex gap-4 mt-6">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-6">
                 {step > 1 && (
-                  <Button type="button" variant="outline" onClick={handleBack} className="flex-1">
+                  <Button type="button" variant="outline" onClick={handleBack} className="flex-1 touch-button">
                     Back
                   </Button>
                 )}
 
                 {step < 3 ? (
-                  <Button type="button" onClick={handleNext} className="flex-1">
+                  <Button type="button" onClick={handleNext} className="flex-1 touch-button">
                     Next
                   </Button>
                 ) : (
                   <Button
                     type="submit"
-                    className="flex-1"
+                    className="flex-1 touch-button"
                     disabled={isLoading || !isOnline}
                   >
                     {isLoading ? (
@@ -703,22 +703,22 @@ export default function RoomBooking() {
           </div>
 
           {/* Booking Summary Sidebar */}
-          <div className="lg:col-span-1">
-            <Card className="sticky top-24">
-              <CardHeader>
-                <CardTitle>Booking Summary</CardTitle>
+          <div className="xl:col-span-1">
+            <Card className="sticky top-20 sm:top-24">
+              <CardHeader className="mobile-card">
+                <CardTitle className="text-lg sm:text-xl">Booking Summary</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="mobile-card space-y-4">
                 {/* Room Info */}
                 <div className="flex gap-3">
                   <img
                     src={room.images[0]}
                     alt={room.type}
-                    className="w-20 h-20 rounded-md object-cover"
+                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-md object-cover"
                   />
-                  <div className="flex-1">
-                    <h4 className="font-semibold">{room.type}</h4>
-                    <p className="text-sm text-muted-foreground">Room {room.room_number}</p>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-sm sm:text-base truncate">{room.type}</h4>
+                    <p className="text-xs sm:text-sm text-muted-foreground">Room {room.room_number}</p>
                   </div>
                 </div>
 

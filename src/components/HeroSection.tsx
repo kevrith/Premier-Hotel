@@ -97,16 +97,16 @@ export function HeroSection() {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="max-w-4xl mx-auto">
+      <div className="relative z-10 mobile-container text-center">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6">
           {/* Badge */}
-          <div className="inline-flex items-center px-4 py-2 rounded-full bg-accent/20 text-accent border border-accent/30 mb-8">
-            <Star className="w-4 h-4 mr-2" />
-            <span className="text-sm font-medium">5-Star Luxury Experience</span>
+          <div className="inline-flex items-center px-3 py-2 sm:px-4 sm:py-2 rounded-full bg-accent/20 text-accent border border-accent/30 mb-6 sm:mb-8">
+            <Star className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+            <span className="text-xs sm:text-sm font-medium">5-Star Luxury Experience</span>
           </div>
 
           {/* Main Heading */}
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 leading-tight">
+          <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-4 sm:mb-6 leading-tight">
             Welcome to
             <span className="block text-transparent bg-gradient-gold bg-clip-text">
               Premier Hotel
@@ -114,57 +114,57 @@ export function HeroSection() {
           </h1>
 
           {/* Subtitle with Auto-Typing Effect */}
-          <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-3xl mx-auto leading-relaxed min-h-[4rem] flex items-center justify-center">
-            <span>
+          <div className="text-base sm:text-xl md:text-2xl text-white/90 mb-6 sm:mb-8 max-w-3xl mx-auto leading-relaxed min-h-[3rem] sm:min-h-[4rem] flex items-center justify-center px-4">
+            <span className="text-center">
               {displayedText}
               <span className="animate-pulse text-accent">|</span>
             </span>
-          </p>
+          </div>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Button asChild size="lg" className="text-lg px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-8 sm:mb-12 px-4">
+            <Button asChild size="lg" className="text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white touch-button">
               <Link to="/menu">
                 Order Now
-                <ArrowRight className="ml-2 h-5 w-5 inline" />
+                <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5 inline" />
               </Link>
             </Button>
-            <Button asChild size="lg" className="text-lg px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white">
+            <Button asChild size="lg" className="text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white touch-button">
               <Link to="/rooms">
-                <Calendar className="mr-2 h-5 w-5 inline" />
+                <Calendar className="mr-2 h-4 w-4 sm:h-5 sm:w-5 inline" />
                 Book Now
               </Link>
             </Button>
           </div>
 
           {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 mt-12 sm:mt-16 px-4">
             <div className="text-center">
-              <div className="text-3xl font-bold text-accent mb-2">150+</div>
-              <div className="text-white/80">Luxury Rooms</div>
+              <div className="text-2xl sm:text-3xl font-bold text-accent mb-2">150+</div>
+              <div className="text-sm sm:text-base text-white/80">Luxury Rooms</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-accent mb-2">24/7</div>
-              <div className="text-white/80">Concierge Service</div>
+              <div className="text-2xl sm:text-3xl font-bold text-accent mb-2">24/7</div>
+              <div className="text-sm sm:text-base text-white/80">Concierge Service</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-accent mb-2">5★</div>
-              <div className="text-white/80">Guest Rating</div>
+              <div className="text-2xl sm:text-3xl font-bold text-accent mb-2">5★</div>
+              <div className="text-sm sm:text-base text-white/80">Guest Rating</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Location indicator */}
-      <div className="absolute bottom-8 left-8 z-10 flex items-center text-white/80">
-        <MapPin className="w-4 h-4 mr-2" />
-        <span className="text-sm">Downtown Premium Locations</span>
+      <div className="absolute bottom-6 sm:bottom-8 left-4 sm:left-8 z-10 flex items-center text-white/80">
+        <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+        <span className="text-xs sm:text-sm">Downtown Premium Locations</span>
       </div>
 
       {/* Scroll indicator */}
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
-        <div className="w-6 h-10 border-2 border-white/30 rounded-full flex justify-center">
-          <div className="w-1 h-3 bg-white/60 rounded-full mt-2 animate-bounce"></div>
+      <div className="absolute bottom-6 sm:bottom-8 left-1/2 transform -translate-x-1/2 z-10">
+        <div className="w-5 h-8 sm:w-6 sm:h-10 border-2 border-white/30 rounded-full flex justify-center">
+          <div className="w-1 h-2 sm:h-3 bg-white/60 rounded-full mt-2 animate-bounce"></div>
         </div>
       </div>
     </section>

@@ -370,60 +370,168 @@ export function QuickBooksReporting() {
     }
   });
 
-  const generateSalesByCustomerData = () => ({
-    reportName: 'Sales by Customer Summary',
-    period: `${filters.startDate} to ${filters.endDate}`,
-    customers: [
-      { name: 'Alice Johnson', sales: 485000, transactions: 12, avgSale: 40417 },
-      { name: 'Bob Smith', sales: 320000, transactions: 8, avgSale: 40000 },
-      { name: 'Carol White', sales: 298000, transactions: 15, avgSale: 19867 },
-      { name: 'David Brown', sales: 245000, transactions: 6, avgSale: 40833 },
-      { name: 'Emma Davis', sales: 198000, transactions: 10, avgSale: 19800 },
-      { name: 'Frank Wilson', sales: 175000, transactions: 7, avgSale: 25000 },
-      { name: 'Grace Miller', sales: 152000, transactions: 9, avgSale: 16889 },
-      { name: 'Henry Taylor', sales: 138000, transactions: 5, avgSale: 27600 },
-    ],
-    total: 2011000
-  });
+  const generateSalesByCustomerData = async () => {
+    try {
+      const topCustomers = await reportsService.getTopCustomers(20, filters.startDate, filters.endDate);
 
-  const generateInventoryValuationData = () => ({
-    reportName: 'Inventory Valuation Summary',
-    asOfDate: filters.endDate,
-    items: [
-      { category: 'Meat & Poultry', items: 15, qty: 450, avgCost: 850, value: 382500 },
-      { category: 'Seafood', items: 12, qty: 180, avgCost: 1200, value: 216000 },
-      { category: 'Vegetables', items: 25, qty: 800, avgCost: 120, value: 96000 },
-      { category: 'Dairy Products', items: 18, qty: 350, avgCost: 180, value: 63000 },
-      { category: 'Grains & Pasta', items: 10, qty: 500, avgCost: 85, value: 42500 },
-      { category: 'Beverages', items: 30, qty: 1200, avgCost: 250, value: 300000 },
-      { category: 'Room Supplies', items: 20, qty: 600, avgCost: 150, value: 90000 },
-      { category: 'Cleaning Supplies', items: 15, qty: 400, avgCost: 95, value: 38000 },
-    ],
-    totalValue: 1228000,
-    totalItems: 145,
-    totalQty: 4480
-  });
+      const customers = topCustomers.customers.map(customer => ({
+        name: customer.user_id, // Will show user ID - could be enhanced with user lookup
+        sales: customer.total_spent,
+        transactions: customer.transaction_count,
+        avgSale: customer.average_transaction
+      }));
 
-  const generateDailySalesData = () => ({
-    reportName: 'Daily Sales Summary',
-    date: filters.endDate,
-    departments: [
-      { name: 'Rooms', transactions: 45, sales: 95000, avgSale: 2111 },
-      { name: 'Restaurant', transactions: 128, sales: 32000, avgSale: 250 },
-      { name: 'Bar', transactions: 95, sales: 14000, avgSale: 147 },
-      { name: 'Room Service', transactions: 32, sales: 9500, avgSale: 297 },
-      { name: 'Events', transactions: 2, sales: 12000, avgSale: 6000 },
-    ],
-    paymentMethods: [
-      { method: 'M-Pesa', transactions: 168, amount: 89200 },
-      { method: 'Credit Card', transactions: 95, amount: 56800 },
-      { method: 'Cash', transactions: 28, amount: 12500 },
-      { method: 'Bank Transfer', transactions: 11, amount: 4000 },
-    ],
-    totalSales: 162500,
-    totalTransactions: 302,
-    avgTransaction: 538
-  });
+      const total = customers.reduce((sum, c) => sum + c.sales, 0);
+
+      return {
+        reportName: 'Sales by Customer Summary',
+        period: `${filters.startDate} to ${filters.endDate}`,
+        customers,
+        total,
+        dataSource: 'Real API Data'
+      };
+    } catch (error) {
+      console.error('Failed to fetch customer sales data:', error);
+      toast.error('Failed to load Sales by Customer data');
+      return {
+        reportName: 'Sales by Customer Summary',
+        period: `${filters.startDate} to ${filters.endDate}`,
+        customers: [],
+        total: 0,
+        error: 'Failed to load data'
+      };
+    }
+  };
+
+  const generateInventoryValuationData = async () => {
+    try {
+      const [inventoryItems, categories] = await Promise.all([
+        inventoryService.getItems({}),
+        inventoryService.getCategories()
+      ]);
+
+      // Create category map
+      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+      // Group items by category
+      const categoryGroups = new Map<string, { items: number; qty: number; totalCost: number; totalValue: number }>();
+
+      inventoryItems.forEach(item => {
+        const catName = item.category_id ? categoryMap.get(item.category_id) || 'Uncategorized' : 'Uncategorized';
+        const existing = categoryGroups.get(catName) || { items: 0, qty: 0, totalCost: 0, totalValue: 0 };
+
+        existing.items += 1;
+        existing.qty += item.quantity;
+        existing.totalCost += item.unit_cost;
+        existing.totalValue += item.quantity * item.unit_cost;
+
+        categoryGroups.set(catName, existing);
+      });
+
+      // Convert to array format
+      const items = Array.from(categoryGroups.entries()).map(([category, data]) => ({
+        category,
+        items: data.items,
+        qty: data.qty,
+        avgCost: data.items > 0 ? Math.round(data.totalCost / data.items) : 0,
+        value: Math.round(data.totalValue)
+      })).sort((a, b) => b.value - a.value);
+
+      const totalValue = items.reduce((sum, i) => sum + i.value, 0);
+      const totalItems = items.reduce((sum, i) => sum + i.items, 0);
+      const totalQty = items.reduce((sum, i) => sum + i.qty, 0);
+
+      return {
+        reportName: 'Inventory Valuation Summary',
+        asOfDate: filters.endDate,
+        items,
+        totalValue,
+        totalItems,
+        totalQty,
+        dataSource: 'Real API Data'
+      };
+    } catch (error) {
+      console.error('Failed to fetch inventory valuation:', error);
+      toast.error('Failed to load Inventory Valuation data');
+      return {
+        reportName: 'Inventory Valuation Summary',
+        asOfDate: filters.endDate,
+        items: [],
+        totalValue: 0,
+        totalItems: 0,
+        totalQty: 0,
+        error: 'Failed to load data'
+      };
+    }
+  };
+
+  const generateDailySalesData = async () => {
+    try {
+      const [revenueData, ordersData, bookingsData] = await Promise.all([
+        reportsService.getRevenueAnalytics(filters.startDate, filters.endDate, 'day'),
+        reportsService.getOrdersStats(filters.startDate, filters.endDate),
+        reportsService.getBookingsStats(filters.startDate, filters.endDate)
+      ]);
+
+      // Build departments from real data
+      const departments = [
+        {
+          name: 'Rooms/Bookings',
+          transactions: bookingsData.summary.total_bookings || 0,
+          sales: bookingsData.summary.total_revenue || 0,
+          avgSale: bookingsData.summary.average_booking_value || 0
+        },
+        {
+          name: 'Restaurant/Orders',
+          transactions: ordersData.summary.total_orders || 0,
+          sales: ordersData.summary.total_revenue || 0,
+          avgSale: ordersData.summary.average_order_value || 0
+        }
+      ];
+
+      // Build payment methods from revenue data
+      const paymentMethods: { method: string; transactions: number; amount: number }[] = [];
+
+      // Aggregate payment data from daily revenue
+      let totalMpesa = 0, totalCash = 0, totalCard = 0;
+      revenueData.data.forEach(day => {
+        totalMpesa += day.mpesa || 0;
+        totalCash += day.cash || 0;
+        totalCard += day.card || 0;
+      });
+
+      if (totalMpesa > 0) paymentMethods.push({ method: 'M-Pesa', transactions: 0, amount: totalMpesa });
+      if (totalCash > 0) paymentMethods.push({ method: 'Cash', transactions: 0, amount: totalCash });
+      if (totalCard > 0) paymentMethods.push({ method: 'Card', transactions: 0, amount: totalCard });
+
+      const totalSales = revenueData.summary.total_revenue || 0;
+      const totalTransactions = revenueData.summary.total_transactions || 0;
+
+      return {
+        reportName: 'Daily Sales Summary',
+        date: filters.endDate,
+        departments,
+        paymentMethods,
+        totalSales,
+        totalTransactions,
+        avgTransaction: revenueData.summary.average_transaction || 0,
+        dataSource: 'Real API Data'
+      };
+    } catch (error) {
+      console.error('Failed to fetch daily sales data:', error);
+      toast.error('Failed to load Daily Sales data');
+      return {
+        reportName: 'Daily Sales Summary',
+        date: filters.endDate,
+        departments: [],
+        paymentMethods: [],
+        totalSales: 0,
+        totalTransactions: 0,
+        avgTransaction: 0,
+        error: 'Failed to load data'
+      };
+    }
+  };
 
   const generateEmployeeSalesData = async () => {
     try {

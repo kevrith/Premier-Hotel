@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navbar } from '@/components/Navbar';
@@ -16,16 +16,20 @@ import {
   Bell,
   MapPin,
   CreditCard,
-  Star,
   Plus,
   Volume2,
   VolumeX,
   ArrowRightLeft,
   WifiOff,
-  Receipt
+  Receipt,
+  RefreshCw,
+  Wifi
 } from 'lucide-react';
 import { BillsManagement } from '@/components/Bills';
 import { toast } from 'react-hot-toast';
+import { ordersApi, Order } from '@/lib/api/orders';
+import { useOrderUpdates } from '@/hooks/useOrderUpdates';
+import { formatDistanceToNow } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -44,85 +48,38 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-const mockTables = [
-  {
-    id: 'T-01',
-    number: '12',
-    location: 'Main Dining',
-    status: 'occupied',
-    guests: 4,
-    orderStatus: 'in-progress',
-    orderTime: new Date(Date.now() - 15 * 60 * 1000),
-    totalBill: 4500,
-    items: ['Grilled Salmon x2', 'Caesar Salad x2', 'Wine x1']
-  },
-  {
-    id: 'T-02',
-    number: '7',
-    location: 'Poolside',
-    status: 'occupied',
-    guests: 2,
-    orderStatus: 'ready',
-    orderTime: new Date(Date.now() - 25 * 60 * 1000),
-    totalBill: 2800,
-    items: ['Burger x2', 'Fries x2', 'Soda x2']
-  },
-  {
-    id: 'T-03',
-    number: '3',
-    location: 'Main Dining',
-    status: 'needs-attention',
-    guests: 3,
-    orderStatus: 'completed',
-    orderTime: new Date(Date.now() - 45 * 60 * 1000),
-    totalBill: 6200,
-    items: ['Steak x1', 'Pizza x2', 'Dessert x3'],
-    needsPayment: true
-  }
-];
-
-const mockRoomService = [
-  {
-    id: 'RS-001',
-    room: '305',
-    guest: 'John Doe',
-    items: ['Breakfast Combo x2', 'Coffee x2'],
-    status: 'pending',
-    orderTime: new Date(Date.now() - 5 * 60 * 1000),
-    deliveryTime: new Date(Date.now() + 10 * 60 * 1000),
-    totalBill: 1500
-  },
-  {
-    id: 'RS-002',
-    room: '201',
-    guest: 'Jane Smith',
-    items: ['Club Sandwich x1', 'Fresh Juice x1'],
-    status: 'ready',
-    orderTime: new Date(Date.now() - 20 * 60 * 1000),
-    deliveryTime: new Date(),
-    totalBill: 950
-  }
-];
-
 export default function WaiterDashboard() {
   const navigate = useNavigate();
   const { user, isAuthenticated, role } = useAuth();
-  const [tables, setTables] = useState(mockTables);
-  const [roomService, setRoomService] = useState(mockRoomService);
   const [activeTab, setActiveTab] = useState('tables');
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState<string | null>(null);
+
+  // Real-time order updates
+  const {
+    orders,
+    newOrderCount,
+    isConnected,
+    clearNewOrderCount,
+    setAllOrders
+  } = useOrderUpdates({
+    playSound: true,
+    showNotifications: true,
+    showToasts: true
+  });
 
   // Sound notifications
   const [soundEnabled, setSoundEnabled] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const previousOrderCountRef = useRef(tables.length + roomService.length);
 
   // Create new order dialog
   const [showNewOrderDialog, setShowNewOrderDialog] = useState(false);
   const [newOrderForm, setNewOrderForm] = useState({
-    type: 'table', // 'table' or 'room'
+    type: 'table' as 'table' | 'room',
     location: '',
     guests: 2,
-    items: ''
+    customerName: '',
+    customerPhone: ''
   });
 
   // Table transfer dialog
@@ -135,18 +92,41 @@ export default function WaiterDashboard() {
 
   // Offline detection
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [offlineQueue, setOfflineQueue] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!isAuthenticated || (role !== 'waiter' && role !== 'admin')) {
+    if (!isAuthenticated || (role !== 'waiter' && role !== 'admin' && role !== 'manager')) {
       toast.error('Access denied. Waiter privileges required.');
       navigate('/unauthorized');
     }
   }, [isAuthenticated, role, navigate]);
 
+  // Load initial orders
+  useEffect(() => {
+    async function loadOrders() {
+      try {
+        setLoading(true);
+        // Get all active orders (pending, confirmed, preparing, ready)
+        const data = await ordersApi.getAll({ limit: 100 });
+        // Filter to show active orders only
+        const activeOrders = data.filter(o =>
+          ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(o.status)
+        );
+        setAllOrders(activeOrders);
+      } catch (error) {
+        console.error('Failed to load orders:', error);
+        toast.error('Failed to load orders');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (isAuthenticated && (role === 'waiter' || role === 'admin' || role === 'manager')) {
+      loadOrders();
+    }
+  }, [isAuthenticated, role, setAllOrders]);
+
   // Sound notification setup
   useEffect(() => {
-    // Initialize audio element
     audioRef.current = new Audio('/notification.mp3');
     audioRef.current.volume = 0.5;
 
@@ -158,30 +138,16 @@ export default function WaiterDashboard() {
     };
   }, []);
 
-  // Monitor for new orders and play sound
-  useEffect(() => {
-    const totalOrders = tables.length + roomService.length;
-    if (totalOrders > previousOrderCountRef.current && soundEnabled) {
-      playNotificationSound();
-      announceNewOrder();
-    }
-    previousOrderCountRef.current = totalOrders;
-  }, [tables.length, roomService.length, soundEnabled]);
-
   // Offline/online detection
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       toast.success('Connection restored');
-      // Process offline queue
-      if (offlineQueue.length > 0) {
-        processOfflineQueue();
-      }
     };
 
     const handleOffline = () => {
       setIsOnline(false);
-      toast.error('You are offline. Orders will be queued.');
+      toast.error('You are offline. Some features may not work.');
     };
 
     window.addEventListener('online', handleOnline);
@@ -191,107 +157,73 @@ export default function WaiterDashboard() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [offlineQueue]);
+  }, []);
 
-  if (!isAuthenticated || (role !== 'waiter' && role !== 'admin')) {
+  if (!isAuthenticated || (role !== 'waiter' && role !== 'admin' && role !== 'manager')) {
     return null;
   }
 
-  // Sound notification functions
-  const playNotificationSound = () => {
-    if (audioRef.current && soundEnabled) {
-      audioRef.current.play().catch(err => console.log('Audio play failed:', err));
-    }
-  };
-
-  const announceNewOrder = () => {
-    if ('speechSynthesis' in window && soundEnabled) {
-      const utterance = new SpeechSynthesisUtterance('New order received');
-      utterance.rate = 1.2;
-      utterance.pitch = 1;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
-
+  // Toggle sound
   const toggleSound = () => {
     setSoundEnabled(!soundEnabled);
     toast.success(soundEnabled ? 'Sound alerts disabled' : 'Sound alerts enabled');
   };
 
-  // Process offline queue when connection is restored
-  const processOfflineQueue = () => {
-    // In production, this would send queued orders to the server
-    offlineQueue.forEach(order => {
-      if (order.type === 'table') {
-        handleCreateTableOrder(order, true);
-      } else {
-        handleCreateRoomOrder(order, true);
-      }
-    });
-    setOfflineQueue([]);
-    toast.success(`${offlineQueue.length} queued orders processed`);
+  // Refresh orders
+  const refreshOrders = async () => {
+    try {
+      setLoading(true);
+      const data = await ordersApi.getAll({ limit: 100 });
+      const activeOrders = data.filter(o =>
+        ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(o.status)
+      );
+      setAllOrders(activeOrders);
+      toast.success('Orders refreshed');
+    } catch (error) {
+      console.error('Failed to refresh orders:', error);
+      toast.error('Failed to refresh orders');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Create new order handlers
+  // Update order status
+  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
+    try {
+      setUpdating(orderId);
+      await ordersApi.updateStatus(orderId, { status: newStatus as any });
+      toast.success(`Order updated to ${newStatus}`);
+      // Refresh orders to get latest state
+      refreshOrders();
+    } catch (error) {
+      console.error('Failed to update order:', error);
+      toast.error('Failed to update order status');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  // Navigate to menu to create order
   const handleCreateNewOrder = () => {
-    if (!isOnline) {
-      // Add to offline queue
-      const order = {
-        ...newOrderForm,
-        id: `OFFLINE-${Date.now()}`,
-        timestamp: new Date()
-      };
-      setOfflineQueue([...offlineQueue, order]);
-      toast.success('Order queued for when connection is restored');
-      setShowNewOrderDialog(false);
-      resetNewOrderForm();
+    // Navigate to menu page with order context
+    const locationType = newOrderForm.type;
+    const location = newOrderForm.location;
+
+    if (!location) {
+      toast.error('Please enter a location');
       return;
     }
 
-    if (newOrderForm.type === 'table') {
-      handleCreateTableOrder(newOrderForm);
-    } else {
-      handleCreateRoomOrder(newOrderForm);
-    }
-  };
+    // Store order context and navigate to menu
+    sessionStorage.setItem('orderContext', JSON.stringify({
+      location_type: locationType,
+      location: locationType === 'table' ? `Table ${location}` : `Room ${location}`,
+      customer_name: newOrderForm.customerName,
+      customer_phone: newOrderForm.customerPhone
+    }));
 
-  const handleCreateTableOrder = (orderData: any, fromQueue = false) => {
-    const newTable = {
-      id: `T-${Date.now()}`,
-      number: orderData.location,
-      location: 'Main Dining',
-      status: 'occupied',
-      guests: orderData.guests,
-      orderStatus: 'in-progress',
-      orderTime: new Date(),
-      totalBill: 0,
-      items: orderData.items.split(',').map((item: string) => item.trim())
-    };
-    setTables([...tables, newTable]);
-    if (!fromQueue) {
-      toast.success(`Table ${orderData.location} order created`);
-      setShowNewOrderDialog(false);
-      resetNewOrderForm();
-    }
-  };
-
-  const handleCreateRoomOrder = (orderData: any, fromQueue = false) => {
-    const newOrder = {
-      id: `RS-${Date.now()}`,
-      room: orderData.location,
-      guest: 'Guest',
-      items: orderData.items.split(',').map((item: string) => item.trim()),
-      status: 'pending',
-      orderTime: new Date(),
-      deliveryTime: new Date(Date.now() + 20 * 60 * 1000),
-      totalBill: 0
-    };
-    setRoomService([...roomService, newOrder]);
-    if (!fromQueue) {
-      toast.success(`Room ${orderData.location} order created`);
-      setShowNewOrderDialog(false);
-      resetNewOrderForm();
-    }
+    setShowNewOrderDialog(false);
+    navigate('/menu');
   };
 
   const resetNewOrderForm = () => {
@@ -299,29 +231,26 @@ export default function WaiterDashboard() {
       type: 'table',
       location: '',
       guests: 2,
-      items: ''
+      customerName: '',
+      customerPhone: ''
     });
   };
 
   // Table transfer handlers
-  const handleTransferTable = () => {
-    if (transferForm.orderId.startsWith('T-')) {
-      setTables(tables.map(table =>
-        table.id === transferForm.orderId
-          ? { ...table, number: transferForm.newLocation }
-          : table
-      ));
-      toast.success(`Order transferred to Table ${transferForm.newLocation}`);
-    } else {
-      setRoomService(roomService.map(order =>
-        order.id === transferForm.orderId
-          ? { ...order, room: transferForm.newLocation }
-          : order
-      ));
-      toast.success(`Order transferred to Room ${transferForm.newLocation}`);
+  const handleTransferTable = async () => {
+    try {
+      // Update the order's location
+      await ordersApi.update(transferForm.orderId, {
+        notes: `Transferred from ${transferForm.currentLocation} to ${transferForm.newLocation}`
+      });
+      toast.success(`Order transferred to ${transferForm.newLocation}`);
+      setShowTransferDialog(false);
+      resetTransferForm();
+      refreshOrders();
+    } catch (error) {
+      console.error('Failed to transfer order:', error);
+      toast.error('Failed to transfer order');
     }
-    setShowTransferDialog(false);
-    resetTransferForm();
   };
 
   const openTransferDialog = (orderId: string, currentLocation: string) => {
@@ -341,203 +270,146 @@ export default function WaiterDashboard() {
     });
   };
 
-  const handleServeOrder = (tableId) => {
-    setTables(tables.map(table =>
-      table.id === tableId ? { ...table, orderStatus: 'served' } : table
-    ));
-    toast.success('Order marked as served!');
+  // Get time since order
+  const getTimeSince = (dateString: string) => {
+    try {
+      return formatDistanceToNow(new Date(dateString), { addSuffix: true });
+    } catch {
+      return 'Just now';
+    }
   };
 
-  const handleProcessPayment = (tableId) => {
-    toast.success('Payment processed successfully!');
-    setTables(tables.filter(table => table.id !== tableId));
-  };
+  // Filter orders by location type
+  const tableOrders = orders.filter(o => o.location_type === 'table');
+  const roomOrders = orders.filter(o => o.location_type === 'room');
 
-  const handleDeliverRoomService = (orderId) => {
-    setRoomService(roomService.map(order =>
-      order.id === orderId ? { ...order, status: 'delivered' } : order
-    ));
-    toast.success('Order delivered!');
-  };
+  // Orders needing attention (ready for pickup)
+  const needsAttention = orders.filter(o => o.status === 'ready');
+  const activeOrders = orders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status));
 
-  const getTimeSince = (date) => {
-    const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
-    return `${minutes} min ago`;
-  };
+  // Order Card Component
+  const OrderCard = ({ order }: { order: Order }) => {
+    const isReady = order.status === 'ready';
+    const isPending = order.status === 'pending' || order.status === 'confirmed';
+    const isPreparing = order.status === 'preparing';
+    const isServed = order.status === 'served';
 
-  const needsAttention = tables.filter(t => t.status === 'needs-attention' || t.orderStatus === 'ready');
-  const activeOrders = tables.filter(t => t.orderStatus === 'in-progress');
-
-  const TableCard = ({ table }) => (
-    <Card className={`${table.status === 'needs-attention' ? 'border-orange-500 border-2' : ''}`}>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <MapPin className="h-5 w-5" />
-              Table {table.number}
-              {table.status === 'needs-attention' && (
-                <Bell className="h-4 w-4 text-orange-500 animate-bounce" />
-              )}
-            </CardTitle>
-            <CardDescription>{table.location} • {table.guests} guests</CardDescription>
+    return (
+      <Card className={`${isReady ? 'border-green-500 border-2' : ''}`}>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                {order.location}
+                {isReady && (
+                  <Bell className="h-4 w-4 text-green-500 animate-bounce" />
+                )}
+              </CardTitle>
+              <CardDescription className="flex items-center gap-1 mt-1">
+                <Clock className="h-3 w-3" />
+                {getTimeSince(order.created_at)}
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <Badge variant="outline">{order.order_number}</Badge>
+              <Badge variant={
+                isReady ? 'default' :
+                isPreparing ? 'secondary' :
+                isServed ? 'outline' :
+                'secondary'
+              }>
+                {order.status}
+              </Badge>
+            </div>
           </div>
-          <Badge variant={
-            table.orderStatus === 'ready' ? 'default' :
-            table.orderStatus === 'in-progress' ? 'secondary' :
-            'outline'
-          }>
-            {table.orderStatus}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Order Details */}
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            Ordered {getTimeSince(table.orderTime)}
-          </p>
-          <div className="text-sm space-y-1">
-            {table.items.map((item, idx) => (
-              <p key={idx}>• {item}</p>
-            ))}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Order Items */}
+          <div className="space-y-2">
+            <div className="text-sm space-y-1">
+              {order.items.map((item: any, idx: number) => (
+                <p key={idx} className="flex justify-between">
+                  <span>• {item.name}</span>
+                  <span className="text-muted-foreground">x{item.quantity}</span>
+                </p>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <Separator />
-
-        {/* Bill */}
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Total Bill</span>
-          <span className="text-lg font-bold text-primary">KES {table.totalBill.toLocaleString()}</span>
-        </div>
-
-        {/* Actions */}
-        <div className="flex flex-col gap-2">
-          <div className="flex gap-2">
-            {table.orderStatus === 'ready' && (
-              <Button
-                className="flex-1"
-                onClick={() => handleServeOrder(table.id)}
-              >
-                <Utensils className="h-4 w-4 mr-2" />
-                Serve Order
-              </Button>
-            )}
-            {table.needsPayment && (
-              <Button
-                className="flex-1"
-                variant="default"
-                onClick={() => handleProcessPayment(table.id)}
-              >
-                <CreditCard className="h-4 w-4 mr-2" />
-                Process Payment
-              </Button>
-            )}
-            {table.orderStatus === 'in-progress' && (
-              <Button
-                className="flex-1"
-                variant="outline"
-                disabled
-              >
-                <Clock className="h-4 w-4 mr-2" />
-                In Kitchen
-              </Button>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full"
-            onClick={() => openTransferDialog(table.id, `Table ${table.number}`)}
-          >
-            <ArrowRightLeft className="h-3 w-3 mr-2" />
-            Transfer
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
-  const RoomServiceCard = ({ order }) => (
-    <Card className={`${order.status === 'ready' ? 'border-green-500 border-2' : ''}`}>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              Room {order.room}
-              {order.status === 'ready' && (
-                <Bell className="h-4 w-4 text-green-500" />
-              )}
-            </CardTitle>
-            <CardDescription>{order.guest}</CardDescription>
-          </div>
-          <Badge>{order.id}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Order Items */}
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Ordered {getTimeSince(order.orderTime)}
-          </p>
-          <div className="text-sm space-y-1">
-            {order.items.map((item, idx) => (
-              <p key={idx}>• {item}</p>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
-
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Total</span>
-          <span className="font-bold text-primary">KES {order.totalBill.toLocaleString()}</span>
-        </div>
-
-        {/* Actions */}
-        <div className="flex flex-col gap-2">
-          {order.status === 'ready' ? (
-            <Button
-              className="w-full"
-              onClick={() => handleDeliverRoomService(order.id)}
-            >
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Deliver to Room
-            </Button>
-          ) : order.status === 'pending' ? (
-            <Button
-              className="w-full"
-              variant="outline"
-              disabled
-            >
-              <Clock className="h-4 w-4 mr-2" />
-              Preparing in Kitchen
-            </Button>
-          ) : (
-            <Button
-              className="w-full"
-              variant="secondary"
-              disabled
-            >
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Delivered
-            </Button>
+          {order.special_instructions && (
+            <div className="p-2 bg-yellow-50 rounded text-sm text-yellow-800">
+              <span className="font-medium">Note:</span> {order.special_instructions}
+            </div>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full"
-            onClick={() => openTransferDialog(order.id, `Room ${order.room}`)}
-          >
-            <ArrowRightLeft className="h-3 w-3 mr-2" />
-            Transfer
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
+
+          <Separator />
+
+          {/* Bill */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Total Bill</span>
+            <span className="text-lg font-bold text-primary">
+              KES {order.total_amount.toLocaleString()}
+            </span>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              {isReady && (
+                <Button
+                  className="flex-1"
+                  onClick={() => handleStatusUpdate(order.id, 'served')}
+                  disabled={updating === order.id}
+                >
+                  {updating === order.id ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Utensils className="h-4 w-4 mr-2" />
+                  )}
+                  Serve Order
+                </Button>
+              )}
+              {isServed && (
+                <Button
+                  className="flex-1"
+                  variant="default"
+                  onClick={() => handleStatusUpdate(order.id, 'completed')}
+                  disabled={updating === order.id}
+                >
+                  {updating === order.id ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CreditCard className="h-4 w-4 mr-2" />
+                  )}
+                  Complete & Pay
+                </Button>
+              )}
+              {(isPending || isPreparing) && (
+                <Button
+                  className="flex-1"
+                  variant="outline"
+                  disabled
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  {isPreparing ? 'In Kitchen' : 'Pending'}
+                </Button>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={() => openTransferDialog(order.id, order.location)}
+            >
+              <ArrowRightLeft className="h-3 w-3 mr-2" />
+              Transfer
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -553,16 +425,34 @@ export default function WaiterDashboard() {
               </div>
               <div>
                 <h1 className="text-3xl md:text-4xl font-bold">Waiter Dashboard</h1>
-                <p className="text-muted-foreground">Welcome, {user?.firstName}!</p>
+                <p className="text-muted-foreground">Welcome, {user?.full_name || user?.email}!</p>
               </div>
             </div>
-            <div className="flex gap-2">
-              {!isOnline && (
-                <Badge variant="destructive" className="flex items-center gap-1">
-                  <WifiOff className="h-3 w-3" />
+            <div className="flex gap-2 items-center">
+              {/* Connection Status */}
+              {isConnected ? (
+                <Badge variant="outline" className="flex items-center gap-1">
+                  <Wifi className="h-3 w-3 text-green-500" />
+                  Live
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="flex items-center gap-1">
+                  <WifiOff className="h-3 w-3 text-red-500" />
                   Offline
                 </Badge>
               )}
+
+              {/* New Orders Badge */}
+              {newOrderCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="cursor-pointer"
+                  onClick={clearNewOrderCount}
+                >
+                  {newOrderCount} new
+                </Badge>
+              )}
+
               <Button
                 variant={soundEnabled ? "default" : "outline"}
                 size="sm"
@@ -570,9 +460,17 @@ export default function WaiterDashboard() {
               >
                 {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
               </Button>
+
               <Button
-                onClick={() => setShowNewOrderDialog(true)}
+                variant="outline"
+                size="sm"
+                onClick={refreshOrders}
+                disabled={loading}
               >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+
+              <Button onClick={() => setShowNewOrderDialog(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Order
               </Button>
@@ -584,45 +482,45 @@ export default function WaiterDashboard() {
         <div className="grid gap-4 md:grid-cols-4 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Needs Attention</CardTitle>
-              <Bell className="h-4 w-4 text-orange-500" />
+              <CardTitle className="text-sm font-medium">Ready for Pickup</CardTitle>
+              <Bell className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{needsAttention.length}</div>
-              <p className="text-xs text-muted-foreground">Orders ready / payment needed</p>
+              <p className="text-xs text-muted-foreground">Orders ready to serve</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Orders</CardTitle>
+              <CardTitle className="text-sm font-medium">In Kitchen</CardTitle>
               <Clock className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{activeOrders.length}</div>
-              <p className="text-xs text-muted-foreground">In kitchen</p>
+              <p className="text-xs text-muted-foreground">Being prepared</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Served Today</CardTitle>
-              <TrendingUp className="h-4 w-4 text-green-500" />
+              <CardTitle className="text-sm font-medium">Table Orders</CardTitle>
+              <TrendingUp className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">34</div>
-              <p className="text-xs text-muted-foreground">+8 from yesterday</p>
+              <div className="text-2xl font-bold">{tableOrders.length}</div>
+              <p className="text-xs text-muted-foreground">Active tables</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tips Earned</CardTitle>
+              <CardTitle className="text-sm font-medium">Room Service</CardTitle>
               <DollarSign className="h-4 w-4 text-purple-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">KES 3,200</div>
-              <p className="text-xs text-muted-foreground">Today's tips</p>
+              <div className="text-2xl font-bold">{roomOrders.length}</div>
+              <p className="text-xs text-muted-foreground">Room orders</p>
             </CardContent>
           </Card>
         </div>
@@ -631,10 +529,10 @@ export default function WaiterDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="tables">
-              Tables ({tables.length})
+              Tables ({tableOrders.length})
             </TabsTrigger>
             <TabsTrigger value="room-service">
-              Room Service ({roomService.filter(o => o.status !== 'delivered').length})
+              Room Service ({roomOrders.length})
             </TabsTrigger>
             <TabsTrigger value="bills">
               <Receipt className="h-4 w-4 mr-2" />
@@ -644,80 +542,111 @@ export default function WaiterDashboard() {
 
           {/* Tables Tab */}
           <TabsContent value="tables" className="space-y-6">
-            {needsAttention.length > 0 && (
-              <div>
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                  <Bell className="h-5 w-5 text-orange-500" />
-                  Needs Attention ({needsAttention.length})
-                </h2>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {needsAttention.map(table => (
-                    <TableCard key={table.id} table={table} />
-                  ))}
-                </div>
+            {loading ? (
+              <div className="text-center py-12">
+                <RefreshCw className="h-10 w-10 animate-spin mx-auto mb-4" />
+                <p className="text-muted-foreground">Loading orders...</p>
               </div>
-            )}
-
-            {activeOrders.length > 0 && (
-              <div>
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-blue-500" />
-                  In Progress ({activeOrders.length})
-                </h2>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {activeOrders.map(table => (
-                    <TableCard key={table.id} table={table} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {tables.length === 0 && (
+            ) : tableOrders.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-12">
                   <Utensils className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <h3 className="text-lg font-semibold mb-2">No Active Tables</h3>
-                  <p className="text-muted-foreground">All tables are free</p>
+                  <h3 className="text-lg font-semibold mb-2">No Active Table Orders</h3>
+                  <p className="text-muted-foreground">Orders will appear here when customers place them</p>
                 </CardContent>
               </Card>
+            ) : (
+              <>
+                {/* Ready Orders Section */}
+                {tableOrders.filter(o => o.status === 'ready').length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                      <Bell className="h-5 w-5 text-green-500" />
+                      Ready for Pickup
+                    </h2>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {tableOrders.filter(o => o.status === 'ready').map(order => (
+                        <OrderCard key={order.id} order={order} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* In Progress Orders */}
+                {tableOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-blue-500" />
+                      In Progress
+                    </h2>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {tableOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).map(order => (
+                        <OrderCard key={order.id} order={order} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Served Orders */}
+                {tableOrders.filter(o => o.status === 'served').length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-orange-500" />
+                      Awaiting Payment
+                    </h2>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {tableOrders.filter(o => o.status === 'served').map(order => (
+                        <OrderCard key={order.id} order={order} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </TabsContent>
 
           {/* Room Service Tab */}
           <TabsContent value="room-service" className="space-y-6">
-            {roomService.filter(o => o.status !== 'delivered').length === 0 ? (
+            {loading ? (
+              <div className="text-center py-12">
+                <RefreshCw className="h-10 w-10 animate-spin mx-auto mb-4" />
+                <p className="text-muted-foreground">Loading orders...</p>
+              </div>
+            ) : roomOrders.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-12">
                   <MapPin className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <h3 className="text-lg font-semibold mb-2">No Room Service Orders</h3>
-                  <p className="text-muted-foreground">Orders will appear here</p>
+                  <p className="text-muted-foreground">Room service orders will appear here</p>
                 </CardContent>
               </Card>
             ) : (
               <>
-                {roomService.filter(o => o.status === 'ready').length > 0 && (
+                {/* Ready for Delivery */}
+                {roomOrders.filter(o => o.status === 'ready').length > 0 && (
                   <div>
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
                       Ready for Delivery
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {roomService.filter(o => o.status === 'ready').map(order => (
-                        <RoomServiceCard key={order.id} order={order} />
+                      {roomOrders.filter(o => o.status === 'ready').map(order => (
+                        <OrderCard key={order.id} order={order} />
                       ))}
                     </div>
                   </div>
                 )}
 
-                {roomService.filter(o => o.status === 'pending').length > 0 && (
+                {/* In Kitchen */}
+                {roomOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).length > 0 && (
                   <div>
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                       <Clock className="h-5 w-5 text-blue-500" />
                       In Kitchen
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {roomService.filter(o => o.status === 'pending').map(order => (
-                        <RoomServiceCard key={order.id} order={order} />
+                      {roomOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).map(order => (
+                        <OrderCard key={order.id} order={order} />
                       ))}
                     </div>
                   </div>
@@ -739,7 +668,7 @@ export default function WaiterDashboard() {
           <DialogHeader>
             <DialogTitle>Create New Order</DialogTitle>
             <DialogDescription>
-              Add a new order for a table or room service
+              Set up order details, then you'll be taken to the menu to add items
             </DialogDescription>
           </DialogHeader>
 
@@ -748,7 +677,7 @@ export default function WaiterDashboard() {
               <Label>Order Type</Label>
               <Select
                 value={newOrderForm.type}
-                onValueChange={(value) => setNewOrderForm({ ...newOrderForm, type: value })}
+                onValueChange={(value: 'table' | 'room') => setNewOrderForm({ ...newOrderForm, type: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -769,46 +698,34 @@ export default function WaiterDashboard() {
               />
             </div>
 
-            {newOrderForm.type === 'table' && (
-              <div className="space-y-2">
-                <Label>Number of Guests</Label>
-                <Select
-                  value={newOrderForm.guests.toString()}
-                  onValueChange={(value) => setNewOrderForm({ ...newOrderForm, guests: parseInt(value) })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 Guest</SelectItem>
-                    <SelectItem value="2">2 Guests</SelectItem>
-                    <SelectItem value="3">3 Guests</SelectItem>
-                    <SelectItem value="4">4 Guests</SelectItem>
-                    <SelectItem value="5">5+ Guests</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label>Customer Name (optional)</Label>
+              <Input
+                placeholder="e.g., John Doe"
+                value={newOrderForm.customerName}
+                onChange={(e) => setNewOrderForm({ ...newOrderForm, customerName: e.target.value })}
+              />
+            </div>
 
             <div className="space-y-2">
-              <Label>Items (comma separated)</Label>
+              <Label>Customer Phone (optional)</Label>
               <Input
-                placeholder="e.g., Burger x2, Fries x1, Coffee x2"
-                value={newOrderForm.items}
-                onChange={(e) => setNewOrderForm({ ...newOrderForm, items: e.target.value })}
+                placeholder="e.g., 0712345678"
+                value={newOrderForm.customerPhone}
+                onChange={(e) => setNewOrderForm({ ...newOrderForm, customerPhone: e.target.value })}
               />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewOrderDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowNewOrderDialog(false); resetNewOrderForm(); }}>
               Cancel
             </Button>
             <Button
               onClick={handleCreateNewOrder}
-              disabled={!newOrderForm.location || !newOrderForm.items}
+              disabled={!newOrderForm.location}
             >
-              Create Order
+              Continue to Menu
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -834,9 +751,9 @@ export default function WaiterDashboard() {
             </div>
 
             <div className="space-y-2">
-              <Label>New {transferForm.orderId.startsWith('T-') ? 'Table' : 'Room'} Number</Label>
+              <Label>New Location</Label>
               <Input
-                placeholder={transferForm.orderId.startsWith('T-') ? 'e.g., 15' : 'e.g., 402'}
+                placeholder="e.g., Table 15 or Room 402"
                 value={transferForm.newLocation}
                 onChange={(e) => setTransferForm({ ...transferForm, newLocation: e.target.value })}
               />

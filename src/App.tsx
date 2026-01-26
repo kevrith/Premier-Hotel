@@ -7,6 +7,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider } from "./contexts/AuthContext";
 import { OfflineProvider } from "./contexts/OfflineContext";
 import { SocketProvider } from "./contexts/SocketContext";
+import { MobileNavigation } from "./components/MobileNavigation";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -221,6 +222,9 @@ const App = () => {
                 },
               }}
             />
+
+            {/* Mobile Bottom Navigation */}
+            <MobileNavigation />
             </SocketProvider>
           </OfflineProvider>
         </AuthProvider>

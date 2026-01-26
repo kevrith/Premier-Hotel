@@ -132,12 +132,27 @@ export default function ChefDashboard() {
     return null;
   }
 
+  // Refresh orders from API
+  const refreshOrders = async () => {
+    try {
+      const data = await ordersApi.getKitchenOrders();
+      console.log('[DEBUG] Refreshed orders:', data.map(o => ({ id: o.id, status: o.status, order_number: o.order_number })));
+      setAllOrders(data);
+    } catch (error) {
+      console.error('Failed to refresh orders:', error);
+    }
+  };
+
   // Update order status
   const handleStatusUpdate = async (orderId: string, newStatus: string) => {
     try {
       setUpdating(orderId);
-      await ordersApi.updateStatus(orderId, { status: newStatus as any });
+      console.log(`[DEBUG] Updating order ${orderId} to status: ${newStatus}`);
+      const updatedOrder = await ordersApi.updateStatus(orderId, { status: newStatus as any });
+      console.log('[DEBUG] API returned updated order:', updatedOrder);
       toast.success(`Order updated to ${newStatus}`);
+      // Refresh orders to reflect the change
+      await refreshOrders();
     } catch (error) {
       console.error('Failed to update order:', error);
       toast.error('Failed to update order status');

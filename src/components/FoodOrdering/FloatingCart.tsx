@@ -156,21 +156,21 @@ export function FloatingCart({
       {/* Collapsed Cart (Semi-transparent Tray) */}
       {!isExpanded && (
         <div
-          className="fixed bottom-6 right-6 z-40 cursor-pointer animate-in slide-in-from-bottom-4 duration-300"
+          className="fixed bottom-16 xs:bottom-20 sm:bottom-6 right-2 xs:right-4 sm:right-6 z-40 cursor-pointer animate-in slide-in-from-bottom-4 duration-300"
           onClick={() => setIsExpanded(true)}
         >
           <Card className="bg-primary/80 backdrop-blur-md border-primary hover:bg-primary/90 transition-all duration-300 hover:scale-105 shadow-lg">
-            <CardContent className="p-4 pr-6">
-              <div className="flex items-center gap-4 text-primary-foreground">
+            <CardContent className="p-2 xs:p-3 sm:p-4 pr-3 xs:pr-4 sm:pr-6">
+              <div className="flex items-center gap-1 xs:gap-2 sm:gap-4 text-primary-foreground">
                 <div className="relative">
-                  <ShoppingCart className="h-8 w-8" />
-                  <Badge className="absolute -top-2 -right-2 h-6 w-6 flex items-center justify-center p-0 bg-red-500 text-white">
+                  <ShoppingCart className="h-5 w-5 xs:h-6 xs:w-6 sm:h-8 sm:w-8" />
+                  <Badge className="absolute -top-1 -right-1 xs:-top-2 xs:-right-2 h-4 w-4 xs:h-5 xs:w-5 sm:h-6 sm:w-6 flex items-center justify-center p-0 bg-red-500 text-white text-xs">
                     {itemCount}
                   </Badge>
                 </div>
                 <div>
-                  <p className="font-semibold text-lg">View Cart</p>
-                  <p className="text-sm opacity-90">
+                  <p className="font-semibold text-xs xs:text-sm sm:text-lg">View Cart</p>
+                  <p className="text-xs xs:text-xs sm:text-sm opacity-90">
                     KES {totalPrice.toLocaleString()}
                   </p>
                 </div>
@@ -182,52 +182,53 @@ export function FloatingCart({
 
       {/* Expanded Cart (Full View) */}
       {isExpanded && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <Card className="w-full sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-300">
-            <CardHeader className="border-b">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <Card className="w-full max-w-md h-[100vh] overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300 rounded-none">
+            <CardHeader className="border-b p-3 flex-shrink-0">
               <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <ShoppingCart className="h-6 w-6" />
-                  Your Cart ({itemCount} {itemCount === 1 ? 'item' : 'items'})
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <ShoppingCart className="h-4 w-4" />
+                  <span className="truncate">Cart ({itemCount})</span>
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   {items.length > 0 && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={onClearCart}
-                      className="text-destructive hover:text-destructive"
+                      className="text-destructive hover:text-destructive touch-button text-xs px-2"
                     >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Clear
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      <span className="hidden xs:inline">Clear</span>
                     </Button>
                   )}
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setIsExpanded(false)}
+                    className="touch-button h-8 w-8"
                   >
-                    <X className="h-5 w-5" />
+                    <X className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             </CardHeader>
 
-            <CardContent className="flex-1 overflow-y-auto p-4 space-y-3">
+            <CardContent className="flex-1 overflow-y-auto p-3 space-y-3">
               {/* Location Display */}
               {selectedLocation && (
                 <Card className="bg-muted/50 border-dashed">
-                  <CardContent className="p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-primary" />
-                      <div>
-                        <p className="text-sm font-medium">Delivering to</p>
-                        <p className="text-xs text-muted-foreground">
+                  <CardContent className="p-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <MapPin className="h-3 w-3 text-primary flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">Delivering to</p>
+                        <p className="text-xs text-muted-foreground truncate">
                           {selectedLocation.type} {selectedLocation.number}
                         </p>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={onSelectLocation}>
+                    <Button variant="ghost" size="sm" onClick={onSelectLocation} className="touch-button flex-shrink-0 text-xs px-2">
                       Change
                     </Button>
                   </CardContent>
@@ -235,18 +236,18 @@ export function FloatingCart({
               )}
 
               {/* Cart Items */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {items.map((item) => {
                   const itemPrice = getItemPrice(item);
                   const totalItemPrice = itemPrice * item.quantity;
 
                   return (
                     <Card key={item.id} className="overflow-hidden">
-                      <CardContent className="p-3">
-                        <div className="flex gap-3">
+                      <CardContent className="p-2">
+                        <div className="flex gap-2">
                           {/* Item Image */}
                           {item.image_url && (
-                            <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+                            <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
                               <img
                                 src={item.image_url}
                                 alt={item.name}
@@ -257,52 +258,38 @@ export function FloatingCart({
 
                           {/* Item Details */}
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold truncate">{item.name}</h4>
-                            <p className="text-sm text-muted-foreground">
+                            <h4 className="font-semibold truncate text-xs">{item.name}</h4>
+                            <p className="text-xs text-muted-foreground">
                               KES {itemPrice.toLocaleString()} each
                             </p>
 
                             {/* Customizations */}
                             {(item.customizations?.addons && item.customizations.addons.length > 0) && (
                               <div className="mt-1">
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-xs text-muted-foreground truncate">
                                   Add: {item.customizations.addons.join(', ')}
-                                </p>
-                              </div>
-                            )}
-                            {(item.customizations?.removals && item.customizations.removals.length > 0) && (
-                              <div className="mt-1">
-                                <p className="text-xs text-muted-foreground">
-                                  No: {item.customizations.removals.join(', ')}
-                                </p>
-                              </div>
-                            )}
-                            {item.customizations?.specialInstructions && (
-                              <div className="mt-1">
-                                <p className="text-xs text-muted-foreground italic">
-                                  "{item.customizations.specialInstructions}"
                                 </p>
                               </div>
                             )}
 
                             {/* Quantity Controls */}
                             <div className="flex items-center justify-between mt-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="h-7 w-7"
+                                  className="h-6 w-6 touch-button"
                                   onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
                                 >
                                   <Minus className="h-3 w-3" />
                                 </Button>
-                                <span className="font-semibold w-8 text-center">
+                                <span className="font-semibold w-6 text-center text-xs">
                                   {item.quantity}
                                 </span>
                                 <Button
                                   variant="outline"
                                   size="icon"
-                                  className="h-7 w-7"
+                                  className="h-6 w-6 touch-button"
                                   onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
                                 >
                                   <Plus className="h-3 w-3" />
@@ -310,14 +297,14 @@ export function FloatingCart({
                               </div>
 
                               <div className="text-right">
-                                <p className="font-bold text-primary">
+                                <p className="font-bold text-primary text-xs">
                                   KES {totalItemPrice.toLocaleString()}
                                 </p>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => onRemoveItem(item.id)}
-                                  className="h-6 text-xs text-destructive hover:text-destructive"
+                                  className="h-5 text-xs text-destructive hover:text-destructive touch-button px-1"
                                 >
                                   Remove
                                 </Button>
@@ -332,18 +319,18 @@ export function FloatingCart({
               </div>
             </CardContent>
 
-            <CardFooter className="border-t p-4 bg-muted/30 flex-col gap-3">
+            <CardFooter className="border-t p-3 bg-muted/30 flex-col gap-2 flex-shrink-0 pb-safe">
               {/* Price Summary */}
-              <div className="w-full space-y-2">
-                <div className="flex items-center justify-between text-sm">
+              <div className="w-full space-y-1">
+                <div className="flex items-center justify-between text-xs">
                   <span>Subtotal</span>
                   <span>KES {totalPrice.toLocaleString()}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-xs">
                   <span>VAT (16%)</span>
                   <span>KES {(totalPrice * 0.16).toLocaleString()}</span>
                 </div>
-                <div className="flex items-center justify-between text-lg font-bold border-t pt-2">
+                <div className="flex items-center justify-between text-sm font-bold border-t pt-1">
                   <span>Total</span>
                   <span className="text-primary">
                     KES {(totalPrice * 1.16).toLocaleString()}
@@ -352,22 +339,22 @@ export function FloatingCart({
               </div>
 
               {/* Action Buttons */}
-              <div className="w-full flex gap-2">
+              <div className="w-full flex flex-col gap-2">
                 <Button
                   variant="outline"
-                  className="flex-1 gap-2"
+                  className="w-full gap-2 touch-button text-xs h-10"
                   onClick={() => handleCheckout('cash')}
                   disabled={isProcessing || !selectedLocation}
                 >
-                  <Banknote className="h-4 w-4" />
+                  <Banknote className="h-3 w-3" />
                   Pay Cash
                 </Button>
                 <Button
-                  className="flex-1 gap-2"
+                  className="w-full gap-2 touch-button text-xs h-10"
                   onClick={() => handleCheckout('online')}
                   disabled={isProcessing || !selectedLocation || isOffline}
                 >
-                  <CreditCard className="h-4 w-4" />
+                  <CreditCard className="h-3 w-3" />
                   {isOffline ? 'Offline' : 'Pay Now'}
                 </Button>
               </div>

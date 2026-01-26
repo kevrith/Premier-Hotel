@@ -15,86 +15,82 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import menuService from '@/lib/api/services/menuService';
 import { ordersApi } from '@/lib/api/orders';
+import type { MenuItem } from '@/types';
 
 // Mock menu data - will be replaced with API call
 const mockMenuData = [
   {
     id: '1',
     name: 'Grilled Salmon',
-    name_sw: 'Samaki wa Kuchoma',
     description: 'Fresh Atlantic salmon with herbs and lemon butter',
-    description_sw: 'Samaki safi wa Atlantic na viungo',
+    price: 1200,
     category: 'mains',
-    base_price: 1200,
-    image_url: 'https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400',
-    is_available: true,
+    available: true,
     preparation_time: 25,
-    dietary_info: ['gluten-free'],
-    customizations: [
-      { id: '1', name: 'Extra Lemon', price_modifier: 50 },
-      { id: '2', name: 'No Butter', price_modifier: 0 }
+    created_at: new Date().toISOString(),
+    image_url: 'https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400',
+    ingredients: ['Salmon', 'Herbs', 'Lemon', 'Butter'],
+    customization_options: [
+      { name: 'Lemon', options: ['Extra', 'Normal', 'None'], required: false, additional_cost: 50 },
+      { name: 'Butter', options: ['With', 'Without'], required: false }
     ]
   },
   {
     id: '2',
     name: 'Margherita Pizza',
-    name_sw: 'Pizza ya Margherita',
     description: 'Classic pizza with fresh mozzarella and basil',
-    description_sw: 'Pizza ya kawaida na jibini safi',
+    price: 950,
     category: 'mains',
-    base_price: 950,
-    image_url: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400',
-    is_available: true,
+    available: true,
     preparation_time: 20,
-    dietary_info: ['vegetarian'],
-    customizations: [
-      { id: '3', name: 'Extra Cheese', price_modifier: 150 },
-      { id: '4', name: 'Add Pepperoni', price_modifier: 200 }
+    created_at: new Date().toISOString(),
+    image_url: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400',
+    ingredients: ['Dough', 'Tomato Sauce', 'Mozzarella', 'Basil'],
+    customization_options: [
+      { name: 'Cheese', options: ['Extra', 'Normal'], required: false, additional_cost: 150 },
+      { name: 'Toppings', options: ['Pepperoni', 'Mushrooms', 'None'], required: false, additional_cost: 200 }
     ]
   },
   {
     id: '3',
     name: 'Caesar Salad',
-    name_sw: 'Saladi ya Caesar',
     description: 'Crisp romaine lettuce with Caesar dressing and croutons',
-    description_sw: 'Saladi baridi na dressing',
+    price: 650,
     category: 'starters',
-    base_price: 650,
-    image_url: 'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400',
-    is_available: true,
+    available: true,
     preparation_time: 10,
-    dietary_info: ['vegetarian'],
-    customizations: []
+    created_at: new Date().toISOString(),
+    image_url: 'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400',
+    ingredients: ['Romaine Lettuce', 'Caesar Dressing', 'Croutons', 'Parmesan'],
+    customization_options: []
   },
   {
     id: '4',
     name: 'Chocolate Lava Cake',
-    name_sw: 'Keki ya Chokoleti',
     description: 'Warm chocolate cake with molten center',
-    description_sw: 'Keki ya moto ya chokoleti',
+    price: 550,
     category: 'desserts',
-    base_price: 550,
-    image_url: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400',
-    is_available: true,
+    available: true,
     preparation_time: 15,
-    dietary_info: ['vegetarian'],
-    customizations: [
-      { id: '5', name: 'Add Ice Cream', price_modifier: 100 }
+    created_at: new Date().toISOString(),
+    image_url: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400',
+    ingredients: ['Chocolate', 'Flour', 'Sugar', 'Eggs'],
+    customization_options: [
+      { name: 'Ice Cream', options: ['Vanilla', 'Chocolate', 'None'], required: false, additional_cost: 100 }
     ]
   },
   {
     id: '5',
     name: 'Mango Smoothie',
-    name_sw: 'Smoothie ya Embe',
     description: 'Fresh mango blended with yogurt and honey',
-    description_sw: 'Embe safi na yogati',
+    price: 450,
     category: 'beverages',
-    base_price: 450,
-    image_url: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400',
-    is_available: true,
+    available: true,
     preparation_time: 5,
-    dietary_info: ['vegetarian', 'gluten-free'],
-    customizations: []
+    created_at: new Date().toISOString(),
+    image_url: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400',
+    ingredients: ['Mango', 'Yogurt', 'Honey'],
+    customization_options: []
   }
 ];
 
@@ -108,16 +104,19 @@ const categories = [
 
 export default function EnhancedMenu() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, role } = useAuth();
   const { addItem, items: cartItems, removeItem, updateQuantity, clearCart, getTotal } = useCartStore();
 
-  const [menuItems, setMenuItems] = useState(mockMenuData);
-  const [filteredItems, setFilteredItems] = useState(mockMenuData);
+  // Check if user is staff (should stay on menu after order)
+  const isStaff = role && ['waiter', 'chef', 'manager', 'admin'].includes(role);
+
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(mockMenuData);
+  const [filteredItems, setFilteredItems] = useState<MenuItem[]>(mockMenuData);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('default');
   const [showFilters, setShowFilters] = useState(false);
-  const [favorites, setFavorites] = useState([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCustomerDialog, setShowCustomerDialog] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
@@ -129,10 +128,16 @@ export default function EnhancedMenu() {
         setLoading(true);
         const response = await menuService.getAllMenuItems();
         if (response && response.length > 0) {
-          // Transform API response to ensure base_price is a number
+          // Transform API response to match frontend types
           const transformedItems = response.map(item => ({
             ...item,
-            base_price: parseFloat(item.base_price) || 0
+            // Map backend field names to frontend expectations
+            price: parseFloat(item.base_price) || 0, // backend uses base_price, frontend expects price
+            available: item.is_available ?? item.available ?? true, // handle both field names
+            // Ensure other fields exist
+            preparation_time: item.preparation_time || 20,
+            ingredients: item.ingredients || [],
+            customization_options: item.customization_options || []
           }));
           setMenuItems(transformedItems);
         } else {
@@ -151,6 +156,29 @@ export default function EnhancedMenu() {
     fetchMenuItems();
   }, []);
 
+  // Clear invalid cart items when menu loads
+  useEffect(() => {
+    if (menuItems.length > 0 && cartItems.length > 0) {
+      const invalidItems = cartItems.filter(cartItem => {
+        // Real UUIDs are 36 characters, mock IDs are short like '1', '2'
+        const isValidUUID = cartItem.itemId && cartItem.itemId.length >= 32;
+        const existsInMenu = menuItems.some(menuItem => menuItem.id === cartItem.itemId);
+        return !isValidUUID || !existsInMenu;
+      });
+
+      if (invalidItems.length > 0) {
+        console.warn('Found invalid cart items, clearing them:', invalidItems);
+        // Remove invalid items from cart
+        invalidItems.forEach(item => removeItem(item.id));
+        if (invalidItems.length === cartItems.length) {
+          toast.error('Your cart was cleared because it contained outdated items. Please add items again.');
+        } else {
+          toast(`${invalidItems.length} outdated item(s) removed from cart`);
+        }
+      }
+    }
+  }, [menuItems]); // Only run when menu items change
+
   // Filter items based on category and search
   useEffect(() => {
     let filtered = [...menuItems];
@@ -164,23 +192,23 @@ export default function EnhancedMenu() {
     if (searchQuery) {
       filtered = filtered.filter(item =>
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.description.toLowerCase().includes(searchQuery.toLowerCase())
+        (item.description || '').toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
     // Sort
     switch (sortBy) {
       case 'price-low':
-        filtered.sort((a, b) => a.base_price - b.base_price);
+        filtered.sort((a, b) => (a.price || 0) - (b.price || 0));
         break;
       case 'price-high':
-        filtered.sort((a, b) => b.base_price - a.base_price);
+        filtered.sort((a, b) => (b.price || 0) - (a.price || 0));
         break;
       case 'name':
         filtered.sort((a, b) => a.name.localeCompare(b.name));
         break;
       case 'prep-time':
-        filtered.sort((a, b) => a.preparation_time - b.preparation_time);
+        filtered.sort((a, b) => (a.preparation_time || 0) - (b.preparation_time || 0));
         break;
       default:
         break;
@@ -189,7 +217,7 @@ export default function EnhancedMenu() {
     setFilteredItems(filtered);
   }, [selectedCategory, searchQuery, sortBy, menuItems]);
 
-  const handleAddToCart = (item, quantity, customizations) => {
+  const handleAddToCart = (item: MenuItem, quantity: number, customizations: any) => {
     console.log('handleAddToCart called with:', { item, quantity, customizations });
 
     // Transform customizations object to array format expected by cart
@@ -203,12 +231,14 @@ export default function EnhancedMenu() {
       : [];
 
     const cartItem = {
+      id: `${item.id}-${Date.now()}`,
       itemId: item.id,
       name: item.name,
-      basePrice: item.base_price || 0,
+      basePrice: item.price || 0,
       quantity,
       customizations: customizationsArray,
-      specialInstructions: customizations?.special_instructions || ''
+      specialInstructions: customizations?.special_instructions || '',
+      subtotal: (item.price || 0) * quantity
     };
 
     console.log('Adding to cart:', cartItem);
@@ -217,7 +247,7 @@ export default function EnhancedMenu() {
     toast.success(`${item.name} added to cart!`);
   };
 
-  const handleAddToFavorites = (itemId) => {
+  const handleAddToFavorites = (itemId: string) => {
     if (favorites.includes(itemId)) {
       setFavorites(favorites.filter(id => id !== itemId));
       toast('Removed from favorites');
@@ -247,13 +277,44 @@ export default function EnhancedMenu() {
   const handleCustomerOrderSubmit = async (customerInfo: CustomerInfo) => {
     setIsCreatingOrder(true);
     try {
-      // Prepare order items
-      const orderItems = cartItems.map(item => ({
+      // Validate cart items against current menu
+      // Check if items have valid UUIDs (real database IDs are 36-char UUIDs)
+      const validCartItems = cartItems.filter(item => {
+        // Real UUIDs are 36 characters, mock IDs are short like '1', '2'
+        const isValidUUID = item.itemId && item.itemId.length >= 32;
+        // Also check if item exists in current menu
+        const existsInMenu = menuItems.some(menuItem => menuItem.id === item.itemId);
+
+        if (!isValidUUID || !existsInMenu) {
+          console.warn(`Skipping invalid cart item: ${item.name} (ID: ${item.itemId})`);
+          return false;
+        }
+        return true;
+      });
+
+      if (validCartItems.length === 0) {
+        toast.error('Your cart contains invalid items. Please clear your cart and add items again from the menu.');
+        clearCart();
+        setShowCustomerDialog(false);
+        setIsCreatingOrder(false);
+        return;
+      }
+
+      if (validCartItems.length < cartItems.length) {
+        toast.error(`${cartItems.length - validCartItems.length} item(s) were removed from your order because they no longer exist in the menu.`);
+      }
+
+      // Prepare order items - match backend OrderItem schema exactly
+      const orderItems = validCartItems.map(item => ({
         menu_item_id: item.itemId,
         name: item.name,
-        quantity: item.quantity,
-        price: item.basePrice,
-        customizations: item.customizations || {},
+        quantity: Math.max(1, item.quantity), // Ensure quantity is at least 1
+        price: item.basePrice, // Backend expects Decimal, will be converted by API
+        customizations: item.customizations ?
+          item.customizations.reduce((acc, cust) => {
+            acc[cust.name] = cust.value;
+            return acc;
+          }, {} as Record<string, any>) : {},
         special_instructions: item.specialInstructions || ''
       }));
 
@@ -279,8 +340,9 @@ export default function EnhancedMenu() {
         location_type: locationType,
         items: orderItems,
         special_instructions: `Customer: ${customerInfo.customerName}, Phone: ${customerInfo.customerPhone}`,
-        customer_name: customerInfo.customerName,
-        customer_phone: customerInfo.customerPhone,
+        // Only include customer fields if they have values
+        ...(customerInfo.customerName && { customer_name: customerInfo.customerName }),
+        ...(customerInfo.customerPhone && { customer_phone: customerInfo.customerPhone }),
         order_type: customerInfo.orderType
       };
 
@@ -294,14 +356,25 @@ export default function EnhancedMenu() {
       // Close dialog
       setShowCustomerDialog(false);
 
-      // Show success message
-      toast.success(`Order ${createdOrder.order_number} created successfully!`);
-
-      // Navigate to orders page or show confirmation
-      navigate('/my-orders');
+      // Different flow for staff vs customers
+      if (isStaff) {
+        // Staff: stay on menu for creating more orders
+        toast.success(
+          `Order ${createdOrder.order_number} created successfully! Ready to take another order.`,
+          { duration: 5000, icon: '✅' }
+        );
+      } else {
+        // Customers: navigate to My Orders to track their order
+        toast.success(
+          `Order ${createdOrder.order_number} placed successfully!`,
+          { duration: 4000, icon: '✅' }
+        );
+        navigate('/my-orders');
+      }
     } catch (error: any) {
       console.error('Error creating order:', error);
-      toast.error(error.message || 'Failed to create order. Please try again.');
+      console.error('Error details:', error.response?.data || error.message);
+      toast.error(error.response?.data?.detail || error.message || 'Failed to create order. Please try again.');
     } finally {
       setIsCreatingOrder(false);
     }
@@ -327,62 +400,72 @@ export default function EnhancedMenu() {
           <div className="lg:col-span-3">
             {/* Search and Filters */}
             <div className="bg-card rounded-lg border p-4 mb-6">
-              <div className="flex flex-col md:flex-row gap-4">
-                {/* Search */}
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <div className="flex flex-col gap-4">
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     type="search"
                     placeholder="Search menu items..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 text-base"
                   />
                 </div>
 
-                {/* Sort */}
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-full md:w-48">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default</SelectItem>
-                    <SelectItem value="name">Name (A-Z)</SelectItem>
-                    <SelectItem value="price-low">Price (Low to High)</SelectItem>
-                    <SelectItem value="price-high">Price (High to Low)</SelectItem>
-                    <SelectItem value="prep-time">Preparation Time</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Filters Toggle */}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setShowFilters(!showFilters)}
-                >
-                  <SlidersHorizontal className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Additional Filters */}
-              {showFilters && (
-                <div className="mt-4 pt-4 border-t">
-                  <p className="text-sm font-medium mb-2">Dietary Preferences</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm">Vegetarian</Button>
-                    <Button variant="outline" size="sm">Vegan</Button>
-                    <Button variant="outline" size="sm">Gluten-Free</Button>
-                    <Button variant="outline" size="sm">Dairy-Free</Button>
+                {/* Filters Row */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Sort Dropdown */}
+                  <div className="flex-1 min-w-0">
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Sort by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">Default</SelectItem>
+                        <SelectItem value="name">Name (A-Z)</SelectItem>
+                        <SelectItem value="price-low">Price (Low to High)</SelectItem>
+                        <SelectItem value="price-high">Price (High to Low)</SelectItem>
+                        <SelectItem value="prep-time">Preparation Time</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
+
+                  {/* Filters Toggle */}
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="w-full sm:w-auto"
+                  >
+                    <SlidersHorizontal className="h-4 w-4 mr-2" />
+                    Filters
+                  </Button>
                 </div>
-              )}
+
+                {/* Additional Filters */}
+                {showFilters && (
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-sm font-medium mb-3">Dietary Preferences</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" className="text-xs">Vegetarian</Button>
+                      <Button variant="outline" size="sm" className="text-xs">Vegan</Button>
+                      <Button variant="outline" size="sm" className="text-xs">Gluten-Free</Button>
+                      <Button variant="outline" size="sm" className="text-xs">Dairy-Free</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Category Tabs */}
             <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="mb-6">
-              <TabsList className="w-full justify-start overflow-x-auto">
+              <TabsList className="w-full justify-start overflow-x-auto bg-transparent border-b border-border">
                 {categories.map((category) => (
-                  <TabsTrigger key={category.id} value={category.id}>
+                  <TabsTrigger 
+                    key={category.id} 
+                    value={category.id}
+                    className="px-4 py-2 text-sm font-medium border-b-2 border-transparent hover:border-primary transition-colors"
+                  >
                     {category.name}
                   </TabsTrigger>
                 ))}
@@ -390,7 +473,7 @@ export default function EnhancedMenu() {
             </Tabs>
 
             {/* Menu Items Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredItems.length > 0 ? (
                 filteredItems.map((item) => (
                   <MenuItemCard
@@ -400,26 +483,49 @@ export default function EnhancedMenu() {
                     onAddToFavorites={handleAddToFavorites}
                     isFavorite={favorites.includes(item.id)}
                     quantity={cartItems.filter(ci => ci.itemId === item.id).reduce((sum, ci) => sum + ci.quantity, 0)}
-                    className=""
+                    className="h-full"
                   />
                 ))
               ) : (
                 <div className="col-span-full text-center py-12">
-                  <p className="text-muted-foreground">No items found matching your criteria</p>
+                  <div className="text-muted-foreground mb-4">
+                    <svg className="w-16 h-16 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-lg font-medium text-foreground">No items found</p>
+                  <p className="text-sm text-muted-foreground mt-1">Try adjusting your search or filter criteria</p>
                 </div>
               )}
             </div>
           </div>
 
           {/* Sidebar - Favorites Panel */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-24">
-              {user && (
-                <FavouritesPanel
-                  onAddToCart={handleAddToCart}
-                  className=""
-                />
-              )}
+          <div className="lg:col-span-1 order-first lg:order-last">
+            <div className="sticky top-24 space-y-6">
+              {/* Mobile Favorites Toggle */}
+              <div className="lg:hidden">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="w-full justify-between"
+                >
+                  <span>Favorites</span>
+                  <span className="text-sm text-muted-foreground">
+                    {favorites.length} items
+                  </span>
+                </Button>
+              </div>
+
+              {/* Favorites Panel */}
+              <div className={`${showFilters && !favorites.length ? 'hidden' : ''}`}>
+                {user && (
+                  <FavouritesPanel
+                    onAddToCart={handleAddToCart}
+                    className="bg-card rounded-lg border p-4"
+                  />
+                )}
+              </div>
             </div>
           </div>
         </div>
