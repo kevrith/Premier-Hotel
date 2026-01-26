@@ -82,6 +82,14 @@ const useAuthStore = create<AuthState>()(
             response = await authApi.loginWithPhone({ phone, password });
           }
 
+          // Debug: Log the full response to see what backend returns
+          console.log('[AuthStore] Login response:', {
+            hasAccessToken: !!response.access_token,
+            hasRefreshToken: !!response.refresh_token,
+            hasUser: !!response.user,
+            responseKeys: Object.keys(response)
+          });
+
           const { access_token, refresh_token, user } = response;
 
           // Store tokens

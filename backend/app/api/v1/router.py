@@ -3,7 +3,7 @@ API v1 Router - Combines all endpoint routers
 SECURITY: Using auth_secure for httpOnly cookie-based authentication
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth_secure as auth, admin_enhanced as admin, rooms, bookings, menu, orders, bills, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector, customers, purchase_orders
+from app.api.v1.endpoints import auth_secure as auth, admin_enhanced as admin, rooms, bookings, menu, orders, bills, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector, customers, purchase_orders, order_payments
 
 api_router = APIRouter()
 
@@ -14,8 +14,9 @@ api_router.include_router(rooms.router, prefix="/rooms", tags=["Rooms"])
 api_router.include_router(bookings.router, prefix="/bookings", tags=["Bookings"])
 api_router.include_router(menu.router, prefix="/menu", tags=["Menu"])
 api_router.include_router(orders.router, prefix="/orders", tags=["Orders"])
+api_router.include_router(order_payments.router, prefix="/order-billing", tags=["Order Billing"])
 api_router.include_router(bills.router, prefix="/bills", tags=["Bills & Payments"])
-api_router.include_router(payments.router, prefix="/payments", tags=["Payments"])
+api_router.include_router(payments.router, prefix="/pos-payments", tags=["POS Payments"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(staff.router, prefix="/staff", tags=["Staff Management"])
 api_router.include_router(housekeeping.router, prefix="/housekeeping", tags=["Housekeeping"])

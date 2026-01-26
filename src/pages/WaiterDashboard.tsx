@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navbar } from '@/components/Navbar';
@@ -47,6 +47,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { orderPaymentsApi, OrderPaymentRequest } from '@/lib/api/orderPayments';
+import { Textarea } from '@/components/ui/textarea';
+import { Smartphone, Banknote } from 'lucide-react';
 
 export default function WaiterDashboard() {
   const navigate = useNavigate();
@@ -89,6 +92,11 @@ export default function WaiterDashboard() {
     currentLocation: '',
     newLocation: ''
   });
+
+  // Payment dialog
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Order | null>(null);
+  const [processing, setProcessing] = useState(false);
 
   // Offline detection
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -270,6 +278,55 @@ export default function WaiterDashboard() {
     });
   };
 
+  // Handle payment click
+  const handlePaymentClick = (order: Order) => {
+    setSelectedOrderForPayment(order);
+    setShowPaymentDialog(true);
+  };
+
+  // Handle payment completion
+  const handlePaymentComplete = async (paymentMethod: string, amount: number, mpesaPhone?: string, cardRef?: string, notes?: string) => {
+    if (!selectedOrderForPayment) return;
+
+    try {
+      setProcessing(true);
+      
+      const paymentData: OrderPaymentRequest = {
+        order_id: selectedOrderForPayment.id,
+        payment_method: paymentMethod as 'cash' | 'mpesa' | 'card',
+        amount: amount,
+        mpesa_phone: mpesaPhone,
+        card_reference: cardRef,
+        notes: notes
+      };
+      
+      const result = await orderPaymentsApi.processPayment(paymentData);
+      
+      if (result.success) {
+        toast.success(result.message);
+        
+        // Refresh orders to reflect the change
+        try {
+          await refreshOrders();
+        } catch (refreshError) {
+          console.error('Failed to refresh orders:', refreshError);
+        }
+        
+        // Close dialog
+        setShowPaymentDialog(false);
+        setSelectedOrderForPayment(null);
+      } else {
+        toast.error('Payment processing failed');
+      }
+    } catch (error: any) {
+      console.error('Payment completion failed:', error);
+      console.error('Error response:', error.response?.data);
+      toast.error(error.response?.data?.detail || 'Failed to process payment');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   // Get time since order
   const getTimeSince = (dateString: string) => {
     try {
@@ -374,15 +431,11 @@ export default function WaiterDashboard() {
                 <Button
                   className="flex-1"
                   variant="default"
-                  onClick={() => handleStatusUpdate(order.id, 'completed')}
+                  onClick={() => handlePaymentClick(order)}
                   disabled={updating === order.id}
                 >
-                  {updating === order.id ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <CreditCard className="h-4 w-4 mr-2" />
-                  )}
-                  Complete & Pay
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Process Payment
                 </Button>
               )}
               {(isPending || isPreparing) && (
@@ -773,6 +826,196 @@ export default function WaiterDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Payment Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Process Payment</DialogTitle>
+            <DialogDescription>
+              {selectedOrderForPayment && (
+                <>Order {selectedOrderForPayment.order_number} - KES {selectedOrderForPayment.total_amount.toLocaleString()}</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <PaymentMethodSelector
+            totalAmount={selectedOrderForPayment?.total_amount || 0}
+            onPaymentComplete={handlePaymentComplete}
+            onCancel={() => setShowPaymentDialog(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Payment Method Selector Component
+function PaymentMethodSelector({ 
+  totalAmount, 
+  onPaymentComplete, 
+  onCancel 
+}: { 
+  totalAmount: number;
+  onPaymentComplete: (method: string, amount: number, mpesaPhone?: string, cardRef?: string, notes?: string) => void;
+  onCancel: () => void;
+}) {
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card'>('cash');
+  const [amount, setAmount] = useState(() => totalAmount.toString());
+  
+  // Update amount when totalAmount prop changes
+  useEffect(() => {
+    setAmount(totalAmount.toString());
+  }, [totalAmount]);
+  const [mpesaPhone, setMpesaPhone] = useState('');
+  const [cardRef, setCardRef] = useState('');
+  const [notes, setNotes] = useState('');
+  const [processing, setProcessing] = useState(false);
+
+  const handlePayment = async () => {
+    const paymentAmount = parseFloat(amount);
+
+    if (isNaN(paymentAmount) || paymentAmount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    if (paymentMethod === 'mpesa' && !mpesaPhone) {
+      toast.error('Please enter M-Pesa phone number');
+      return;
+    }
+
+    if (paymentMethod === 'card' && !cardRef) {
+      toast.error('Please enter card transaction reference');
+      return;
+    }
+
+    const validPaymentMethods = ['cash', 'mpesa', 'card'] as const;
+    const isValidMethod = (method: string): method is typeof validPaymentMethods[number] => {
+      return validPaymentMethods.includes(method as any);
+    };
+    
+    if (!isValidMethod(paymentMethod)) {
+      toast.error('Invalid payment method selected');
+      return;
+    }
+
+    setProcessing(true);
+
+    try {
+      await onPaymentComplete(paymentMethod, paymentAmount, mpesaPhone, cardRef, notes);
+    } catch (error) {
+      toast.error('Payment processing failed');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const parsedAmount = useMemo(() => parseFloat(amount || '0'), [amount]);
+  
+  return (
+    <div className="space-y-4 py-4">
+      {/* Amount Input */}
+      <div className="space-y-2">
+        <Label htmlFor="amount">Amount to Pay</Label>
+        <Input
+          id="amount"
+          type="number"
+          step="0.01"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="Enter amount"
+        />
+      </div>
+
+      {/* Payment Method Tabs */}
+      <Tabs value={paymentMethod} onValueChange={(value) => {
+        const validMethods = ['cash', 'mpesa', 'card'] as const;
+        const isValidMethod = (method: string): method is typeof validMethods[number] => {
+          return validMethods.includes(method as any);
+        };
+        
+        if (isValidMethod(value)) {
+          setPaymentMethod(value);
+        }
+      }}>
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="cash" className="flex items-center gap-1">
+            <Banknote className="h-3 w-3" />
+            Cash
+          </TabsTrigger>
+          <TabsTrigger value="mpesa" className="flex items-center gap-1">
+            <Smartphone className="h-3 w-3" />
+            M-Pesa
+          </TabsTrigger>
+          <TabsTrigger value="card" className="flex items-center gap-1">
+            <CreditCard className="h-3 w-3" />
+            Card
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="cash" className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Accept cash payment from the customer.
+          </p>
+        </TabsContent>
+
+        <TabsContent value="mpesa" className="space-y-2">
+          <Label htmlFor="mpesa_phone">M-Pesa Phone Number</Label>
+          <Input
+            id="mpesa_phone"
+            type="tel"
+            placeholder="254712345678"
+            value={mpesaPhone}
+            onChange={(e) => setMpesaPhone(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Customer will receive STK push to their phone.
+          </p>
+        </TabsContent>
+
+        <TabsContent value="card" className="space-y-2">
+          <Label htmlFor="card_ref">Card Transaction Reference</Label>
+          <Input
+            id="card_ref"
+            placeholder="Enter card transaction ref"
+            value={cardRef}
+            onChange={(e) => setCardRef(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Enter the reference from your card terminal.
+          </p>
+        </TabsContent>
+      </Tabs>
+
+      {/* Notes */}
+      <div className="space-y-2">
+        <Label htmlFor="notes">Notes (Optional)</Label>
+        <Textarea
+          id="notes"
+          placeholder="Add any payment notes..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+        />
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-2 pt-4">
+        <Button variant="outline" onClick={onCancel} disabled={processing} className="flex-1">
+          Cancel
+        </Button>
+        <Button onClick={handlePayment} disabled={processing} className="flex-1">
+          {processing ? (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              Processing...
+            </>
+          ) : (
+            `Pay KES ${parsedAmount.toLocaleString()}`
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

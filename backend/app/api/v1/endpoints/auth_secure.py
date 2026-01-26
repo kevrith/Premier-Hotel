@@ -34,6 +34,7 @@ from app.core.cookie_auth import (
 from datetime import datetime
 from typing import Optional
 import uuid
+import logging
 
 router = APIRouter()
 
@@ -187,7 +188,7 @@ async def register(
         # Log registration event
         await log_auth_event(supabase, user["id"], "register")
 
-        # Return user profile (no tokens in response body)
+        # Return user profile without tokens in response body for security
         return {
             "user": UserResponse(**user),
             "message": "Registration successful. Authentication cookies set."
@@ -196,9 +197,11 @@ async def register(
     except HTTPException:
         raise
     except Exception as e:
+        # Log the specific error for debugging without exposing to client
+        logging.error(f"Registration error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Registration failed: {str(e)}",
+            detail="Registration failed. Please try again.",
         )
 
 
@@ -270,7 +273,7 @@ async def login(
         # Log successful login
         await log_auth_event(supabase, user["id"], "login")
 
-        # Return user profile (no tokens in response body)
+        # Return user profile without tokens in response body for security
         return {
             "user": UserResponse(**user),
             "message": "Login successful. Authentication cookies set."
@@ -279,9 +282,11 @@ async def login(
     except HTTPException:
         raise
     except Exception as e:
+        # Log the specific error for debugging without exposing to client
+        logging.error(f"Login error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Login failed: {str(e)}",
+            detail="Login failed. Please try again.",
         )
 
 
@@ -358,6 +363,57 @@ async def refresh(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Token refresh failed: {str(e)}",
+        )
+
+
+# ===== WEBSOCKET TOKEN =====
+
+@router.get("/ws-token")
+async def get_websocket_token(
+    request: Request,
+    supabase: Client = Depends(get_supabase)
+):
+    """
+    Get a JWT token for WebSocket authentication
+    
+    WebSocket connections cannot use httpOnly cookies, so this endpoint
+    provides a short-lived JWT token specifically for WebSocket authentication.
+    
+    Security:
+    - Validates user via httpOnly cookie first
+    - Returns short-lived token (5 minutes)
+    - Token is only valid for WebSocket connections
+    
+    Returns:
+        JWT token for WebSocket authentication
+    """
+    try:
+        # Validate user from cookie
+        user_data = get_current_user_from_cookie(request)
+        user_id = user_data.get("sub")
+        
+        # Create short-lived token for WebSocket (5 minutes)
+        from app.core.security import create_access_token
+        from datetime import timedelta
+        
+        ws_token = create_access_token(
+            data={
+                "sub": user_id,
+                "email": user_data.get("email"),
+                "role": user_data.get("role"),
+                "type": "websocket"
+            },
+            expires_delta=timedelta(minutes=5)
+        )
+        
+        return {"ws_token": ws_token}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate WebSocket token: {str(e)}",
         )
 
 

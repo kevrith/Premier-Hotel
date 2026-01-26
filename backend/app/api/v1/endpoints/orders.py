@@ -1,6 +1,7 @@
 """
 Order Management Endpoints
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import Optional, List
@@ -149,12 +150,13 @@ async def get_kitchen_orders(
         )
 
         # Debug: Log the statuses of orders being returned
-        order_summary = [{
-            'id': o.get('id')[:8] + '...',
-            'order_number': o.get('order_number'),
-            'status': o.get('status')
-        } for o in response.data]
-        print(f"[DEBUG] Kitchen orders returned: {order_summary}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            order_summary = [{
+                'id': o.get('id')[:8] + '...',
+                'order_number': o.get('order_number'),
+                'status': o.get('status')
+            } for o in response.data]
+            logging.debug(f"Kitchen orders returned: {order_summary}")
 
         return [OrderResponse(**order) for order in response.data]
 
@@ -229,21 +231,24 @@ async def create_order(
     try:
         # Validate items exist and are available
         item_ids = [item.menu_item_id for item in order_data.items]
-        print(f"[DEBUG] Order creation - Looking for menu items with IDs: {item_ids}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Order creation - Looking for menu items with IDs: {item_ids}")
 
         # Use admin client to bypass RLS when reading menu items
         menu_items_response = (
             supabase_admin.table("menu_items").select("*").in_("id", item_ids).execute()
         )
 
-        print(f"[DEBUG] Found {len(menu_items_response.data)} menu items in database")
-        if menu_items_response.data:
-            found_ids = [item['id'] for item in menu_items_response.data]
-            print(f"[DEBUG] Found item IDs: {found_ids}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Found {len(menu_items_response.data)} menu items in database")
+            if menu_items_response.data:
+                found_ids = [item['id'] for item in menu_items_response.data]
+                logging.debug(f"Found item IDs: {found_ids}")
 
         if len(menu_items_response.data) != len(item_ids):
             missing_ids = set(item_ids) - set(item['id'] for item in menu_items_response.data)
-            print(f"[DEBUG] Missing menu item IDs: {missing_ids}")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.debug(f"Missing menu item IDs: {missing_ids}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Some menu items not found. Missing IDs: {list(missing_ids)}",
@@ -352,7 +357,8 @@ async def create_order(
         )
 
         # Notify all chefs about new order - Add debug logging
-        print(f"[DEBUG] Broadcasting new order to all connected clients: {ws_manager.get_connection_count()} connections")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Broadcasting new order to all connected clients: {ws_manager.get_connection_count()} connections")
         await ws_manager.broadcast({
             "type": EventType.ORDER_CREATED,
             "data": {
@@ -367,7 +373,8 @@ async def create_order(
             },
             "timestamp": datetime.utcnow().isoformat()
         })
-        print(f"[DEBUG] Broadcast completed")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug("Broadcast completed")
 
         return OrderResponse(**created_order)
 
@@ -396,13 +403,15 @@ async def update_order_status(
     - Validates status transitions
     """
     try:
-        print(f"[DEBUG] Starting order status update for order {order_id}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Starting order status update for order {order_id}")
         
         # Get existing order (use admin to bypass RLS)
         existing_response = supabase_admin.table("orders").select("*").eq("id", order_id).execute()
 
         if not existing_response.data:
-            print(f"[ERROR] Order {order_id} not found")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.debug(f"Order {order_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Order not found",
@@ -412,7 +421,8 @@ async def update_order_status(
         old_status = order["status"]
         new_status = status_data.status
         
-        print(f"[DEBUG] Order found: {order['order_number']}, changing from {old_status} to {new_status}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Order found: {order['order_number']}, changing from {old_status} to {new_status}")
 
         # Validate status transitions (with backward compatibility)
         valid_transitions = {
@@ -437,13 +447,15 @@ async def update_order_status(
         mapped_new_status = status_mapping.get(new_status, new_status)
 
         if new_status not in valid_transitions.get(old_status, []):
-            print(f"[ERROR] Invalid status transition from {old_status} to {new_status}")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.debug(f"Invalid status transition from {old_status} to {new_status}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot transition from {old_status} to {new_status}",
             )
 
-        print(f"[DEBUG] Status transition validation passed")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug("Status transition validation passed")
         
         # Prepare update data - only include fields that are explicitly set
         update_data = {
@@ -453,7 +465,8 @@ async def update_order_status(
         if status_data.notes is not None:
             update_data["notes"] = status_data.notes
 
-        print(f"[DEBUG] Base update data prepared: {update_data}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Base update data prepared: {update_data}")
         
         # Set status-specific fields (using mapped status)
         # First check if current user exists in profiles table to avoid foreign key errors
@@ -461,9 +474,11 @@ async def update_order_status(
         try:
             user_check = supabase_admin.table("profiles").select("id").eq("id", current_user["id"]).execute()
             user_exists = bool(user_check.data)
-            print(f"[DEBUG] User {current_user['id']} exists in profiles: {user_exists}")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.debug(f"User {current_user['id']} exists in profiles: {user_exists}")
         except Exception as user_check_error:
-            print(f"[WARNING] Could not verify user existence: {str(user_check_error)}")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.debug(f"Could not verify user existence: {str(user_check_error)}")
         
         if mapped_new_status == "confirmed":
             update_data["confirmed_at"] = datetime.utcnow().isoformat()
@@ -486,14 +501,16 @@ async def update_order_status(
                         detail=f"Chef workload limit reached ({current_workload}/{max_workload} orders)"
                     )
                 
-                print(f"[DEBUG] Chef workload: {current_workload}/{max_workload}")
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.debug(f"Chef workload: {current_workload}/{max_workload}")
             
             # Handle both new 'preparing' and old 'in-progress' status
             update_data["preparing_started_at"] = datetime.utcnow().isoformat()
             if user_exists:
                 update_data["assigned_chef_id"] = current_user["id"]
             else:
-                print(f"[WARNING] Skipping assigned_chef_id - user not found in profiles table")
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.debug("Skipping assigned_chef_id - user not found in profiles table")
         elif mapped_new_status == "ready":
             update_data["ready_at"] = datetime.utcnow().isoformat()
         elif mapped_new_status == "served" or new_status == "delivered":
@@ -502,37 +519,45 @@ async def update_order_status(
             if user_exists:
                 update_data["assigned_waiter_id"] = current_user["id"]
             else:
-                print(f"[WARNING] Skipping assigned_waiter_id - user not found in profiles table")
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.debug("Skipping assigned_waiter_id - user not found in profiles table")
         elif mapped_new_status == "completed":
             update_data["completed_at"] = datetime.utcnow().isoformat()
         elif mapped_new_status == "cancelled":
             update_data["cancelled_at"] = datetime.utcnow().isoformat()
 
-        print(f"[DEBUG] Final update data: {update_data}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Final update data: {update_data}")
         
         # Update order (use admin to bypass RLS)
-        print(f"[DEBUG] Updating order {order_id} with data: {update_data}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Updating order {order_id} with data: {update_data}")
         response = supabase_admin.table("orders").update(update_data).eq("id", order_id).execute()
-        print(f"[DEBUG] Supabase update response: {response}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Supabase update response: {response}")
 
         if not response.data:
-            print(f"[ERROR] No data returned from update - response: {response}")
-            # Check if the order still exists
-            check_response = supabase_admin.table("orders").select("id, status").eq("id", order_id).execute()
-            print(f"[DEBUG] Order existence check: {check_response}")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.debug(f"No data returned from update - response: {response}")
+                # Check if the order still exists
+                check_response = supabase_admin.table("orders").select("id, status").eq("id", order_id).execute()
+                logging.debug(f"Order existence check: {check_response}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update order status - no data returned",
             )
 
         updated_order = response.data[0]
-        print(f"[DEBUG] Updated order status: {updated_order.get('status')} for order {order_id}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Updated order status: {updated_order.get('status')} for order {order_id}")
 
         # Verify the update persisted by re-fetching
         verify_response = supabase_admin.table("orders").select("status").eq("id", order_id).execute()
-        print(f"[DEBUG] Verification fetch - status: {verify_response.data[0]['status'] if verify_response.data else 'NOT FOUND'}")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(f"Verification fetch - status: {verify_response.data[0]['status'] if verify_response.data else 'NOT FOUND'}")
 
-        print(f"[DEBUG] Starting WebSocket notifications...")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug("Starting WebSocket notifications...")
         
         # Send real-time status update to customer (use mapped status for messages)
         status_messages = {
@@ -558,9 +583,10 @@ async def update_order_status(
                     "message": status_messages.get(new_status, f"Order status: {new_status}")
                 }
             )
-            print(f"[DEBUG] Customer notification sent successfully")
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.debug("Customer notification sent successfully")
         except Exception as ws_error:
-            print(f"[WARNING] Customer WebSocket notification failed: {str(ws_error)}")
+            logging.warning(f"Customer WebSocket notification failed: {str(ws_error)}")
             # Don't fail the request if WebSocket fails
 
         # Broadcast to staff based on status
@@ -578,12 +604,14 @@ async def update_order_status(
                     },
                     "timestamp": datetime.utcnow().isoformat()
                 })
-                print(f"[DEBUG] Staff broadcast sent successfully")
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.debug("Staff broadcast sent successfully")
             except Exception as broadcast_error:
-                print(f"[WARNING] Staff broadcast failed: {str(broadcast_error)}")
+                logging.warning(f"Staff broadcast failed: {str(broadcast_error)}")
                 # Don't fail the request if broadcast fails
 
-        print(f"[DEBUG] Checking QuickBooks sync...")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug("Checking QuickBooks sync...")
         
         # Trigger QuickBooks sync if order is completed and db_pool is available
         if new_status == "completed" and db_pool is not None:
@@ -593,25 +621,25 @@ async def update_order_status(
                 asyncio.create_task(
                     sync_service.sync_completed_order(order_id)
                 )
-                print(f"[DEBUG] QuickBooks sync task created")
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.debug("QuickBooks sync task created")
             except Exception as qb_error:
                 # Log QB sync error but don't fail the request
-                print(f"[WARNING] QuickBooks sync failed for order {order_id}: {str(qb_error)}")
+                logging.warning(f"QuickBooks sync failed for order {order_id}: {str(qb_error)}")
 
-        print(f"[DEBUG] Order status update completed successfully")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug("Order status update completed successfully")
         return OrderResponse(**updated_order)
 
     except HTTPException:
-        print(f"[DEBUG] HTTPException raised, re-raising")
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug("HTTPException raised, re-raising")
         raise
     except Exception as e:
-        print(f"[ERROR] Unexpected error in update_order_status: {str(e)}")
-        print(f"[ERROR] Error type: {type(e).__name__}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        logging.error(f"Unexpected error in update_order_status: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}",
+            detail="Failed to update order status",
         )
 
 

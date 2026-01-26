@@ -28,9 +28,9 @@ def set_auth_cookies(
     user_id: str,
     email: Optional[str],
     role: str
-) -> None:
+) -> Dict[str, str]:
     """
-    Set httpOnly authentication cookies
+    Set httpOnly authentication cookies and return tokens
 
     Args:
         response: FastAPI Response object
@@ -38,11 +38,15 @@ def set_auth_cookies(
         email: User's email address
         role: User's role (customer, admin, etc.)
 
+    Returns:
+        Dict with access_token and refresh_token for WebSocket use
+
     Security Features:
         - httpOnly: Prevents XSS attacks by blocking JavaScript access
         - secure: Ensures cookies only sent over HTTPS in production
         - samesite=lax: Prevents CSRF attacks
         - Max age: Automatic expiration
+        - Tokens also returned for WebSocket authentication (which can't use cookies)
     """
     # Create tokens
     token_data = {
@@ -69,6 +73,12 @@ def set_auth_cookies(
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # Convert to seconds
         **COOKIE_SETTINGS
     )
+
+    # Return tokens for frontend storage (needed for WebSocket connections)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token
+    }
 
 
 def get_token_from_cookie(request: Request, cookie_name: str) -> Optional[str]:

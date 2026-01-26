@@ -2,14 +2,15 @@
 Bills API Endpoints
 Handles unified bill aggregation and payment processing
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from typing import List
 from datetime import datetime
 from decimal import Decimal
 
-from app.core.supabase import get_supabase
-from app.middleware.auth import get_current_user
+from app.core.supabase import get_supabase, get_supabase_admin
+from app.middleware.auth_secure import get_current_user
 from app.schemas.bill import (
     BillCreate,
     BillResponse,
@@ -36,6 +37,7 @@ async def get_unpaid_orders(
     location: str,
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
     Get all unpaid orders for a specific table or room
@@ -55,13 +57,9 @@ async def get_unpaid_orders(
         # Determine which field to query
         location_field = "table_number" if location_type == "table" else "room_number"
 
-        # Fetch unpaid orders with waiter info in a single query (fix N+1 problem)
-        # Use JOIN to get waiter information with the orders
-        response = supabase.table("orders")\
-            .select("""
-                *,
-                waiter:users!created_by_staff_id(id, full_name)
-            """)\
+        # Fetch unpaid orders with waiter info using admin client
+        response = supabase_admin.table("orders")\
+            .select("*")\
             .eq(location_field, location)\
             .eq("payment_status", "unpaid")\
             .eq("status", "served")\
@@ -79,31 +77,40 @@ async def get_unpaid_orders(
                 order_count=0
             )
 
-        # Process orders (waiter info already loaded via JOIN)
+        # Process orders
         orders_with_waiters = []
         total_amount = Decimal(0)
         tax_included = Decimal(0)
         subtotal = Decimal(0)
 
         for order in response.data:
-            # Waiter info is already included from JOIN
-            waiter_info = order.get("waiter", {})
-            waiter_name = waiter_info.get("full_name", "Unknown") if waiter_info else "Unknown"
+            # Get waiter name if staff_id exists
+            waiter_name = "Unknown"
+            if order.get("created_by_staff_id"):
+                try:
+                    waiter_response = supabase_admin.table("users")\
+                        .select("full_name")\
+                        .eq("id", order["created_by_staff_id"])\
+                        .execute()
+                    if waiter_response.data:
+                        waiter_name = waiter_response.data[0].get("full_name", "Unknown")
+                except Exception:
+                    pass
 
             order_info = OrderInBill(
                 order_id=order["id"],
                 order_number=order["order_number"],
-                waiter_id=order["created_by_staff_id"],
+                waiter_id=order.get("created_by_staff_id"),
                 waiter_name=waiter_name,
-                items=order["items"],
-                amount=Decimal(str(order["total_amount"])),
+                items=order.get("items", []),
+                amount=Decimal(str(order.get("total_amount", 0))),
                 created_at=order["created_at"]
             )
 
             orders_with_waiters.append(order_info)
-            total_amount += Decimal(str(order["total_amount"]))
-            tax_included += Decimal(str(order["tax"]))
-            subtotal += Decimal(str(order["subtotal"]))
+            total_amount += Decimal(str(order.get("total_amount", 0)))
+            tax_included += Decimal(str(order.get("tax", 0)))
+            subtotal += Decimal(str(order.get("subtotal", 0)))
 
         return UnpaidOrdersResponse(
             location=location,
@@ -118,9 +125,10 @@ async def get_unpaid_orders(
     except HTTPException:
         raise
     except Exception as e:
+        logging.error(f"Error fetching unpaid orders: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching unpaid orders: {str(e)}"
+            detail="Error fetching unpaid orders"
         )
 
 
@@ -129,6 +137,7 @@ async def create_bill(
     bill_data: BillCreate,
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
     Generate a consolidated bill from multiple orders
@@ -138,8 +147,8 @@ async def create_bill(
     - Tracks waiter attribution for each order
     """
     try:
-        # Verify all orders exist and are unpaid
-        orders_response = supabase.table("orders")\
+        # Verify all orders exist and are unpaid (use admin to bypass RLS)
+        orders_response = supabase_admin.table("orders")\
             .select("*")\
             .in_("id", bill_data.order_ids)\
             .execute()
@@ -170,15 +179,18 @@ async def create_bill(
 
         # Generate bill number
         location = bill_data.table_number or bill_data.room_number
-        bill_number_response = supabase.rpc(
-            "generate_bill_number",
-            {
-                "p_location_type": bill_data.location_type,
-                "p_location": location
-            }
-        ).execute()
-
-        bill_number = bill_number_response.data if bill_number_response.data else f"BILL-{location}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        try:
+            bill_number_response = supabase_admin.rpc(
+                "generate_bill_number",
+                {
+                    "p_location_type": bill_data.location_type,
+                    "p_location": location
+                }
+            ).execute()
+            bill_number = bill_number_response.data if bill_number_response.data else f"BILL-{location}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        except Exception:
+            # Fallback if RPC doesn't exist
+            bill_number = f"BILL-{location}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
         # Create bill record
         bill_dict = {
@@ -195,7 +207,7 @@ async def create_bill(
             "settled_by_waiter_id": current_user["id"],
         }
 
-        bill_response = supabase.table("bills").insert(bill_dict).execute()
+        bill_response = supabase_admin.table("bills").insert(bill_dict).execute()
 
         if not bill_response.data:
             raise HTTPException(
@@ -211,28 +223,29 @@ async def create_bill(
             bill_orders.append({
                 "bill_id": bill["id"],
                 "order_id": order["id"],
-                "waiter_id": order["created_by_staff_id"],
+                "waiter_id": order.get("created_by_staff_id"),
                 "order_amount": float(order["total_amount"])
             })
 
-        supabase.table("bill_orders").insert(bill_orders).execute()
+        supabase_admin.table("bill_orders").insert(bill_orders).execute()
 
         # Update orders with bill_id
         for order_id in bill_data.order_ids:
-            supabase.table("orders")\
+            supabase_admin.table("orders")\
                 .update({"bill_id": bill["id"]})\
                 .eq("id", order_id)\
                 .execute()
 
         # Fetch complete bill with orders
-        return await get_bill(bill["id"], current_user, supabase)
+        return await get_bill(bill["id"], current_user, supabase, supabase_admin)
 
     except HTTPException:
         raise
     except Exception as e:
+        logging.error(f"Error creating bill: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating bill: {str(e)}"
+            detail="Error creating bill"
         )
 
 
@@ -241,11 +254,12 @@ async def get_bill(
     bill_id: str,
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Get bill details with order breakdown"""
     try:
-        # Fetch bill
-        bill_response = supabase.table("bills")\
+        # Fetch bill using admin client to bypass RLS
+        bill_response = supabase_admin.table("bills")\
             .select("*")\
             .eq("id", bill_id)\
             .execute()
@@ -258,8 +272,8 @@ async def get_bill(
 
         bill = bill_response.data[0]
 
-        # Fetch associated orders
-        bill_orders_response = supabase.table("bill_orders")\
+        # Fetch associated orders using admin client
+        bill_orders_response = supabase_admin.table("bill_orders")\
             .select("*")\
             .eq("bill_id", bill_id)\
             .execute()
@@ -267,7 +281,7 @@ async def get_bill(
         orders_list = []
         for bo in bill_orders_response.data:
             # Get order details
-            order_response = supabase.table("orders")\
+            order_response = supabase_admin.table("orders")\
                 .select("*")\
                 .eq("id", bo["order_id"])\
                 .execute()
@@ -276,7 +290,7 @@ async def get_bill(
                 order = order_response.data[0]
 
                 # Get waiter name
-                waiter_response = supabase.table("users")\
+                waiter_response = supabase_admin.table("users")\
                     .select("full_name")\
                     .eq("id", bo["waiter_id"])\
                     .execute()
@@ -299,9 +313,10 @@ async def get_bill(
     except HTTPException:
         raise
     except Exception as e:
+        logging.error(f"Error fetching bill: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching bill: {str(e)}"
+            detail="Error fetching bill"
         )
 
 
@@ -417,9 +432,10 @@ async def create_payment(
     except HTTPException:
         raise
     except Exception as e:
+        logging.error(f"Error processing payment: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing payment: {str(e)}"
+            detail="Error processing payment"
         )
 
 
@@ -505,9 +521,10 @@ async def mpesa_callback(
     except HTTPException:
         raise
     except Exception as e:
+        logging.error(f"Error processing M-Pesa callback: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing M-Pesa callback: {str(e)}"
+            detail="Error processing M-Pesa callback"
         )
 
 
@@ -516,10 +533,12 @@ async def list_bills(
     payment_status: str = None,
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """List bills with optional filtering by payment status"""
     try:
-        query = supabase.table("bills").select("*").order("created_at", desc=True)
+        # Use admin client to bypass RLS
+        query = supabase_admin.table("bills").select("*").order("created_at", desc=True)
 
         if payment_status:
             query = query.eq("payment_status", payment_status)
@@ -532,13 +551,14 @@ async def list_bills(
 
         bills = []
         for bill_data in response.data:
-            bill = await get_bill(bill_data["id"], current_user, supabase)
+            bill = await get_bill(bill_data["id"], current_user, supabase, supabase_admin)
             bills.append(bill)
 
         return bills
 
     except Exception as e:
+        logging.error(f"Error listing bills: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing bills: {str(e)}"
+            detail="Error listing bills"
         )

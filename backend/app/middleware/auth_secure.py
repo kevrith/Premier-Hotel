@@ -2,6 +2,7 @@
 Secure Authentication Middleware with Cookie Support
 SECURITY: Supports httpOnly cookie authentication (primary) and Bearer token (fallback)
 """
+import logging
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
@@ -40,44 +41,53 @@ async def get_current_user(
     """
     user_payload = None
 
-    # DEBUG LOGGING
-    print(f"\n=== AUTH DEBUG ===")
-    print(f"Request path: {request.url.path}")
-    print(f"Cookies: {list(request.cookies.keys())}")
-    print(f"Has Bearer credentials: {credentials is not None}")
+    # DEBUG LOGGING - Remove in production
+    if settings.DEBUG:
+        logging.debug(f"Request path: {request.url.path}")
+        logging.debug(f"Cookies: {list(request.cookies.keys())}")
+        logging.debug(f"Has Bearer credentials: {credentials is not None}")
 
     # Try cookie-based authentication first (preferred)
     try:
         cookie_token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
         if cookie_token:
-            print(f"Found cookie token: {cookie_token[:50]}...")
+            if settings.DEBUG:
+                logging.debug(f"Found cookie token: {cookie_token[:50]}...")
             user_payload = decode_token(cookie_token)
             if user_payload and user_payload.get("type") == "access":
                 # Valid cookie token found
-                print(f"✅ Cookie auth successful for user: {user_payload.get('sub')}")
+                if settings.DEBUG:
+                    logging.debug(f"Cookie auth successful for user: {user_payload.get('sub')}")
                 pass
             else:
-                print(f"❌ Cookie token invalid or wrong type")
+                if settings.DEBUG:
+                    logging.debug("Cookie token invalid or wrong type")
                 user_payload = None
         else:
-            print(f"❌ No cookie token found")
+            if settings.DEBUG:
+                logging.debug("No cookie token found")
     except Exception as e:
-        print(f"❌ Cookie auth exception: {e}")
+        if settings.DEBUG:
+            logging.debug(f"Cookie auth exception: {e}")
         user_payload = None
 
     # Fallback to Bearer token if no valid cookie
     if not user_payload and credentials:
         token = credentials.credentials
-        print(f"Trying Bearer token: {token[:50]}...")
+        if settings.DEBUG:
+            logging.debug(f"Trying Bearer token: {token[:50]}...")
         user_payload = decode_token(token)
         if user_payload:
-            print(f"✅ Bearer auth successful for user: {user_payload.get('sub')}")
+            if settings.DEBUG:
+                logging.debug(f"Bearer auth successful for user: {user_payload.get('sub')}")
         else:
-            print(f"❌ Bearer token invalid")
+            if settings.DEBUG:
+                logging.debug("Bearer token invalid")
 
     # No valid authentication found
     if not user_payload:
-        print(f"❌ No valid authentication - returning 401")
+        if settings.DEBUG:
+            logging.debug("No valid authentication - returning 401")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated - please login",
@@ -121,6 +131,8 @@ async def get_current_user(
     except HTTPException:
         raise
     except Exception as e:
+        # Log the specific error for debugging
+        logging.error(f"Database error during user validation: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

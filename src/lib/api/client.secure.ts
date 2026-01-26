@@ -67,7 +67,7 @@ apiClient.interceptors.response.use(
   (response: AxiosResponse): AxiosResponse => {
     // Log request duration in development
     const config = response.config as RequestConfigWithMetadata;
-    if (import.meta.env.DEV && config.metadata) {
+    if (import.meta.env.DEV && config.metadata && process.env.NODE_ENV === 'development') {
       const duration = new Date().getTime() - config.metadata.startTime.getTime();
       const method = config.method?.toUpperCase() || 'UNKNOWN';
       console.log(`API ${method} ${config.url} - ${duration}ms`);

@@ -104,8 +104,8 @@ class EmailService:
             bool: True if sent successfully, False otherwise
         """
         try:
-            # Render template
-            template = Template(template_html)
+            # Render template with autoescape enabled for security
+            template = Template(template_html, autoescape=True)
             html_content = template.render(**template_vars)
 
             # Send email

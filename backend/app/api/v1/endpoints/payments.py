@@ -1,6 +1,7 @@
 """
 Payment Management Endpoints
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from typing import List, Optional
 from datetime import datetime
@@ -254,9 +255,9 @@ async def mpesa_callback(
 
         return {"status": "success", "message": "Callback processed"}
 
-    except Exception as e:
-        print(f"Error processing M-Pesa callback: {str(e)}")
-        return {"status": "error", "message": str(e)}
+    except Exception:
+        logging.error("Error processing M-Pesa callback")
+        return {"status": "error", "message": "Callback processing failed"}
 
 
 @router.get("/status/{payment_id}", response_model=PaymentResponse)

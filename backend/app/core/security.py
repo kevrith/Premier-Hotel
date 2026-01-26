@@ -1,6 +1,7 @@
 """
 Security utilities: Password hashing, JWT tokens, OTP generation
 """
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from passlib.context import CryptContext
@@ -97,7 +98,8 @@ def decode_token(token: str) -> Optional[Dict[str, Any]]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except JWTError:
+    except JWTError as e:
+        logging.warning(f"JWT decode error: {str(e)}")
         return None
 
 

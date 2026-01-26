@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, Users, X } from 'lucide-react';
 import { messagingService } from '../lib/api/messages';
-import { useWebSocket, WS_EVENTS } from '../hooks/useWebSocket';
+import { useWebSocketSingleton, WS_EVENTS } from '../hooks/useWebSocketSingleton';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -15,7 +15,7 @@ const MessagesPage = () => {
   const messagesEndRef = useRef(null);
 
   // WebSocket for real-time messages
-  const { on } = useWebSocket({
+  const { on } = useWebSocketSingleton({
     autoConnect: true
   });
 

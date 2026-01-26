@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import useAuthStore from '@/stores/authStore';
 
 export interface WebSocketMessage {
   type: string;
@@ -35,6 +35,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
+  const [isConnecting, setIsConnecting] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -42,60 +43,115 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const eventHandlersRef = useRef<Map<string, Set<WebSocketEventHandler>>>(new Map());
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Get auth token
-  const getToken = async (): Promise<string | null> => {
-    try {
-      // Try to get token from auth store first (custom auth)
+  // Get token and hydration state from auth store
+  const { token, isAuthenticated, hasHydrated } = useAuthStore();
+
+  // Debug: Log auth state on every render to trace issues
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
       const authStorage = localStorage.getItem('auth-storage');
+      let parsedToken = null;
       if (authStorage) {
-        const parsed = JSON.parse(authStorage);
-        if (parsed.state?.token) {
-          return parsed.state.token;
+        try {
+          const parsed = JSON.parse(authStorage);
+          parsedToken = parsed.state?.token ? 'EXISTS' : 'NULL';
+        } catch (e) {
+          parsedToken = 'PARSE_ERROR';
         }
       }
+      console.log('[WebSocket] Auth state debug:', {
+        hasHydrated,
+        isAuthenticated,
+        zustandToken: token ? 'EXISTS' : 'NULL',
+        localStorageToken: parsedToken,
+        accessToken: localStorage.getItem('access_token') ? 'EXISTS' : 'NULL'
+      });
+    }
+  }, [hasHydrated, isAuthenticated, token]);
+
+  // Get auth token - for cookie-based auth, we need to get a WebSocket token from the API
+  const getToken = useCallback(async (): Promise<string | null> => {
+    // For cookie-based auth, get a WebSocket-specific token from the API
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/auth/ws-token', {
+        method: 'GET',
+        credentials: 'include', // Include cookies for authentication
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      });
       
-      // Fallback to Supabase auth
-      const { data: { session } } = await supabase.auth.getSession();
-      return session?.access_token || null;
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[WebSocket] Got WebSocket token from API');
+        return data.ws_token;
+      } else {
+        console.log('[WebSocket] Failed to get WebSocket token, status:', response.status);
+        // Check if it's an auth error
+        if (response.status === 401) {
+          console.log('[WebSocket] Authentication required - user may need to login again');
+        }
+        return null;
+      }
     } catch (error) {
-      console.error('Error getting auth token:', error);
+      console.error('[WebSocket] Error getting WebSocket token:', error);
       return null;
     }
-  };
+  }, []);
 
   // Connect to WebSocket
   const connect = useCallback(async () => {
     try {
-      const token = await getToken();
+      // Prevent multiple simultaneous connections
+      if (isConnecting || isConnected) {
+        console.log('[WebSocket] Already connecting or connected, skipping');
+        return;
+      }
 
-      if (!token) {
-        // User not logged in - this is expected, don't show error
+      // For cookie-based auth, we need to get a token for WebSocket connection
+      if (!isAuthenticated) {
+        console.log('[WebSocket] Not authenticated, skipping connection');
         setConnectionStatus('disconnected');
         return;
       }
+
+      setIsConnecting(true);
+      setConnectionStatus('connecting');
 
       // Close existing connection
       if (wsRef.current) {
         wsRef.current.close();
       }
 
-      setConnectionStatus('connecting');
+      // Get authentication token for WebSocket
+      const authToken = await getToken();
+      if (!authToken) {
+        console.log('[WebSocket] No auth token available');
+        setConnectionStatus('disconnected');
+        setIsConnecting(false);
+        return;
+      }
 
-      // Create WebSocket connection with automatic protocol detection
-      // Use wss:// for HTTPS, ws:// for HTTP
+      // Create WebSocket connection with token as query parameter
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname === 'localhost'
-        ? 'localhost:8000'  // Development
-        : window.location.host;  // Production (uses same host as frontend)
+        ? 'localhost:8000'
+        : window.location.host;
 
-      const wsUrl = `${protocol}//${host}/api/v1/ws?token=${token}`;
-      console.log('Connecting to WebSocket:', wsUrl);
+      const wsUrl = `${protocol}//${host}/api/v1/ws?token=${encodeURIComponent(authToken)}`;
+      
+      console.log('[WebSocket] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
+      console.log('[WebSocket] Available cookies:', document.cookie);
+      
       const ws = new WebSocket(wsUrl);
-
+      
+      // Send authentication after connection opens
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('[WebSocket] Connection opened successfully');
         setIsConnected(true);
         setConnectionStatus('connected');
+        setIsConnecting(false);
         reconnectAttemptsRef.current = 0;
 
         // Start ping interval
@@ -106,7 +162,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
               timestamp: new Date().toISOString()
             }));
           }
-        }, 30000); // Ping every 30 seconds
+        }, 30000);
 
         onConnect?.();
       };
@@ -115,18 +171,17 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
 
-          // Handle connection acknowledgment
           if (message.type === 'connection_ack') {
-            console.log('Connection acknowledged:', message.data);
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Connection acknowledged:', message.data);
+            }
             return;
           }
 
-          // Handle pong
           if (message.type === 'pong') {
             return;
           }
 
-          // Trigger event handlers for this message type
           const handlers = eventHandlersRef.current.get(message.type);
           if (handlers) {
             handlers.forEach(handler => {
@@ -138,7 +193,6 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
             });
           }
 
-          // Trigger wildcard handlers (*)
           const wildcardHandlers = eventHandlersRef.current.get('*');
           if (wildcardHandlers) {
             wildcardHandlers.forEach(handler => {
@@ -156,17 +210,24 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[WebSocket] Connection error:', error);
+        console.log('[WebSocket] WebSocket state:', ws.readyState);
+        console.log('[WebSocket] Available cookies:', document.cookie);
         setConnectionStatus('error');
+        setIsConnecting(false);
         onError?.(new Error('WebSocket connection error'));
       };
 
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
+      ws.onclose = (event) => {
+        console.log('[WebSocket] Connection closed:', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
+        });
         setIsConnected(false);
         setConnectionStatus('disconnected');
+        setIsConnecting(false);
 
-        // Clear ping interval
         if (pingIntervalRef.current) {
           clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = null;
@@ -174,27 +235,28 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
 
         onDisconnect?.();
 
-        // Attempt reconnection
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++;
-          console.log(`Reconnecting... (Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
+          console.log(`[WebSocket] Reconnecting... (Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
 
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
-          }, reconnectInterval);
+          }, reconnectInterval * reconnectAttemptsRef.current); // Exponential backoff
         } else {
-          console.log('Max reconnection attempts reached');
+          console.log('[WebSocket] Max reconnection attempts reached');
         }
       };
 
       wsRef.current = ws;
 
     } catch (error) {
-      console.error('Error connecting to WebSocket:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[WebSocket] Connection error:', error);
+      }
       setConnectionStatus('error');
       onError?.(error as Error);
     }
-  }, [maxReconnectAttempts, reconnectInterval, onConnect, onDisconnect, onError]);
+  }, [isAuthenticated, maxReconnectAttempts, reconnectInterval, onConnect, onDisconnect, onError]);
 
   // Disconnect from WebSocket
   const disconnect = useCallback(() => {
@@ -215,6 +277,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
 
     setIsConnected(false);
     setConnectionStatus('disconnected');
+    setIsConnecting(false);
   }, []);
 
   // Subscribe to an event
@@ -257,16 +320,56 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     }
   }, []);
 
-  // Auto-connect on mount
+  // Auto-connect when auth is ready (after hydration)
   useEffect(() => {
-    if (autoConnect) {
-      connect();
+    // Wait for auth store to hydrate before attempting connection
+    if (!hasHydrated) {
+      return;
     }
 
+    // Add a small delay to ensure auth is ready after hydration
+    const connectTimer = setTimeout(async () => {
+      if (autoConnect && isAuthenticated) {
+        console.log('[WebSocket] Auto-connecting after auth ready');
+        
+        // Test if we can get a WebSocket token before attempting connection
+        const testToken = await getToken();
+        if (testToken) {
+          connect();
+        } else {
+          console.log('[WebSocket] Cannot get WebSocket token, user may need to log in again');
+          setConnectionStatus('disconnected');
+        }
+      } else if (!isAuthenticated) {
+        console.log('[WebSocket] Not authenticated, disconnecting');
+        disconnect();
+      }
+    }, 1000); // Increased delay to 1000ms to prevent rapid reconnection attempts
+
     return () => {
-      disconnect();
+      clearTimeout(connectTimer);
     };
-  }, [autoConnect, connect, disconnect]);
+  }, [autoConnect, hasHydrated, isAuthenticated, connect, disconnect, getToken]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Clear any pending reconnection timeouts
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      
+      // Clear ping interval
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+      }
+      
+      // Close WebSocket connection
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
 
   return {
     isConnected,

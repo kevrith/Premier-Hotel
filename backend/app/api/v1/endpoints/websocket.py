@@ -16,42 +16,48 @@ router = APIRouter()
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    token: str = Query(...),
+    token: str = Query(None),
 ):
     """
     WebSocket endpoint for real-time updates
+    Supports both token-based and cookie-based authentication
 
     Usage:
         ws://localhost:8000/api/v1/ws?token=YOUR_JWT_TOKEN
-
-    Events sent to client:
-        - notification: New notification
-        - booking_created: New booking created
-        - booking_updated: Booking updated
-        - payment_completed: Payment successful
-        - order_status_changed: Order status changed
-        - new_message: New chat message
-        - system_announcement: System-wide announcement
+        or
+        ws://localhost:8000/api/v1/ws (with cookies)
     """
     user_id = None
 
     try:
-        # Validate token and get user
-        # For now, we'll extract user_id from token manually
-        # In production, you'd decode the JWT token
-        from jose import jwt
-        from app.core.config import settings
+        # Try token-based auth first
+        if token:
+            from jose import jwt
+            from app.core.config import settings
 
-        try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-            user_id = payload.get("sub")
-
-            if not user_id:
+            try:
+                payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+                user_id = payload.get("sub")
+                
+                # Verify token type (accept both access and websocket tokens)
+                token_type = payload.get("type")
+                if token_type not in ["access", "websocket"]:
+                    logger.error(f"Invalid token type: {token_type}")
+                    await websocket.close(code=1008, reason="Invalid token type")
+                    return
+                    
+            except Exception as e:
+                logger.error(f"Token validation error: {str(e)}")
                 await websocket.close(code=1008, reason="Invalid token")
                 return
-        except Exception as e:
-            logger.error(f"Token validation error: {str(e)}")
-            await websocket.close(code=1008, reason="Invalid token")
+        else:
+            # No token provided
+            logger.error("No authentication token provided")
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+
+        if not user_id:
+            await websocket.close(code=1008, reason="Authentication required")
             return
 
         # Accept connection

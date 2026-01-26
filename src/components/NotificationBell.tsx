@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Bell } from 'lucide-react';
 import { notificationService } from '../lib/api/notifications';
 import NotificationDropdown from './NotificationDropdown';
-import { useWebSocket, WS_EVENTS } from '../hooks/useWebSocket';
+import { useWebSocketSingleton, WS_EVENTS } from '../hooks/useWebSocketSingleton';
 import toast from 'react-hot-toast';
 
 const NotificationBell = () => {
@@ -12,7 +12,7 @@ const NotificationBell = () => {
   const [loading, setLoading] = useState(false);
 
   // WebSocket connection for real-time updates
-  const { isConnected, on } = useWebSocket({
+  const { isConnected, on } = useWebSocketSingleton({
     autoConnect: true,
     onConnect: () => console.log('Notification WebSocket connected'),
     onDisconnect: () => console.log('Notification WebSocket disconnected')
@@ -22,7 +22,7 @@ const NotificationBell = () => {
     fetchNotifications();
 
     // Subscribe to real-time notification events
-    const unsubscribe = on(WS_EVENTS.NOTIFICATION, (notificationData) => {
+    const unsubscribe = on(WS_EVENTS.NOTIFICATION, (notificationData: any) => {
       console.log('New notification received:', notificationData);
 
       // Show toast notification
