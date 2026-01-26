@@ -15,6 +15,7 @@ import {
 import { toast } from 'react-hot-toast';
 import { reportsService } from '@/lib/api/reports';
 import { staffService } from '@/lib/api/staff';
+import { inventoryService } from '@/lib/api/inventory';
 
 // QuickBooks-style Report Categories
 const reportCategories = {
@@ -237,68 +238,98 @@ export function QuickBooksReporting() {
     loadEmployees();
   }, []);
 
-  // Generate sample data based on report type
+  // Generate report data from real APIs
   const generateReportData = async (reportName: string) => {
-    // This would normally fetch from API
-    switch (reportName) {
-      case 'Profit & Loss Standard':
-        return generateProfitLossData();
-      case 'Balance Sheet Standard':
-        return generateBalanceSheetData();
-      case 'Sales by Customer Summary':
-        return generateSalesByCustomerData();
-      case 'Inventory Valuation Summary':
-        return generateInventoryValuationData();
-      case 'Daily Sales Summary':
-        return generateDailySalesData();
-      case 'Sales by Employee':
-        return await generateEmployeeSalesData();
-      default:
-        return generateGenericReportData(reportName);
+    setLoading(true);
+    try {
+      switch (reportName) {
+        case 'Profit & Loss Standard':
+          return await generateProfitLossData();
+        case 'Balance Sheet Standard':
+          return generateBalanceSheetData(); // Requires full accounting integration
+        case 'Sales by Customer Summary':
+          return await generateSalesByCustomerData();
+        case 'Inventory Valuation Summary':
+          return await generateInventoryValuationData();
+        case 'Daily Sales Summary':
+          return await generateDailySalesData();
+        case 'Sales by Employee':
+          return await generateEmployeeSalesData();
+        default:
+          return generateGenericReportData(reportName);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const generateProfitLossData = () => ({
-    reportName: 'Profit & Loss',
-    period: `${filters.startDate} to ${filters.endDate}`,
-    sections: [
-      {
-        name: 'Income',
-        accounts: [
-          { name: 'Room Revenue', amount: 2850000, percent: 62.5 },
-          { name: 'Restaurant Revenue', amount: 980000, percent: 21.5 },
-          { name: 'Bar Revenue', amount: 420000, percent: 9.2 },
-          { name: 'Room Service Revenue', amount: 210000, percent: 4.6 },
-          { name: 'Event Space Revenue', amount: 100000, percent: 2.2 },
+  const generateProfitLossData = async () => {
+    try {
+      // Fetch real revenue data
+      const [revenueData, ordersData, bookingsData] = await Promise.all([
+        reportsService.getRevenueAnalytics(filters.startDate, filters.endDate, 'day'),
+        reportsService.getOrdersStats(filters.startDate, filters.endDate),
+        reportsService.getBookingsStats(filters.startDate, filters.endDate)
+      ]);
+
+      const totalRevenue = revenueData.summary.total_revenue || 0;
+      const orderRevenue = ordersData.summary.total_revenue || 0;
+      const bookingRevenue = bookingsData.summary.total_revenue || 0;
+
+      // Calculate percentages
+      const calcPercent = (amount: number) => totalRevenue > 0 ? ((amount / totalRevenue) * 100) : 0;
+
+      // Estimate costs (typically 30-40% of revenue for hotels)
+      const estimatedCOGS = orderRevenue * 0.35; // 35% food/beverage cost
+      const estimatedOpEx = totalRevenue * 0.40; // 40% operating expenses
+
+      return {
+        reportName: 'Profit & Loss',
+        period: `${filters.startDate} to ${filters.endDate}`,
+        sections: [
+          {
+            name: 'Income',
+            accounts: [
+              { name: 'Room Revenue (Bookings)', amount: bookingRevenue, percent: calcPercent(bookingRevenue) },
+              { name: 'Restaurant & Orders Revenue', amount: orderRevenue, percent: calcPercent(orderRevenue) },
+              { name: 'Other Revenue', amount: Math.max(0, totalRevenue - bookingRevenue - orderRevenue), percent: calcPercent(totalRevenue - bookingRevenue - orderRevenue) },
+            ],
+            total: totalRevenue
+          },
+          {
+            name: 'Cost of Goods Sold',
+            accounts: [
+              { name: 'Food & Beverage Costs (Est. 35%)', amount: estimatedCOGS, percent: calcPercent(estimatedCOGS) },
+            ],
+            total: estimatedCOGS
+          },
+          {
+            name: 'Operating Expenses (Est. 40%)',
+            accounts: [
+              { name: 'Salaries & Operations', amount: estimatedOpEx, percent: calcPercent(estimatedOpEx) },
+            ],
+            total: estimatedOpEx
+          }
         ],
-        total: 4560000
-      },
-      {
-        name: 'Cost of Goods Sold',
-        accounts: [
-          { name: 'Food Costs', amount: 350000, percent: 7.7 },
-          { name: 'Beverage Costs', amount: 140000, percent: 3.1 },
-          { name: 'Room Supplies', amount: 85000, percent: 1.9 },
-        ],
-        total: 575000
-      },
-      {
-        name: 'Operating Expenses',
-        accounts: [
-          { name: 'Salaries & Wages', amount: 1200000, percent: 26.3 },
-          { name: 'Utilities', amount: 180000, percent: 3.9 },
-          { name: 'Maintenance', amount: 120000, percent: 2.6 },
-          { name: 'Marketing', amount: 95000, percent: 2.1 },
-          { name: 'Insurance', amount: 75000, percent: 1.6 },
-          { name: 'Supplies', amount: 65000, percent: 1.4 },
-        ],
-        total: 1735000
-      }
-    ],
-    grossProfit: 3985000,
-    netIncome: 2250000,
-    netMargin: 49.3
-  });
+        grossProfit: totalRevenue - estimatedCOGS,
+        netIncome: totalRevenue - estimatedCOGS - estimatedOpEx,
+        netMargin: totalRevenue > 0 ? (((totalRevenue - estimatedCOGS - estimatedOpEx) / totalRevenue) * 100) : 0,
+        dataSource: 'Real API Data'
+      };
+    } catch (error) {
+      console.error('Failed to fetch P&L data:', error);
+      toast.error('Failed to load Profit & Loss data');
+      return {
+        reportName: 'Profit & Loss',
+        period: `${filters.startDate} to ${filters.endDate}`,
+        sections: [],
+        grossProfit: 0,
+        netIncome: 0,
+        netMargin: 0,
+        error: 'Failed to load data'
+      };
+    }
+  };
 
   const generateBalanceSheetData = () => ({
     reportName: 'Balance Sheet',

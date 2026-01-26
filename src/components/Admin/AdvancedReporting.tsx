@@ -14,19 +14,15 @@ export function AdvancedReporting() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BarChart className="h-5 w-5" />
-            Advanced Reporting & Analytics
+            Reports & Analytics
           </CardTitle>
           <CardDescription>
-            Comprehensive business intelligence and analytics dashboard with QuickBooks-style reporting
+            Comprehensive business intelligence and analytics dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="quickbooks" className="space-y-4">
+          <Tabs defaultValue="sales" className="space-y-4">
             <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="quickbooks">
-                <FileBarChart className="h-4 w-4 mr-2" />
-                QuickBooks Reports
-              </TabsTrigger>
               <TabsTrigger value="sales">
                 <DollarSign className="h-4 w-4 mr-2" />
                 Sales
@@ -43,11 +39,11 @@ export function AdvancedReporting() {
                 <MessageSquare className="h-4 w-4 mr-2" />
                 Customers
               </TabsTrigger>
+              <TabsTrigger value="quickbooks">
+                <FileBarChart className="h-4 w-4 mr-2" />
+                QuickBooks
+              </TabsTrigger>
             </TabsList>
-
-            <TabsContent value="quickbooks" className="space-y-4">
-              <QuickBooksReporting />
-            </TabsContent>
 
             <TabsContent value="sales" className="space-y-4">
               <SalesReports />
@@ -63,6 +59,10 @@ export function AdvancedReporting() {
 
             <TabsContent value="customers" className="space-y-4">
               <CustomerInsightsReports />
+            </TabsContent>
+
+            <TabsContent value="quickbooks" className="space-y-4">
+              <QuickBooksReporting />
             </TabsContent>
           </Tabs>
         </CardContent>
