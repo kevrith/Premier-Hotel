@@ -99,6 +99,8 @@ export default function ChefDashboard() {
 
   // Active tab for main view
   const [activeTab, setActiveTab] = useState('orders');
+  const [chefWorkloads, setChefWorkloads] = useState<Record<string, number>>({});
+  const { user } = useAuth();
 
   // Auth check
   useEffect(() => {
@@ -231,7 +233,31 @@ export default function ChefDashboard() {
     return Math.min(totalTime, 120);
   };
 
-  // Auto-calculate prep times for new orders
+  // Calculate chef workloads
+  useEffect(() => {
+    const workloads: Record<string, number> = {};
+    orders.forEach(order => {
+      if (order.assigned_chef_id && (order.status === 'preparing' || order.status === 'ready')) {
+        workloads[order.assigned_chef_id] = (workloads[order.assigned_chef_id] || 0) + 1;
+      }
+    });
+    setChefWorkloads(workloads);
+  }, [orders]);
+
+  // Get chef name from order data
+  const getChefName = (order: Order): string => {
+    if (order.assigned_chef && order.assigned_chef.first_name) {
+      return `${order.assigned_chef.first_name} ${order.assigned_chef.last_name || ''}`.trim();
+    }
+    return 'Unknown Chef';
+  };
+
+  // Check if current user can take more orders
+  const canTakeMoreOrders = (): boolean => {
+    if (!user?.id) return false;
+    const currentWorkload = chefWorkloads[user.id] || 0;
+    return currentWorkload < 5; // Max 5 orders per chef
+  };
   useEffect(() => {
     orders.forEach(order => {
       if (!prepTimes[order.id]) {
@@ -300,6 +326,16 @@ export default function ChefDashboard() {
               {order.location}
               <Badge variant={getPriorityVariant(order.priority)} className="text-sm px-2 py-1">
                 {order.priority}
+              </Badge>
+              {/* Status Badge - Shows current status */}
+              <Badge
+                variant={order.status === 'pending' ? 'destructive' : order.status === 'confirmed' ? 'default' : 'secondary'}
+                className="text-sm px-2 py-1"
+              >
+                {order.status === 'pending' ? '🔴 New' :
+                 order.status === 'confirmed' ? '✅ Accepted' :
+                 order.status === 'preparing' ? '👨‍🍳 Cooking' :
+                 order.status === 'ready' ? '🎉 Ready' : order.status}
               </Badge>
             </CardTitle>
             <CardDescription className="flex items-center gap-1 mt-2 text-base">
@@ -372,6 +408,15 @@ export default function ChefDashboard() {
           </div>
         )}
 
+        {/* Chef Assignment Info */}
+        {order.assigned_chef && (
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <p className="text-sm font-medium text-blue-900">
+              👨‍🍳 Assigned to: <span className="font-bold">{order.assigned_chef.full_name}</span>
+            </p>
+          </div>
+        )}
+
         {/* Action Buttons - LARGE & TOUCH-FRIENDLY */}
         <div className="flex flex-col gap-3 pt-2">
           {order.status === 'pending' && (
@@ -399,7 +444,7 @@ export default function ChefDashboard() {
             <>
               <Button
                 onClick={() => handleStatusUpdate(order.id, 'preparing')}
-                disabled={updating === order.id}
+                disabled={updating === order.id || !canTakeMoreOrders()}
                 className="h-14 text-lg font-bold"
                 size="lg"
               >
@@ -408,6 +453,11 @@ export default function ChefDashboard() {
                     <RefreshCw className="h-6 w-6 mr-2 animate-spin" />
                     Starting...
                   </>
+                ) : !canTakeMoreOrders() ? (
+                  <>
+                    <AlertCircle className="h-6 w-6 mr-2" />
+                    Workload Full (5/5)
+                  </>
                 ) : (
                   <>
                     <ChefHat className="h-6 w-6 mr-2" />
@@ -415,6 +465,11 @@ export default function ChefDashboard() {
                   </>
                 )}
               </Button>
+              {!canTakeMoreOrders() && (
+                <div className="text-sm text-red-600 font-medium text-center">
+                  You have reached the maximum of 5 active orders
+                </div>
+              )}
               <Button
                 onClick={() => openTimeDialog(order.id)}
                 variant="outline"
@@ -491,6 +546,14 @@ export default function ChefDashboard() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Current Chef Workload */}
+            {user?.role === 'chef' && (
+              <Badge variant="outline" className="flex items-center gap-2 px-3 py-2 text-base">
+                <ChefHat className="h-5 w-5" />
+                {chefWorkloads[user.id] || 0}/5 Orders
+              </Badge>
+            )}
+            
             {/* WebSocket Status */}
             {isConnected ? (
               <Badge variant="outline" className="flex items-center gap-2 px-3 py-2 text-base">

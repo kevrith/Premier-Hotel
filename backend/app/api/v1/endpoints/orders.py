@@ -6,7 +6,7 @@ from supabase import Client
 from typing import Optional, List
 from app.core.supabase import get_supabase, get_supabase_admin
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderStatusUpdate
-from app.middleware.auth import get_current_user, require_staff, require_chef
+from app.middleware.auth_secure import get_current_user, require_staff, require_chef
 from datetime import datetime, timedelta
 from decimal import Decimal
 import random
@@ -20,11 +20,38 @@ from app.services.websocket_manager import manager as ws_manager, EventType, sen
 router = APIRouter()
 
 
-def generate_order_number() -> str:
-    """Generate a unique order number"""
-    prefix = "ORD"
-    random_part = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
-    return f"{prefix}{random_part}"
+async def generate_order_number(supabase_admin: Client) -> str:
+    """Generate sequential order number: PH-001, PH-002, ..., PH-999, PH-1000, etc."""
+    # Get the highest existing order number
+    response = supabase_admin.table("orders").select("order_number").like("order_number", "PH-%").order("order_number", desc=True).limit(1).execute()
+    
+    if response.data:
+        # Extract number from last order (e.g., "PH-123" -> 123)
+        last_number = response.data[0]["order_number"].split("-")[1]
+        next_number = int(last_number) + 1
+    else:
+        # Start from 1 if no orders exist
+        next_number = 1
+    
+    # Use minimum 3 digits, expand as needed
+    return f"PH-{next_number:03d}" if next_number <= 999 else f"PH-{next_number}"
+
+
+async def generate_receipt_number(supabase_admin: Client) -> str:
+    """Generate sequential receipt number: RCP-001, RCP-002, ..., RCP-999, RCP-1000, etc."""
+    # Get the highest existing receipt number
+    response = supabase_admin.table("payments").select("receipt_number").like("receipt_number", "RCP-%").order("receipt_number", desc=True).limit(1).execute()
+    
+    if response.data:
+        # Extract number from last receipt (e.g., "RCP-123" -> 123)
+        last_number = response.data[0]["receipt_number"].split("-")[1]
+        next_number = int(last_number) + 1
+    else:
+        # Start from 1 if no receipts exist
+        next_number = 1
+    
+    # Use minimum 3 digits, expand as needed
+    return f"RCP-{next_number:03d}" if next_number <= 999 else f"RCP-{next_number}"
 
 
 @router.get("/", response_model=List[OrderResponse])
@@ -114,12 +141,20 @@ async def get_kitchen_orders(
         # Use admin client to bypass RLS
         response = (
             supabase_admin.table("orders")
-            .select("*")
-            .in_("status", ["pending", "confirmed", "preparing", "ready"])
+            .select("*, assigned_chef:profiles!assigned_chef_id(first_name, last_name), assigned_waiter:profiles!assigned_waiter_id(first_name, last_name)")
+            .in_("status", ["pending", "confirmed", "preparing", "in-progress", "ready"])
             .order("priority", desc=True)
             .order("created_at", desc=False)
             .execute()
         )
+
+        # Debug: Log the statuses of orders being returned
+        order_summary = [{
+            'id': o.get('id')[:8] + '...',
+            'order_number': o.get('order_number'),
+            'status': o.get('status')
+        } for o in response.data]
+        print(f"[DEBUG] Kitchen orders returned: {order_summary}")
 
         return [OrderResponse(**order) for order in response.data]
 
@@ -262,7 +297,7 @@ async def create_order(
         estimated_ready_time = datetime.utcnow() + timedelta(minutes=max_prep_time)
 
         # Generate order number
-        order_number = generate_order_number()
+        order_number = await generate_order_number(supabase_admin)
 
         # Create order
         order_dict = {
@@ -316,7 +351,8 @@ async def create_order(
             }
         )
 
-        # Notify all chefs about new order
+        # Notify all chefs about new order - Add debug logging
+        print(f"[DEBUG] Broadcasting new order to all connected clients: {ws_manager.get_connection_count()} connections")
         await ws_manager.broadcast({
             "type": EventType.ORDER_CREATED,
             "data": {
@@ -331,6 +367,7 @@ async def create_order(
             },
             "timestamp": datetime.utcnow().isoformat()
         })
+        print(f"[DEBUG] Broadcast completed")
 
         return OrderResponse(**created_order)
 
@@ -359,10 +396,13 @@ async def update_order_status(
     - Validates status transitions
     """
     try:
+        print(f"[DEBUG] Starting order status update for order {order_id}")
+        
         # Get existing order (use admin to bypass RLS)
         existing_response = supabase_admin.table("orders").select("*").eq("id", order_id).execute()
 
         if not existing_response.data:
+            print(f"[ERROR] Order {order_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Order not found",
@@ -371,94 +411,180 @@ async def update_order_status(
         order = existing_response.data[0]
         old_status = order["status"]
         new_status = status_data.status
+        
+        print(f"[DEBUG] Order found: {order['order_number']}, changing from {old_status} to {new_status}")
 
-        # Validate status transitions
+        # Validate status transitions (with backward compatibility)
         valid_transitions = {
-            "pending": ["confirmed", "cancelled"],
-            "confirmed": ["preparing", "cancelled"],
+            "pending": ["confirmed", "in-progress", "cancelled"],  # Allow old 'in-progress'
+            "confirmed": ["preparing", "in-progress", "cancelled"],
             "preparing": ["ready", "cancelled"],
-            "ready": ["served", "cancelled"],
+            "in-progress": ["preparing", "ready", "cancelled"],  # Handle old status
+            "ready": ["served", "delivered", "cancelled"],  # Allow old 'delivered'
             "served": ["completed"],
+            "delivered": ["completed"],  # Handle old status
             "completed": [],
             "cancelled": [],
         }
+        
+        # Map old status values to new ones for internal processing
+        status_mapping = {
+            "in-progress": "preparing",
+            "delivered": "served"
+        }
+        
+        # Use mapped status for internal logic
+        mapped_new_status = status_mapping.get(new_status, new_status)
 
         if new_status not in valid_transitions.get(old_status, []):
+            print(f"[ERROR] Invalid status transition from {old_status} to {new_status}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot transition from {old_status} to {new_status}",
             )
 
-        # Prepare update data
+        print(f"[DEBUG] Status transition validation passed")
+        
+        # Prepare update data - only include fields that are explicitly set
         update_data = {
             "status": new_status,
-            "notes": status_data.notes,
         }
+        # Only include notes if provided
+        if status_data.notes is not None:
+            update_data["notes"] = status_data.notes
 
-        # Set status-specific fields
-        if new_status == "confirmed":
+        print(f"[DEBUG] Base update data prepared: {update_data}")
+        
+        # Set status-specific fields (using mapped status)
+        # First check if current user exists in profiles table to avoid foreign key errors
+        user_exists = False
+        try:
+            user_check = supabase_admin.table("profiles").select("id").eq("id", current_user["id"]).execute()
+            user_exists = bool(user_check.data)
+            print(f"[DEBUG] User {current_user['id']} exists in profiles: {user_exists}")
+        except Exception as user_check_error:
+            print(f"[WARNING] Could not verify user existence: {str(user_check_error)}")
+        
+        if mapped_new_status == "confirmed":
             update_data["confirmed_at"] = datetime.utcnow().isoformat()
-        elif new_status == "preparing":
+        elif mapped_new_status == "preparing" or new_status == "in-progress":
+            # Check chef workload before assignment
+            if user_exists and current_user.get("role") == "chef":
+                # Count current orders assigned to this chef
+                workload_check = supabase_admin.table("orders")\
+                    .select("id")\
+                    .eq("assigned_chef_id", current_user["id"])\
+                    .in_("status", ["preparing", "ready"])\
+                    .execute()
+                
+                current_workload = len(workload_check.data)
+                max_workload = 5  # Maximum orders per chef
+                
+                if current_workload >= max_workload:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Chef workload limit reached ({current_workload}/{max_workload} orders)"
+                    )
+                
+                print(f"[DEBUG] Chef workload: {current_workload}/{max_workload}")
+            
+            # Handle both new 'preparing' and old 'in-progress' status
             update_data["preparing_started_at"] = datetime.utcnow().isoformat()
-            update_data["assigned_chef_id"] = current_user["id"]
-        elif new_status == "ready":
+            if user_exists:
+                update_data["assigned_chef_id"] = current_user["id"]
+            else:
+                print(f"[WARNING] Skipping assigned_chef_id - user not found in profiles table")
+        elif mapped_new_status == "ready":
             update_data["ready_at"] = datetime.utcnow().isoformat()
-        elif new_status == "served":
+        elif mapped_new_status == "served" or new_status == "delivered":
+            # Handle both new 'served' and old 'delivered' status
             update_data["served_at"] = datetime.utcnow().isoformat()
-            update_data["assigned_waiter_id"] = current_user["id"]
-        elif new_status == "completed":
+            if user_exists:
+                update_data["assigned_waiter_id"] = current_user["id"]
+            else:
+                print(f"[WARNING] Skipping assigned_waiter_id - user not found in profiles table")
+        elif mapped_new_status == "completed":
             update_data["completed_at"] = datetime.utcnow().isoformat()
-        elif new_status == "cancelled":
+        elif mapped_new_status == "cancelled":
             update_data["cancelled_at"] = datetime.utcnow().isoformat()
 
+        print(f"[DEBUG] Final update data: {update_data}")
+        
         # Update order (use admin to bypass RLS)
+        print(f"[DEBUG] Updating order {order_id} with data: {update_data}")
         response = supabase_admin.table("orders").update(update_data).eq("id", order_id).execute()
+        print(f"[DEBUG] Supabase update response: {response}")
 
         if not response.data:
+            print(f"[ERROR] No data returned from update - response: {response}")
+            # Check if the order still exists
+            check_response = supabase_admin.table("orders").select("id, status").eq("id", order_id).execute()
+            print(f"[DEBUG] Order existence check: {check_response}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update order status",
+                detail="Failed to update order status - no data returned",
             )
 
         updated_order = response.data[0]
+        print(f"[DEBUG] Updated order status: {updated_order.get('status')} for order {order_id}")
 
-        # Send real-time status update to customer
+        # Verify the update persisted by re-fetching
+        verify_response = supabase_admin.table("orders").select("status").eq("id", order_id).execute()
+        print(f"[DEBUG] Verification fetch - status: {verify_response.data[0]['status'] if verify_response.data else 'NOT FOUND'}")
+
+        print(f"[DEBUG] Starting WebSocket notifications...")
+        
+        # Send real-time status update to customer (use mapped status for messages)
         status_messages = {
             "confirmed": f"Your order {order['order_number']} has been confirmed!",
             "preparing": f"Chef is now preparing your order {order['order_number']}",
+            "in-progress": f"Chef is now preparing your order {order['order_number']}",  # Backward compatibility
             "ready": f"Your order {order['order_number']} is ready! 🎉",
             "served": f"Your order {order['order_number']} has been served",
+            "delivered": f"Your order {order['order_number']} has been served",  # Backward compatibility
             "completed": f"Order {order['order_number']} completed. Thank you!",
             "cancelled": f"Order {order['order_number']} has been cancelled"
         }
 
-        await send_order_event(
-            order["customer_id"],
-            EventType.ORDER_STATUS_CHANGED,
-            {
-                "order_id": order_id,
-                "order_number": order["order_number"],
-                "old_status": old_status,
-                "new_status": new_status,
-                "message": status_messages.get(new_status, f"Order status: {new_status}")
-            }
-        )
+        try:
+            await send_order_event(
+                order["customer_id"],
+                EventType.ORDER_STATUS_CHANGED,
+                {
+                    "order_id": order_id,
+                    "order_number": order["order_number"],
+                    "old_status": old_status,
+                    "new_status": new_status,
+                    "message": status_messages.get(new_status, f"Order status: {new_status}")
+                }
+            )
+            print(f"[DEBUG] Customer notification sent successfully")
+        except Exception as ws_error:
+            print(f"[WARNING] Customer WebSocket notification failed: {str(ws_error)}")
+            # Don't fail the request if WebSocket fails
 
         # Broadcast to staff based on status
         if new_status == "ready":
-            # Notify all waiters that order is ready for pickup
-            await ws_manager.broadcast({
-                "type": EventType.ORDER_READY,
-                "data": {
-                    "order_id": order_id,
-                    "order_number": order["order_number"],
-                    "location": order["location"],
-                    "location_type": order["location_type"],
-                    "message": f"🔔 Order {order['order_number']} ready at {order['location']}"
-                },
-                "timestamp": datetime.utcnow().isoformat()
-            })
+            try:
+                # Notify all waiters that order is ready for pickup
+                await ws_manager.broadcast({
+                    "type": EventType.ORDER_READY,
+                    "data": {
+                        "order_id": order_id,
+                        "order_number": order["order_number"],
+                        "location": order["location"],
+                        "location_type": order["location_type"],
+                        "message": f"🔔 Order {order['order_number']} ready at {order['location']}"
+                    },
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                print(f"[DEBUG] Staff broadcast sent successfully")
+            except Exception as broadcast_error:
+                print(f"[WARNING] Staff broadcast failed: {str(broadcast_error)}")
+                # Don't fail the request if broadcast fails
 
+        print(f"[DEBUG] Checking QuickBooks sync...")
+        
         # Trigger QuickBooks sync if order is completed and db_pool is available
         if new_status == "completed" and db_pool is not None:
             try:
@@ -467,18 +593,25 @@ async def update_order_status(
                 asyncio.create_task(
                     sync_service.sync_completed_order(order_id)
                 )
+                print(f"[DEBUG] QuickBooks sync task created")
             except Exception as qb_error:
                 # Log QB sync error but don't fail the request
-                print(f"QuickBooks sync failed for order {order_id}: {str(qb_error)}")
+                print(f"[WARNING] QuickBooks sync failed for order {order_id}: {str(qb_error)}")
 
+        print(f"[DEBUG] Order status update completed successfully")
         return OrderResponse(**updated_order)
 
     except HTTPException:
+        print(f"[DEBUG] HTTPException raised, re-raising")
         raise
     except Exception as e:
+        print(f"[ERROR] Unexpected error in update_order_status: {str(e)}")
+        print(f"[ERROR] Error type: {type(e).__name__}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+            detail=f"Internal server error: {str(e)}",
         )
 
 

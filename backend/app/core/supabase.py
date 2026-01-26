@@ -6,6 +6,7 @@ class SupabaseClient:
     """Supabase client singleton"""
 
     _instance: Client = None
+    _admin_instance: Client = None
 
     @classmethod
     def get_client(cls) -> Client:
@@ -18,8 +19,12 @@ class SupabaseClient:
 
     @classmethod
     def get_admin_client(cls) -> Client:
-        """Get Supabase client with service role key (admin privileges)"""
-        return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+        """Get or create Supabase admin client instance (singleton)"""
+        if cls._admin_instance is None:
+            cls._admin_instance = create_client(
+                settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY
+            )
+        return cls._admin_instance
 
 
 # Export convenience functions

@@ -211,7 +211,7 @@ async def create_user(
         user_insert = {
             "email": user_data.email,
             "full_name": user_data.full_name,
-            "phone": user_data.phone_number,
+            "phone": user_data.phone_number if user_data.phone_number else None,  # Allow NULL for unique constraint
             "password_hash": password_hash,
             "role": user_data.role,
             "email_verified": True,

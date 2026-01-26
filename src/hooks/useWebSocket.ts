@@ -45,6 +45,16 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   // Get auth token
   const getToken = async (): Promise<string | null> => {
     try {
+      // Try to get token from auth store first (custom auth)
+      const authStorage = localStorage.getItem('auth-storage');
+      if (authStorage) {
+        const parsed = JSON.parse(authStorage);
+        if (parsed.state?.token) {
+          return parsed.state.token;
+        }
+      }
+      
+      // Fallback to Supabase auth
       const { data: { session } } = await supabase.auth.getSession();
       return session?.access_token || null;
     } catch (error) {
