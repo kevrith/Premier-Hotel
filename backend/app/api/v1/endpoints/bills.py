@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.core.supabase import get_supabase, get_supabase_admin
@@ -187,10 +187,10 @@ async def create_bill(
                     "p_location": location
                 }
             ).execute()
-            bill_number = bill_number_response.data if bill_number_response.data else f"BILL-{location}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            bill_number = bill_number_response.data if bill_number_response.data else f"BILL-{location}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
         except Exception:
             # Fallback if RPC doesn't exist
-            bill_number = f"BILL-{location}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            bill_number = f"BILL-{location}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
         # Create bill record
         bill_dict = {
@@ -371,7 +371,7 @@ async def create_payment(
             "room_charge_ref": payment_data.room_charge_ref,
             "processed_by_waiter_id": current_user["id"],
             "notes": payment_data.notes,
-            "completed_at": datetime.utcnow().isoformat()
+            "completed_at": datetime.now(timezone.utc).isoformat()
         }
 
         payment_response = supabase.table("payments").insert(payment_dict).execute()
@@ -400,7 +400,7 @@ async def create_payment(
             supabase.table("bills")\
                 .update({
                     "payment_status": "paid",
-                    "paid_at": datetime.utcnow().isoformat()
+                    "paid_at": datetime.now(timezone.utc).isoformat()
                 })\
                 .eq("id", payment_data.bill_id)\
                 .execute()
@@ -415,7 +415,7 @@ async def create_payment(
                 supabase.table("orders")\
                     .update({
                         "payment_status": "paid",
-                        "paid_at": datetime.utcnow().isoformat()
+                        "paid_at": datetime.now(timezone.utc).isoformat()
                     })\
                     .eq("id", bo["order_id"])\
                     .execute()
@@ -476,7 +476,7 @@ async def mpesa_callback(
             "mpesa_code": callback_data.mpesa_code,
             "mpesa_phone": callback_data.phone,
             "processed_by_waiter_id": bill["settled_by_waiter_id"],  # Use bill creator
-            "completed_at": datetime.utcnow().isoformat()
+            "completed_at": datetime.now(timezone.utc).isoformat()
         }
 
         payment_response = supabase.table("payments").insert(payment_dict).execute()
@@ -486,7 +486,7 @@ async def mpesa_callback(
             supabase.table("bills")\
                 .update({
                     "payment_status": "paid",
-                    "paid_at": datetime.utcnow().isoformat()
+                    "paid_at": datetime.now(timezone.utc).isoformat()
                 })\
                 .eq("id", bill["id"])\
                 .execute()
@@ -501,7 +501,7 @@ async def mpesa_callback(
                 supabase.table("orders")\
                     .update({
                         "payment_status": "paid",
-                        "paid_at": datetime.utcnow().isoformat()
+                        "paid_at": datetime.now(timezone.utc).isoformat()
                     })\
                     .eq("id", bo["order_id"])\
                     .execute()
@@ -537,23 +537,29 @@ async def list_bills(
 ):
     """List bills with optional filtering by payment status"""
     try:
+        logging.info(f"Listing bills for user {current_user.get('id')} with role {current_user.get('role')} and status filter: {payment_status}")
+        
         # Use admin client to bypass RLS
         query = supabase_admin.table("bills").select("*").order("created_at", desc=True)
 
         if payment_status:
             query = query.eq("payment_status", payment_status)
+            logging.info(f"Applied payment_status filter: {payment_status}")
 
-        # Staff can see all bills, customers only their own
-        if current_user["role"] not in ["chef", "waiter", "manager", "admin"]:
+        # Staff (waiters, managers, admins) can see all bills, customers only their own
+        if current_user["role"] in ["customer", "guest"]:
             query = query.eq("customer_phone", current_user.get("phone"))
+            logging.info(f"Applied customer phone filter: {current_user.get('phone')}")
 
         response = query.execute()
+        logging.info(f"Found {len(response.data)} bills in database")
 
         bills = []
         for bill_data in response.data:
             bill = await get_bill(bill_data["id"], current_user, supabase, supabase_admin)
             bills.append(bill)
 
+        logging.info(f"Successfully loaded {len(bills)} bills for user")
         return bills
 
     except Exception as e:

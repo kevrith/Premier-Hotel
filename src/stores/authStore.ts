@@ -33,7 +33,7 @@ interface AuthState {
   register: (userData: any) => Promise<any>;
   logout: () => void;
   updateProfile: (data: any) => Promise<void>;
-  checkAuth: () => boolean;
+  checkAuth: () => Promise<boolean>;
   refreshAccessToken: () => Promise<boolean>;
   verifyOTP: (otp: string, type: 'email' | 'phone') => Promise<any>;
   resendOTP: () => Promise<any>;
@@ -84,17 +84,14 @@ const useAuthStore = create<AuthState>()(
 
           // Debug: Log the full response to see what backend returns
           console.log('[AuthStore] Login response:', {
-            hasAccessToken: !!response.access_token,
-            hasRefreshToken: !!response.refresh_token,
             hasUser: !!response.user,
             responseKeys: Object.keys(response)
           });
 
-          const { access_token, refresh_token, user } = response;
+          const { user } = response;
 
-          // Store tokens
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', refresh_token);
+          // For cookie-based auth, we don't store tokens in localStorage
+          // The backend sets httpOnly cookies automatically
 
           // Check if user needs verification
           const needsEmailVerification = user.email && !user.email_verified;
@@ -102,8 +99,8 @@ const useAuthStore = create<AuthState>()(
 
           set({
             user,
-            token: access_token,
-            refreshToken: refresh_token,
+            token: null, // No token stored for cookie-based auth
+            refreshToken: null,
             role: user.role,
             isAuthenticated: true,
             isLoading: false,
@@ -148,16 +145,15 @@ const useAuthStore = create<AuthState>()(
             throw new Error('Email or phone is required');
           }
 
-          const { access_token, refresh_token, user } = response;
+          const { user } = response;
 
-          // Store tokens
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', refresh_token);
+          // For cookie-based auth, we don't store tokens in localStorage
+          // The backend sets httpOnly cookies automatically
 
           set({
             user,
-            token: access_token,
-            refreshToken: refresh_token,
+            token: null, // No token stored for cookie-based auth
+            refreshToken: null,
             role: user.role,
             isAuthenticated: true,
             isLoading: false,
@@ -244,16 +240,15 @@ const useAuthStore = create<AuthState>()(
             access_token: accessToken,
           });
 
-          const { access_token, refresh_token, user } = response;
+          const { user } = response;
 
-          // Store tokens
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', refresh_token);
+          // For cookie-based auth, we don't store tokens in localStorage
+          // The backend sets httpOnly cookies automatically
 
           set({
             user,
-            token: access_token,
-            refreshToken: refresh_token,
+            token: null, // No token stored for cookie-based auth
+            refreshToken: null,
             role: user.role,
             isAuthenticated: true,
             isLoading: false,
@@ -332,44 +327,60 @@ const useAuthStore = create<AuthState>()(
         });
       },
 
-      // Check if token is valid
-      checkAuth: () => {
-        const { token } = get();
-        if (token) {
-          try {
-            const decoded: any = jwtDecode(token);
-            const isExpired = decoded.exp * 1000 < Date.now();
-
-            if (isExpired) {
-              get().logout();
-              return false;
-            }
-            return true;
-          } catch (error) {
-            get().logout();
-            return false;
-          }
-        }
-        return false;
-      },
-
-      // Refresh Access Token
-      refreshAccessToken: async () => {
-        const { refreshToken } = get();
-        if (!refreshToken) {
-          get().logout();
-          return false;
-        }
-
+      // Check if user is authenticated (for cookie-based auth)
+      checkAuth: async () => {
         try {
-          const response = await authApi.refreshAccessToken(refreshToken);
-          const { access_token } = response;
+          // Try to get current user to check if cookies are valid
+          const response = await authApi.getCurrentUser();
+          const { user } = response;
 
-          localStorage.setItem('access_token', access_token);
-          set({ token: access_token });
+          set({
+            user,
+            isAuthenticated: true,
+            token: null, // No token for cookie-based auth
+            refreshToken: null,
+            role: user.role,
+          });
+
           return true;
         } catch (error) {
-          get().logout();
+          // If we can't get user, clear auth state
+          set({
+            user: null,
+            isAuthenticated: false,
+            token: null,
+            refreshToken: null,
+            role: null,
+          });
+          return false;
+        }
+      },
+
+      // Refresh Access Token (for cookie-based auth, this is handled by backend)
+      refreshAccessToken: async () => {
+        // For cookie-based auth, refresh is handled automatically by the backend
+        // Just try to get current user to ensure cookies are still valid
+        try {
+          const response = await authApi.getCurrentUser();
+          const { user } = response;
+
+          set({
+            user,
+            isAuthenticated: true,
+            token: null, // No token for cookie-based auth
+            refreshToken: null,
+            role: user.role,
+          });
+
+          return true;
+        } catch (error) {
+          set({
+            user: null,
+            isAuthenticated: false,
+            token: null,
+            refreshToken: null,
+            role: null,
+          });
           return false;
         }
       },

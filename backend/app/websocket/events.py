@@ -1,7 +1,7 @@
 """
 WebSocket Event Handlers and Event Types
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from .manager import connection_manager
 
@@ -52,7 +52,7 @@ class WebSocketEvents:
                 'estimated_ready_time': order.get('estimated_ready_time'),
                 'customer_id': order['customer_id'],
             },
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'message': f"New order {order['order_number']} from {order['location']}"
         }
 
@@ -92,7 +92,7 @@ class WebSocketEvents:
                 'new_status': new_status,
                 'location': location,
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
         # Customer-friendly messages
@@ -175,7 +175,7 @@ class WebSocketEvents:
                 'reorder_level': reorder_level,
                 'severity': severity
             },
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'message': f"⚠️ {item_name} is running low: {current_quantity}{unit} (reorder at {reorder_level}{unit})"
         }
 
@@ -200,7 +200,7 @@ class WebSocketEvents:
                 'old_status': old_status,
                 'new_status': new_status,
             },
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'message': f"Room {room_number} status changed: {old_status} → {new_status}"
         }
 
@@ -223,7 +223,7 @@ class WebSocketEvents:
                 'room_number': room_number,
                 'priority': priority,
             },
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'message': f"New {priority} priority cleaning task: Room {room_number}"
         }
 
@@ -247,7 +247,7 @@ class WebSocketEvents:
                 'guests': booking.get('guests', 1),
                 'total_amount': booking['total_amount'],
             },
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'message': f"New booking {booking['booking_reference']} created"
         }
 
@@ -284,7 +284,7 @@ class WebSocketEvents:
                 'notification_type': notification_type,  # info, success, warning, error
                 'extra_data': data or {}
             },
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
         await connection_manager.send_personal_message(user_id, event_data)
@@ -302,7 +302,7 @@ class WebSocketEvents:
                 'sender_id': sender_id,
                 'content': content,
             },
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'message': 'New message received'
         }
 

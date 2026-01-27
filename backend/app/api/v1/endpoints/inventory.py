@@ -5,7 +5,7 @@ Handles inventory items, suppliers, purchase orders, stock movements, and report
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from supabase import Client
 from decimal import Decimal
 
@@ -43,17 +43,17 @@ router = APIRouter()
 
 def generate_supplier_code() -> str:
     """Generate unique supplier code"""
-    return f"SUP-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    return f"SUP-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
 
 def generate_po_number() -> str:
     """Generate unique purchase order number"""
-    return f"PO-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    return f"PO-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
 
 def generate_stock_take_number() -> str:
     """Generate unique stock take number"""
-    return f"ST-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    return f"ST-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
 
 # =====================================================
@@ -375,7 +375,7 @@ async def create_stock_movement(
     # Update inventory quantity
     update_data = {
         "quantity": float(new_quantity),
-        "last_restocked_at": datetime.now().isoformat() if movement_data["movement_type"] == "in" else current_item.get("last_restocked_at")
+        "last_restocked_at": datetime.now(timezone.utc).isoformat() if movement_data["movement_type"] == "in" else current_item.get("last_restocked_at")
     }
     supabase.table("inventory_items").update(update_data).eq("id", movement_data["item_id"]).execute()
 
@@ -480,7 +480,7 @@ async def approve_purchase_order(
     update_data = {
         "status": "approved",
         "approved_by": current_user["id"],
-        "approved_at": datetime.now().isoformat()
+        "approved_at": datetime.now(timezone.utc).isoformat()
     }
 
     result = supabase.table("purchase_orders").update(update_data).eq("id", po_id).execute()
@@ -602,7 +602,7 @@ async def acknowledge_alert(
     update_data = {
         "is_acknowledged": True,
         "acknowledged_by": current_user["id"],
-        "acknowledged_at": datetime.now().isoformat()
+        "acknowledged_at": datetime.now(timezone.utc).isoformat()
     }
 
     result = supabase.table("stock_alerts").update(update_data).eq("id", alert_id).execute()

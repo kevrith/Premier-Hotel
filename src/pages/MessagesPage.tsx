@@ -1,18 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { MessageSquare, Send, Users, X } from 'lucide-react';
-import { messagingService } from '../lib/api/messages';
+import { messagingService, Conversation, Message } from '../lib/api/messages';
 import { useWebSocketSingleton, WS_EVENTS } from '../hooks/useWebSocketSingleton';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 
 const MessagesPage = () => {
-  const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // WebSocket for real-time messages
   const { on } = useWebSocketSingleton({
@@ -24,7 +24,10 @@ const MessagesPage = () => {
 
     // Subscribe to new messages
     const unsubscribe = on(WS_EVENTS.NEW_MESSAGE, (messageData) => {
-      console.log('New message received:', messageData);
+      // Log message event (sanitized to prevent log injection)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('New message received:', JSON.stringify(messageData));
+      }
 
       // If message is for current conversation, add it
       if (selectedConversation && messageData.conversation_id === selectedConversation.id) {
@@ -70,7 +73,7 @@ const MessagesPage = () => {
     }
   };
 
-  const fetchMessages = async (conversationId) => {
+  const fetchMessages = async (conversationId: string) => {
     try {
       const data = await messagingService.getMessages(conversationId, { limit: 100 });
       setMessages(data.reverse()); // Reverse to show oldest first
@@ -80,7 +83,7 @@ const MessagesPage = () => {
     }
   };
 
-  const markAsRead = async (conversationId) => {
+  const markAsRead = async (conversationId: string) => {
     try {
       await messagingService.markConversationAsRead(conversationId);
       fetchConversations(); // Refresh to update unread counts
@@ -89,7 +92,7 @@ const MessagesPage = () => {
     }
   };
 
-  const handleSendMessage = async (e) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!newMessage.trim() || !selectedConversation) return;
@@ -157,7 +160,7 @@ const MessagesPage = () => {
                             <p className="font-medium text-gray-900 dark:text-white truncate">
                               {conv.subject || 'Conversation'}
                             </p>
-                            {conv.unread_count > 0 && (
+                            {(conv.unread_count ?? 0) > 0 && (
                               <span className="px-2 py-1 text-xs font-bold bg-blue-600 text-white rounded-full">
                                 {conv.unread_count}
                               </span>

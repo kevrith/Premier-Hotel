@@ -253,10 +253,19 @@ async def create_user(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except ValueError as e:
+        # Handle specific validation errors
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error creating user: {str(e)}"
+            detail="Invalid user data provided"
+        )
+    except Exception:
+        # Log the actual error for debugging but don't expose it
+        import logging
+        logging.error(f"Failed to create user: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user account"
         )
 
 

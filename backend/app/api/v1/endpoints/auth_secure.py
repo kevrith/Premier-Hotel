@@ -31,7 +31,7 @@ from app.core.cookie_auth import (
     get_current_user_from_cookie,
     refresh_access_token_from_cookie,
 )
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import uuid
 import logging
@@ -62,8 +62,8 @@ async def create_user_in_db(
         "role": role,
         "status": "active",
         "auth_providers": ["local"],
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
     response = supabase.table("users").insert(user_data).execute()
@@ -103,7 +103,7 @@ async def log_auth_event(
             "user_id": user_id,
             "event_type": event_type,
             "success": success,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }).execute()
     except Exception:
         # Don't fail the request if logging fails
@@ -259,7 +259,7 @@ async def login(
 
         # Update last login
         supabase.table("users").update(
-            {"last_login": datetime.utcnow().isoformat()}
+            {"last_login": datetime.now(timezone.utc).isoformat()}
         ).eq("id", user["id"]).execute()
 
         # Set httpOnly authentication cookies
@@ -500,8 +500,8 @@ async def request_password_reset(
             supabase.table("password_reset_tokens").insert({
                 "user_id": user["id"],
                 "token": reset_token,
-                "expires_at": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
-                "created_at": datetime.utcnow().isoformat(),
+                "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
 
             # Send password reset email
@@ -555,7 +555,7 @@ async def confirm_password_reset(
 
         # Check if token is expired
         expires_at = datetime.fromisoformat(reset_record["expires_at"])
-        if datetime.utcnow() > expires_at:
+        if datetime.now(timezone.utc) > expires_at:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Reset token has expired. Please request a new one.",
@@ -567,7 +567,7 @@ async def confirm_password_reset(
         # Update user password
         supabase.table("users").update({
             "password_hash": password_hash,
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", reset_record["user_id"]).execute()
 
         # Invalidate reset token

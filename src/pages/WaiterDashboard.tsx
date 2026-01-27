@@ -115,10 +115,19 @@ export default function WaiterDashboard() {
         setLoading(true);
         // Get all active orders (pending, confirmed, preparing, ready)
         const data = await ordersApi.getAll({ limit: 100 });
+        console.log('All orders loaded:', data);
+        
         // Filter to show active orders only
         const activeOrders = data.filter(o =>
           ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(o.status)
         );
+        
+        console.log('Active orders after filtering:', activeOrders);
+        
+        // Debug: Check for room 201 specifically
+        const room201Orders = data.filter(o => o.location === 'Room 201' || o.location === '201');
+        console.log('Room 201 orders:', room201Orders);
+        
         setAllOrders(activeOrders);
       } catch (error) {
         console.error('Failed to load orders:', error);
@@ -374,7 +383,7 @@ export default function WaiterDashboard() {
                 isReady ? 'default' :
                 isPreparing ? 'secondary' :
                 isServed ? 'outline' :
-                'secondary'
+                'secondary' as any
               }>
                 {order.status}
               </Badge>

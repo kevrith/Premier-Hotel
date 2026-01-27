@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Bell } from 'lucide-react';
-import { notificationService } from '../lib/api/notifications';
+import { notificationService, Notification } from '../lib/api/notifications';
 import NotificationDropdown from './NotificationDropdown';
 import { useWebSocketSingleton, WS_EVENTS } from '../hooks/useWebSocketSingleton';
 import toast from 'react-hot-toast';
@@ -8,11 +8,11 @@ import toast from 'react-hot-toast';
 const NotificationBell = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
 
   // WebSocket connection for real-time updates
-  const { isConnected, on } = useWebSocketSingleton({
+  const { on } = useWebSocketSingleton({
     autoConnect: true,
     onConnect: () => console.log('Notification WebSocket connected'),
     onDisconnect: () => console.log('Notification WebSocket disconnected')
@@ -23,7 +23,10 @@ const NotificationBell = () => {
 
     // Subscribe to real-time notification events
     const unsubscribe = on(WS_EVENTS.NOTIFICATION, (notificationData: any) => {
-      console.log('New notification received:', notificationData);
+      // Log notification event (sanitized to prevent log injection)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('New notification received:', JSON.stringify(notificationData));
+      }
 
       // Show toast notification
       toast.success(notificationData.title || 'New notification', {
@@ -61,7 +64,7 @@ const NotificationBell = () => {
     }
   };
 
-  const handleMarkAsRead = async (notificationId) => {
+  const handleMarkAsRead = async (notificationId: string) => {
     try {
       await notificationService.markAsRead(notificationId);
       await fetchNotifications(); // Refresh

@@ -324,11 +324,10 @@ export default function Register() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Personal Information */}
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
+                  <Label>First Name</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="firstName"
                       name="firstName"
                       type="text"
                       placeholder="John"
@@ -343,11 +342,10 @@ export default function Register() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
+                  <Label>Last Name</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="lastName"
                       name="lastName"
                       type="text"
                       placeholder="Doe"
@@ -363,11 +361,10 @@ export default function Register() {
 
                 {/* Email */}
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label>Email</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="email"
                       name="email"
                       type="email"
                       placeholder="your@email.com"
@@ -383,11 +380,10 @@ export default function Register() {
 
                 {/* Password */}
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <Label>Password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="password"
                       name="password"
                       type="password"
                       placeholder="••••••••"
@@ -421,11 +417,10 @@ export default function Register() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <Label>Confirm Password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="confirmPassword"
                       name="confirmPassword"
                       type="password"
                       placeholder="••••••••"
@@ -448,8 +443,6 @@ export default function Register() {
                 {/* Terms & Conditions */}
                 <div className="flex items-start space-x-2 pt-2">
                   <Checkbox
-                    id="acceptTerms"
-                    name="acceptTerms"
                     checked={formData.acceptTerms}
                     onCheckedChange={(checked) =>
                       setFormData((prev) => ({ ...prev, acceptTerms: !!checked }))
@@ -458,7 +451,6 @@ export default function Register() {
                   />
                   <div className="space-y-1">
                     <Label
-                      htmlFor="acceptTerms"
                       className="text-sm font-normal cursor-pointer"
                     >
                       I accept the{' '}
@@ -502,11 +494,10 @@ export default function Register() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Personal Information */}
                 <div className="space-y-2">
-                  <Label htmlFor="firstName-phone">First Name</Label>
+                  <Label>First Name</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="firstName-phone"
                       name="firstName"
                       type="text"
                       placeholder="John"
@@ -521,11 +512,10 @@ export default function Register() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="lastName-phone">Last Name</Label>
+                  <Label>Last Name</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="lastName-phone"
                       name="lastName"
                       type="text"
                       placeholder="Doe"
@@ -541,11 +531,10 @@ export default function Register() {
 
                 {/* Phone */}
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
+                  <Label>Phone Number</Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="phone"
                       name="phone"
                       type="tel"
                       placeholder="0712345678 or 254712345678"
@@ -564,11 +553,10 @@ export default function Register() {
 
                 {/* Password */}
                 <div className="space-y-2">
-                  <Label htmlFor="password-phone">Password</Label>
+                  <Label>Password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="password-phone"
                       name="password"
                       type="password"
                       placeholder="••••••••"
@@ -602,11 +590,10 @@ export default function Register() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword-phone">Confirm Password</Label>
+                  <Label>Confirm Password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="confirmPassword-phone"
                       name="confirmPassword"
                       type="password"
                       placeholder="••••••••"
@@ -629,17 +616,14 @@ export default function Register() {
                 {/* Terms & Conditions */}
                 <div className="flex items-start space-x-2 pt-2">
                   <Checkbox
-                    id="acceptTerms-phone"
-                    name="acceptTerms"
                     checked={formData.acceptTerms}
-                    onCheckedChange={(checked) =>
-                      setFormData((prev) => ({ ...prev, acceptTerms: !!checked }))
+                    onCheckedChange={(checked: boolean) =>
+                      setFormData((prev) => ({ ...prev, acceptTerms: checked }))
                     }
                     className={errors.acceptTerms ? 'border-red-500' : ''}
                   />
                   <div className="space-y-1">
                     <Label
-                      htmlFor="acceptTerms-phone"
                       className="text-sm font-normal cursor-pointer"
                     >
                       I accept the{' '}

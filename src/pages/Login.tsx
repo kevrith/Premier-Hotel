@@ -14,6 +14,9 @@ import { toast } from 'react-hot-toast';
 import { useOffline } from '@/contexts/OfflineContext';
 import OTPVerification from '@/components/Auth/OTPVerification';
 
+// Password validation constants
+const MIN_PASSWORD_LENGTH = 6;
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -53,8 +56,8 @@ export default function Login() {
 
     if (!emailForm.password) {
       newErrors.password = 'Password is required';
-    } else if (emailForm.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (emailForm.password.length < MIN_PASSWORD_LENGTH) {
+      newErrors.password = `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
     }
 
     setErrors(newErrors);
@@ -72,8 +75,8 @@ export default function Login() {
 
     if (!phoneForm.password) {
       newErrors.password = 'Password is required';
-    } else if (phoneForm.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else if (phoneForm.password.length < MIN_PASSWORD_LENGTH) {
+      newErrors.password = `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
     }
 
     setErrors(newErrors);

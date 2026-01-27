@@ -37,7 +37,7 @@ from app.core.security import (
     validate_phone_number,
 )
 from app.middleware.auth import get_current_user
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import uuid
 
@@ -69,8 +69,8 @@ async def create_user_in_db(
         "status": "active",
         "is_guest": is_guest,
         "auth_providers": ["local"] if not is_guest else [],
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
     response = supabase.table("users").insert(user_data).execute()
@@ -251,7 +251,7 @@ async def login(
 
         # Update last login
         supabase.table("users").update(
-            {"last_login": datetime.utcnow().isoformat()}
+            {"last_login": datetime.now(timezone.utc).isoformat()}
         ).eq("id", user["id"]).execute()
 
         # Log successful login
@@ -406,7 +406,7 @@ async def verify_phone_otp(
         otp_record = response.data[0]
 
         # Check expiration
-        if datetime.fromisoformat(otp_record["expires_at"]) < datetime.utcnow():
+        if datetime.fromisoformat(otp_record["expires_at"]) < datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OTP has expired. Request a new one.",
@@ -441,7 +441,7 @@ async def verify_phone_otp(
             {
                 "phone_verified": True,
                 "is_verified": True,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", otp_record["user_id"]).execute()
 
@@ -520,7 +520,7 @@ async def verify_email(
         verification = response.data[0]
 
         # Check expiration
-        if datetime.fromisoformat(verification["expires_at"]) < datetime.utcnow():
+        if datetime.fromisoformat(verification["expires_at"]) < datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Verification link has expired",
@@ -536,7 +536,7 @@ async def verify_email(
             {
                 "email_verified": True,
                 "is_verified": True,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", verification["user_id"]).execute()
 
@@ -588,7 +588,7 @@ async def request_password_reset(
             {
                 "user_id": user["id"],
                 "token": reset_token,
-                "expires_at": (datetime.utcnow() + timedelta(hours=1)).isoformat(),
+                "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
             }
         ).execute()
 
@@ -639,7 +639,7 @@ async def confirm_password_reset(
         reset_record = response.data[0]
 
         # Check expiration
-        if datetime.fromisoformat(reset_record["expires_at"]) < datetime.utcnow():
+        if datetime.fromisoformat(reset_record["expires_at"]) < datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Reset token has expired",
@@ -652,13 +652,13 @@ async def confirm_password_reset(
         supabase.table("users").update(
             {
                 "password_hash": password_hash,
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", reset_record["user_id"]).execute()
 
         # Mark token as used
         supabase.table("password_resets").update(
-            {"used": True, "used_at": datetime.utcnow().isoformat()}
+            {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}
         ).eq("id", reset_record["id"]).execute()
 
         # Log event
@@ -776,7 +776,7 @@ async def convert_guest_to_user(
                 "role": "customer",
                 "is_guest": False,
                 "auth_providers": ["local"],
-                "updated_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
         ).eq("id", conversion_data.guest_id).execute()
 
@@ -911,7 +911,7 @@ async def send_email_verification(supabase: Client, user_id: str, email: str):
             "user_id": user_id,
             "email": email,
             "token": otp_code,  # Using OTP as token
-            "expires_at": (datetime.utcnow() + timedelta(minutes=10)).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
         }
     ).execute()
 
@@ -941,7 +941,7 @@ async def send_phone_otp(supabase: Client, user_id: str, phone: str):
             "user_id": user_id,
             "phone": phone,
             "otp_code": otp_code,
-            "expires_at": (datetime.utcnow() + timedelta(minutes=10)).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
         }
     ).execute()
 
@@ -972,7 +972,7 @@ async def log_auth_event(
                 "event_type": event_type,
                 "success": success,
                 "metadata": metadata or {},
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
         ).execute()
     except Exception as e:

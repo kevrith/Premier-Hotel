@@ -7,7 +7,7 @@ from fastapi import WebSocket
 from dataclasses import dataclass, field
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class Connection:
     websocket: WebSocket
     user_id: str
     role: str
-    connected_at: datetime = field(default_factory=datetime.utcnow)
+    connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ConnectionManager:
@@ -71,7 +71,7 @@ class ConnectionManager:
             {
                 'type': 'connection.established',
                 'message': 'Connected to Premier Hotel real-time updates',
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
         )
 

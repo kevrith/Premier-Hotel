@@ -4,7 +4,7 @@ Payment Management Endpoints
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import hmac
 import hashlib
 import base64
@@ -225,7 +225,7 @@ async def mpesa_callback(
             update_data = {
                 "status": "completed",
                 "mpesa_transaction_id": mpesa_transaction_id,
-                "completed_at": datetime.utcnow().isoformat()
+                "completed_at": datetime.now(timezone.utc).isoformat()
             }
 
             # Update booking or order status
@@ -305,7 +305,7 @@ async def get_payment_status(
                 update_data = {"status": mpesa_status["status"]}
 
                 if mpesa_status["status"] == "completed":
-                    update_data["completed_at"] = datetime.utcnow().isoformat()
+                    update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
                     update_data["mpesa_transaction_id"] = mpesa_status.get("transaction_id")
 
                 result = supabase.table("payments").update(update_data).eq(
@@ -400,7 +400,7 @@ async def confirm_payment(
     # Update payment
     update_data = {
         "status": "completed",
-        "completed_at": datetime.utcnow().isoformat()
+        "completed_at": datetime.now(timezone.utc).isoformat()
     }
 
     if transaction_reference:

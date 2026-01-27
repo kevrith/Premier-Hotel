@@ -1,241 +1,218 @@
-/**
- * Advanced Analytics & Forecasting API Client
- */
+import api from './client';
 
-import api from './axios';
-
-// =====================================================
-// TYPE DEFINITIONS
-// =====================================================
-
-export interface AnalyticsDashboard {
-  period: string;
-  revenue_analytics: RevenueAnalytics;
-  occupancy_analytics: OccupancyAnalytics;
-  booking_analytics: BookingAnalytics;
-  customer_analytics: CustomerAnalytics;
-  operational_metrics: OperationalMetrics;
-  financial_metrics: FinancialMetrics;
-  generated_at: string;
-}
-
-export interface RevenueAnalytics {
-  total_revenue: number;
-  revenue_growth: number;
-  by_period: RevenueByPeriod[];
-  by_source: Record<string, number>;
-  top_revenue_days: any[];
-}
-
-export interface RevenueByPeriod {
+export interface SalesAnalytics {
   period: string;
   total_revenue: number;
-  bookings_revenue: number;
-  orders_revenue: number;
-  other_revenue: number;
-  transaction_count: number;
-  average_transaction: number;
+  total_orders: number;
+  avg_order_value: number;
+  growth_rate: number;
+  peak_hours: Array<{
+    hour: string;
+    revenue: number;
+    orders: number;
+  }>;
+  top_performing_items: Array<{
+    item_name: string;
+    quantity_sold: number;
+    revenue: number;
+    profit_margin: number;
+  }>;
+  customer_segments: Array<{
+    segment: string;
+    revenue: number;
+    orders: number;
+    avg_order_value: number;
+  }>;
 }
 
-export interface OccupancyAnalytics {
-  current_occupancy_rate: number;
-  average_occupancy_rate: number;
-  peak_occupancy_date: string | null;
-  lowest_occupancy_date: string | null;
-  by_period: OccupancyByPeriod[];
-  by_room_type: Record<string, number>;
+export interface EmployeePerformance {
+  employee_id: string;
+  employee_name: string;
+  role: string;
+  metrics: {
+    total_sales: number;
+    total_orders: number;
+    avg_order_value: number;
+    upsell_rate: number;
+    customer_satisfaction: number;
+    productivity_score: number;
+  };
+  trends: Array<{
+    date: string;
+    sales: number;
+    orders: number;
+    satisfaction: number;
+  }>;
+  comparisons: {
+    vs_team_avg: {
+      sales: number;
+      satisfaction: number;
+      productivity: number;
+    };
+    vs_previous_period: {
+      sales_growth: number;
+      order_growth: number;
+      satisfaction_change: number;
+    };
+  };
 }
 
-export interface OccupancyByPeriod {
-  period: string;
-  total_rooms: number;
-  occupied_rooms: number;
-  occupancy_rate: number;
-  average_daily_rate: number;
-  revenue_per_available_room: number;
-}
-
-export interface BookingAnalytics {
-  total_bookings: number;
-  confirmed_bookings: number;
-  cancelled_bookings: number;
-  pending_bookings: number;
-  average_booking_value: number;
-  booking_trends: BookingTrend[];
-  by_channel: Record<string, number>;
-  by_room_type: Record<string, number>;
-  lead_time_distribution: Record<string, number>;
-}
-
-export interface BookingTrend {
-  period: string;
-  total_bookings: number;
-  confirmed_bookings: number;
-  cancelled_bookings: number;
-  cancellation_rate: number;
-  average_booking_value: number;
-  average_length_of_stay: number;
-}
-
-export interface CustomerAnalytics {
-  total_customers: number;
-  new_customers: number;
-  returning_customers: number;
-  customer_retention_rate: number;
-  average_customer_lifetime_value: number;
-  segments: any[];
-  top_customers: any[];
+export interface RevenueOptimization {
+  current_pricing: Array<{
+    item_id: string;
+    item_name: string;
+    current_price: number;
+    suggested_price: number;
+    confidence: number;
+    expected_impact: number;
+  }>;
+  demand_forecasting: Array<{
+    date: string;
+    predicted_demand: number;
+    confidence_interval: [number, number];
+    recommended_staffing: number;
+  }>;
+  occupancy_analysis: {
+    current_occupancy: number;
+    forecasted_occupancy: number;
+    revenue_per_available_room: number;
+    best_available_rate: number;
+    length_of_stay_analysis: {
+      avg_stay_length: number;
+      booking_lead_time: number;
+      cancellation_rate: number;
+    };
+  };
 }
 
 export interface OperationalMetrics {
-  average_checkin_time: string;
-  average_checkout_time: string;
-  service_request_resolution_time: string;
-  housekeeping_efficiency: number;
-  staff_productivity: number;
-  inventory_turnover_rate: number;
+  kitchen_efficiency: {
+    avg_prep_time: number;
+    order_accuracy_rate: number;
+    waste_percentage: number;
+    peak_hour_performance: Array<{
+      hour: string;
+      orders_completed: number;
+      avg_prep_time: number;
+    }>;
+  };
+  service_quality: {
+    avg_service_time: number;
+    customer_complaints: number;
+    resolution_time: number;
+    satisfaction_score: number;
+  };
+  inventory_turnover: {
+    fast_moving_items: Array<{
+      item_name: string;
+      turnover_rate: number;
+      stock_level: number;
+    }>;
+    slow_moving_items: Array<{
+      item_name: string;
+      turnover_rate: number;
+      stock_level: number;
+      recommendations: string[];
+    }>;
+  };
 }
 
-export interface FinancialMetrics {
-  gross_revenue: number;
-  net_revenue: number;
-  total_expenses: number;
-  profit_margin: number;
-  revenue_per_available_room: number;
-  average_daily_rate: number;
-  revenue_growth_rate: number;
+export interface AnalyticsFilters {
+  start_date: string;
+  end_date: string;
+  department?: string;
+  employee_id?: string;
+  location?: string;
+  time_granularity?: 'hour' | 'day' | 'week' | 'month';
 }
-
-export interface RevenueForecast {
-  forecast_type: string;
-  forecast_horizon: number;
-  base_date: string;
-  forecasts: ForecastPeriod[];
-  accuracy_metrics: Record<string, number>;
-}
-
-export interface ForecastPeriod {
-  period: string;
-  predicted_revenue: number;
-  predicted_occupancy: number;
-  predicted_bookings: number;
-  confidence_interval_low: number;
-  confidence_interval_high: number;
-}
-
-export interface KPIDashboard {
-  kpis: KPI[];
-  last_updated: string;
-}
-
-export interface KPI {
-  name: string;
-  value: number;
-  target: number | null;
-  unit: string;
-  trend: 'up' | 'down' | 'stable';
-  change_percentage: number;
-  status: 'good' | 'warning' | 'critical';
-}
-
-export interface InsightsList {
-  insights: Insight[];
-  total_count: number;
-}
-
-export interface Insight {
-  insight_type: 'opportunity' | 'warning' | 'trend' | 'anomaly';
-  severity: 'low' | 'medium' | 'high';
-  title: string;
-  description: string;
-  metric_name: string;
-  current_value: number;
-  recommended_action: string | null;
-  impact_estimate: string | null;
-  generated_at: string;
-}
-
-// =====================================================
-// ANALYTICS SERVICE CLASS
-// =====================================================
 
 class AnalyticsService {
-  // ----- REVENUE -----
+  async getSalesAnalytics(filters: AnalyticsFilters): Promise<SalesAnalytics> {
+    const params = new URLSearchParams();
+    params.append('start_date', filters.start_date);
+    params.append('end_date', filters.end_date);
+    if (filters.department) params.append('department', filters.department);
+    if (filters.employee_id) params.append('employee_id', filters.employee_id);
+    if (filters.time_granularity) params.append('time_granularity', filters.time_granularity);
 
-  async getRevenueAnalytics(params: {
-    start_date: string;
-    end_date: string;
-    period?: 'daily' | 'weekly' | 'monthly';
-  }): Promise<RevenueAnalytics> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('start_date', params.start_date);
-    queryParams.append('end_date', params.end_date);
-    if (params.period) queryParams.append('period', params.period);
-
-    const response = await api.get<RevenueAnalytics>(`/analytics/revenue?${queryParams.toString()}`);
+    const response = await api.get<SalesAnalytics>(`/analytics/sales?${params.toString()}`);
     return response.data;
   }
 
-  // ----- OCCUPANCY -----
+  async getEmployeePerformance(employeeId: string, filters: AnalyticsFilters): Promise<EmployeePerformance> {
+    const params = new URLSearchParams();
+    params.append('start_date', filters.start_date);
+    params.append('end_date', filters.end_date);
+    if (filters.time_granularity) params.append('time_granularity', filters.time_granularity);
 
-  async getOccupancyAnalytics(params: {
-    start_date: string;
-    end_date: string;
-  }): Promise<OccupancyAnalytics> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('start_date', params.start_date);
-    queryParams.append('end_date', params.end_date);
-
-    const response = await api.get<OccupancyAnalytics>(`/analytics/occupancy?${queryParams.toString()}`);
+    const response = await api.get<EmployeePerformance>(`/analytics/employees/${employeeId}?${params.toString()}`);
     return response.data;
   }
 
-  // ----- BOOKINGS -----
+  async getTeamPerformance(filters: AnalyticsFilters): Promise<EmployeePerformance[]> {
+    const params = new URLSearchParams();
+    params.append('start_date', filters.start_date);
+    params.append('end_date', filters.end_date);
+    if (filters.department) params.append('department', filters.department);
+    if (filters.time_granularity) params.append('time_granularity', filters.time_granularity);
 
-  async getBookingAnalytics(params: {
-    start_date: string;
-    end_date: string;
-  }): Promise<BookingAnalytics> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('start_date', params.start_date);
-    queryParams.append('end_date', params.end_date);
-
-    const response = await api.get<BookingAnalytics>(`/analytics/bookings?${queryParams.toString()}`);
+    const response = await api.get<EmployeePerformance[]>(`/analytics/employees/team?${params.toString()}`);
     return response.data;
   }
 
-  // ----- CUSTOMERS -----
+  async getRevenueOptimization(filters: AnalyticsFilters): Promise<RevenueOptimization> {
+    const params = new URLSearchParams();
+    params.append('start_date', filters.start_date);
+    params.append('end_date', filters.end_date);
+    if (filters.location) params.append('location', filters.location);
 
-  async getCustomerAnalytics(): Promise<CustomerAnalytics> {
-    const response = await api.get<CustomerAnalytics>('/analytics/customers');
+    const response = await api.get<RevenueOptimization>(`/analytics/revenue-optimization?${params.toString()}`);
     return response.data;
   }
 
-  // ----- COMPREHENSIVE DASHBOARD -----
+  async getOperationalMetrics(filters: AnalyticsFilters): Promise<OperationalMetrics> {
+    const params = new URLSearchParams();
+    params.append('start_date', filters.start_date);
+    params.append('end_date', filters.end_date);
+    if (filters.department) params.append('department', filters.department);
 
-  async getDashboard(period: 'today' | 'week' | 'month' | 'year' = 'month'): Promise<AnalyticsDashboard> {
-    const response = await api.get<AnalyticsDashboard>(`/analytics/dashboard?period=${period}`);
+    const response = await api.get<OperationalMetrics>(`/analytics/operational?${params.toString()}`);
     return response.data;
   }
 
-  // ----- FORECASTING -----
+  async getPredictiveInsights(filters: AnalyticsFilters): Promise<{
+    sales_forecast: Array<{
+      date: string;
+      predicted_revenue: number;
+      confidence: number;
+    }>;
+    staffing_recommendations: Array<{
+      date: string;
+      recommended_staff: number;
+      confidence: number;
+    }>;
+    inventory_recommendations: Array<{
+      item_name: string;
+      recommended_order_quantity: number;
+      confidence: number;
+    }>;
+  }> {
+    const params = new URLSearchParams();
+    params.append('start_date', filters.start_date);
+    params.append('end_date', filters.end_date);
 
-  async getRevenueForecast(horizonDays: number = 30): Promise<RevenueForecast> {
-    const response = await api.get<RevenueForecast>(`/analytics/forecast/revenue?horizon_days=${horizonDays}`);
+    const response = await api.get(`/analytics/predictive?${params.toString()}`);
     return response.data;
   }
 
-  // ----- KPIs -----
+  async getCustomAnalytics(reportType: string, filters: AnalyticsFilters): Promise<any> {
+    const params = new URLSearchParams();
+    params.append('start_date', filters.start_date);
+    params.append('end_date', filters.end_date);
+    if (filters.department) params.append('department', filters.department);
+    if (filters.employee_id) params.append('employee_id', filters.employee_id);
 
-  async getKPIs(): Promise<KPIDashboard> {
-    const response = await api.get<KPIDashboard>('/analytics/kpis');
-    return response.data;
-  }
-
-  // ----- INSIGHTS -----
-
-  async getInsights(): Promise<InsightsList> {
-    const response = await api.get<InsightsList>('/analytics/insights');
+    const response = await api.get(`/analytics/custom/${reportType}?${params.toString()}`);
     return response.data;
   }
 }

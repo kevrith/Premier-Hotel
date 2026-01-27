@@ -8,7 +8,7 @@ from typing import Optional, List
 from app.core.supabase import get_supabase, get_supabase_admin
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderStatusUpdate
 from app.middleware.auth_secure import get_current_user, require_staff, require_chef
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import random
 import string
@@ -299,7 +299,7 @@ async def create_order(
         max_prep_time = max(
             (item.get("preparation_time", 20) for item in menu_items_response.data), default=20
         )
-        estimated_ready_time = datetime.utcnow() + timedelta(minutes=max_prep_time)
+        estimated_ready_time = datetime.now(timezone.utc) + timedelta(minutes=max_prep_time)
 
         # Generate order number
         order_number = await generate_order_number(supabase_admin)
@@ -371,7 +371,7 @@ async def create_order(
                 "special_instructions": created_order.get("special_instructions"),
                 "message": f"🔔 New order from {created_order['location']}"
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         })
         if logging.getLogger().isEnabledFor(logging.DEBUG):
             logging.debug("Broadcast completed")
@@ -481,7 +481,7 @@ async def update_order_status(
                 logging.debug(f"Could not verify user existence: {str(user_check_error)}")
         
         if mapped_new_status == "confirmed":
-            update_data["confirmed_at"] = datetime.utcnow().isoformat()
+            update_data["confirmed_at"] = datetime.now(timezone.utc).isoformat()
         elif mapped_new_status == "preparing" or new_status == "in-progress":
             # Check chef workload before assignment
             if user_exists and current_user.get("role") == "chef":
@@ -505,26 +505,26 @@ async def update_order_status(
                     logging.debug(f"Chef workload: {current_workload}/{max_workload}")
             
             # Handle both new 'preparing' and old 'in-progress' status
-            update_data["preparing_started_at"] = datetime.utcnow().isoformat()
+            update_data["preparing_started_at"] = datetime.now(timezone.utc).isoformat()
             if user_exists:
                 update_data["assigned_chef_id"] = current_user["id"]
             else:
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug("Skipping assigned_chef_id - user not found in profiles table")
         elif mapped_new_status == "ready":
-            update_data["ready_at"] = datetime.utcnow().isoformat()
+            update_data["ready_at"] = datetime.now(timezone.utc).isoformat()
         elif mapped_new_status == "served" or new_status == "delivered":
             # Handle both new 'served' and old 'delivered' status
-            update_data["served_at"] = datetime.utcnow().isoformat()
+            update_data["served_at"] = datetime.now(timezone.utc).isoformat()
             if user_exists:
                 update_data["assigned_waiter_id"] = current_user["id"]
             else:
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug("Skipping assigned_waiter_id - user not found in profiles table")
         elif mapped_new_status == "completed":
-            update_data["completed_at"] = datetime.utcnow().isoformat()
+            update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
         elif mapped_new_status == "cancelled":
-            update_data["cancelled_at"] = datetime.utcnow().isoformat()
+            update_data["cancelled_at"] = datetime.now(timezone.utc).isoformat()
 
         if logging.getLogger().isEnabledFor(logging.DEBUG):
             logging.debug(f"Final update data: {update_data}")
@@ -602,7 +602,7 @@ async def update_order_status(
                         "location_type": order["location_type"],
                         "message": f"🔔 Order {order['order_number']} ready at {order['location']}"
                     },
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug("Staff broadcast sent successfully")

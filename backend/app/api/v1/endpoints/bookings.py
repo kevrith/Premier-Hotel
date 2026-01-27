@@ -14,7 +14,7 @@ from app.schemas.booking import (
     BookingCheckOut,
 )
 from app.middleware.auth import get_current_user, require_staff
-from datetime import datetime
+from datetime import datetime, timezone
 import random
 import string
 import asyncio
@@ -413,7 +413,7 @@ async def cancel_booking(
         # Cancel booking
         update_data = {
             "status": "cancelled",
-            "cancelled_at": datetime.utcnow().isoformat(),
+            "cancelled_at": datetime.now(timezone.utc).isoformat(),
             "cancellation_reason": cancel_data.reason,
         }
 
@@ -473,7 +473,7 @@ async def check_in(
         # Update booking status
         update_data = {
             "status": "checked_in",
-            "checked_in_at": datetime.utcnow().isoformat(),
+            "checked_in_at": datetime.now(timezone.utc).isoformat(),
             "checked_in_by": current_user["id"],
             "check_in_notes": check_in_data.notes,
         }
@@ -539,7 +539,7 @@ async def check_out(
         # Update booking status
         update_data = {
             "status": "completed",
-            "checked_out_at": datetime.utcnow().isoformat(),
+            "checked_out_at": datetime.now(timezone.utc).isoformat(),
             "checked_out_by": current_user["id"],
             "check_out_notes": check_out_data.notes,
             "damages": check_out_data.damages,
@@ -576,7 +576,8 @@ async def check_out(
             )
         except Exception as qb_error:
             # Log QB sync error but don't fail the request
-            print(f"QuickBooks sync failed for booking {booking_id}: {str(qb_error)}")
+            import logging
+            logging.warning(f"QuickBooks sync failed for booking: {type(qb_error).__name__}")
 
         return BookingResponse(**booking_response.data[0])
 

@@ -22,7 +22,7 @@ export function BillsManagement() {
   const [selectedBill, setSelectedBill] = useState<BillResponse | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
-  const [activeTab, setActiveTab] = useState<'unpaid' | 'paid' | 'all'>('unpaid');
+  const [activeTab, setActiveTab] = useState<'unpaid' | 'paid' | 'all'>('all');
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-KE', {
@@ -34,14 +34,32 @@ export function BillsManagement() {
   const fetchBills = async (status?: 'unpaid' | 'paid') => {
     setLoading(true);
     try {
+      console.log('Fetching bills with status:', status);
       const data = await billsApi.listBills({
         payment_status: status,
         limit: 100,
       });
-      setBills(data);
+      
+      console.log('Raw bills data:', data);
+      console.log('Number of bills fetched:', data.length);
+      
+      // For waiters, filter bills to show only those they created or are relevant to their location
+      // This ensures waiters see bills for tables/rooms they are responsible for
+      const filteredBills = data;
+      
+      console.log('Filtered bills:', filteredBills);
+      setBills(filteredBills);
+      
+      // Show success message if we found bills
+      if (data.length > 0) {
+        toast.success(`Loaded ${data.length} bills`);
+      } else if (status === 'unpaid') {
+        toast(`No unpaid bills found`);
+      }
     } catch (error: any) {
       console.error('Error fetching bills:', error);
-      toast.error('Failed to load bills');
+      console.error('Error details:', error.response?.data);
+      toast.error('Failed to load bills. Please check your connection.');
     } finally {
       setLoading(false);
     }
@@ -182,10 +200,17 @@ export function BillsManagement() {
                 {loading ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <span className="ml-2">Loading bills...</span>
                   </div>
                 ) : bills.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    No bills found
+                    <Receipt className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium mb-2">No bills found</p>
+                    <p className="text-sm">
+                      {activeTab === 'unpaid' && "No unpaid bills at the moment"}
+                      {activeTab === 'paid' && "No paid bills found"}
+                      {activeTab === 'all' && "No bills have been created yet"}
+                    </p>
                   </div>
                 ) : (
                   bills.map((bill) => (

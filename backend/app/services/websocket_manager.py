@@ -7,7 +7,7 @@ import logging
 import json
 from typing import Dict, List, Set
 from fastapi import WebSocket
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ async def send_notification_event(user_id: str, notification_data: dict):
     await manager.send_personal_message({
         "type": EventType.NOTIFICATION,
         "data": notification_data,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }, user_id)
 
 
@@ -159,7 +159,7 @@ async def send_booking_event(user_id: str, event_type: str, booking_data: dict):
     await manager.send_personal_message({
         "type": event_type,
         "data": booking_data,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }, user_id)
 
 
@@ -168,7 +168,7 @@ async def send_payment_event(user_id: str, event_type: str, payment_data: dict):
     await manager.send_personal_message({
         "type": event_type,
         "data": payment_data,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }, user_id)
 
 
@@ -177,7 +177,7 @@ async def send_order_event(user_id: str, event_type: str, order_data: dict):
     await manager.send_personal_message({
         "type": event_type,
         "data": order_data,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }, user_id)
 
 
@@ -186,7 +186,7 @@ async def send_message_event(user_id: str, message_data: dict):
     await manager.send_personal_message({
         "type": EventType.NEW_MESSAGE,
         "data": message_data,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }, user_id)
 
 
@@ -194,7 +194,7 @@ async def broadcast_room_availability():
     """Broadcast room availability changes to all connected users"""
     await manager.broadcast({
         "type": EventType.ROOM_AVAILABILITY_CHANGED,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })
 
 
@@ -206,5 +206,5 @@ async def broadcast_announcement(announcement: str, priority: str = "normal"):
             "message": announcement,
             "priority": priority
         },
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     })

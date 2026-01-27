@@ -111,17 +111,11 @@ async def login(credentials: UserLogin, supabase: Client = Depends(get_supabase)
     - Returns user data and authentication tokens
     """
     try:
-        print(f"=== LOGIN ATTEMPT ===")
-        print(f"Email: {credentials.email}")
-        print(f"Password length: {len(credentials.password)}")
-
         # Sign in with Supabase
-        print("Calling supabase.auth.sign_in_with_password...")
         auth_response = supabase.auth.sign_in_with_password({
             "email": credentials.email,
             "password": credentials.password,
         })
-        print(f"Auth response: user={auth_response.user is not None}")
 
         if not auth_response.user:
             raise HTTPException(
@@ -171,14 +165,12 @@ async def login(credentials: UserLogin, supabase: Client = Depends(get_supabase)
     except HTTPException:
         raise
     except Exception as e:
-        # Log the actual error for debugging
-        import traceback
-        traceback.print_exc()
-        error_msg = str(e)
-        print(f"Login error: {error_msg}")
+        # Log error without exposing sensitive details
+        import logging
+        logging.error("Login failed: authentication error")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid credentials: {error_msg}",
+            detail="Invalid credentials",
         )
 
 

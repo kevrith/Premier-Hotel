@@ -162,13 +162,40 @@ async def list_users(
 async def update_user_role(
     user_id: str,
     role: str,
-    current_user: dict = Depends(require_role(["admin"])),
+    current_user: dict = Depends(require_role(["admin", "manager"])),
     supabase: Client = Depends(get_supabase)
 ):
     """
-    Update a user's role (admin only).
+    Update a user's role.
+    Admin can update any role. Manager can only update staff roles (waiter, chef, cleaner).
     """
     try:
+        current_user_role = current_user.get("role")
+        allowed_roles_for_manager = ["waiter", "chef", "cleaner"]
+        
+        # Check permissions based on current user role
+        if current_user_role == "manager":
+            if role not in allowed_roles_for_manager:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Managers can only assign roles: {', '.join(allowed_roles_for_manager)}"
+                )
+            
+            # Also check that the target user is a staff member
+            user_result = supabase.table("users").select("role").eq("id", user_id).execute()
+            if not user_result.data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
+            current_role = user_result.data[0].get("role")
+            if current_role not in allowed_roles_for_manager:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Managers can only modify staff member roles"
+                )
+
         # Update role in users table
         result = supabase.table("users").update({
             "role": role,
@@ -195,14 +222,35 @@ async def update_user_role(
 @router.delete("/users/{user_id}")
 async def deactivate_user(
     user_id: str,
-    current_user: dict = Depends(require_role(["admin"])),
+    current_user: dict = Depends(require_role(["admin", "manager"])),
     supabase: Client = Depends(get_supabase)
 ):
     """
-    Deactivate a user account (admin only).
+    Deactivate a user account.
+    Admin can deactivate any user. Manager can only deactivate staff members.
     We don't delete users, just mark as inactive.
     """
     try:
+        current_user_role = current_user.get("role")
+        allowed_roles_for_manager = ["waiter", "chef", "cleaner"]
+        
+        # Check permissions for managers
+        if current_user_role == "manager":
+            # Check that the target user is a staff member
+            user_result = supabase.table("users").select("role").eq("id", user_id).execute()
+            if not user_result.data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
+            target_role = user_result.data[0].get("role")
+            if target_role not in allowed_roles_for_manager:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Managers can only deactivate staff members"
+                )
+
         result = supabase.table("users").update({
             "status": "inactive",
             "updated_at": "NOW()"

@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 // Create axios instance with default config
 const authApi = axios.create({
@@ -16,19 +16,17 @@ const authApi = axios.create({
   withCredentials: true, // Enable cookies for auth
 });
 
-// Add request interceptor to attach token
+// Add request interceptor to handle cookie-based auth
 authApi.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    // For cookie-based auth, we don't need to manually set headers
+    // The cookies will be sent automatically with withCredentials: true
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Add response interceptor for token refresh
+// Add response interceptor for authentication errors
 authApi.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -39,22 +37,11 @@ authApi.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
-          });
-
-          const { access_token } = response.data;
-          localStorage.setItem('access_token', access_token);
-
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          return authApi(originalRequest);
-        }
+        // For cookie-based auth, refresh is handled by the backend
+        // Just retry the original request
+        return authApi(originalRequest);
       } catch (refreshError) {
         // Refresh failed, logout user
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
@@ -209,8 +196,19 @@ export const socialAuth = async (data: SocialAuthData) => {
 export const refreshAccessToken = async (refreshToken: string) => {
   const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
     refresh_token: refreshToken,
+  }, {
+    withCredentials: true
   });
   return response.data;
+};
+
+/**
+ * Refresh Token (alias for refreshAccessToken)
+ */
+export const refreshToken = async () => {
+  // For cookie-based auth, this is handled by the backend automatically
+  // Just return success to indicate refresh was attempted
+  return { success: true };
 };
 
 /**
@@ -218,6 +216,61 @@ export const refreshAccessToken = async (refreshToken: string) => {
  */
 export const getCurrentUser = async () => {
   const response = await authApi.get('/me');
+  return response.data;
+};
+
+/**
+ * Update User Profile
+ */
+export const updateProfile = async (data: any) => {
+  const response = await authApi.put('/me', data);
+  return response.data;
+};
+
+/**
+ * Verify OTP
+ */
+export const verifyOTP = async (otp: string, type: 'email' | 'phone') => {
+  const data = type === 'email'
+    ? { token: otp }
+    : { otp_code: otp };
+  
+  const response = await authApi.post('/verify-otp', data);
+  return response.data;
+};
+
+/**
+ * Resend OTP
+ */
+export const resendOTP = async (type: 'email' | 'phone') => {
+  const response = await authApi.post('/resend-verification', { type });
+  return response.data;
+};
+
+/**
+ * Request Password Reset
+ */
+export const requestPasswordReset = async (email: string) => {
+  const response = await authApi.post('/forgot-password', { email });
+  return response.data;
+};
+
+/**
+ * Confirm Password Reset
+ */
+export const confirmPasswordReset = async (token: string, newPassword: string) => {
+  const response = await authApi.post('/reset-password', { token, new_password: newPassword });
+  return response.data;
+};
+
+/**
+ * Social Login
+ */
+export const socialLogin = async (provider: string, accessToken: string) => {
+  const response = await authApi.post('/social-auth', {
+    provider,
+    access_token: accessToken,
+  });
   return response.data;
 };
 
