@@ -47,67 +47,18 @@ export function EmployeeSalesReport() {
       
       const data = await financialReportsService.getEmployeeSalesReport(reportFilters);
       setReports(data);
+      toast.success('Employee sales report loaded successfully');
     } catch (error: any) {
       console.error('Failed to load employee sales report:', error);
-      // Create mock data for demonstration
-      const mockData: EmployeeSalesReport[] = [
-        {
-          employee_id: 'emp001',
-          employee_name: 'John Waiter',
-          role: 'waiter',
-          total_sales: 45000,
-          total_orders: 25,
-          avg_order_value: 1800,
-          commission_earned: 2250,
-          time_period: {
-            start_date: filters.start_date,
-            end_date: filters.end_date
-          },
-          top_items: [
-            { item_name: 'Grilled Chicken', quantity_sold: 15, revenue: 18000 },
-            { item_name: 'Beef Steak', quantity_sold: 8, revenue: 12000 },
-            { item_name: 'Margherita Pizza', quantity_sold: 12, revenue: 15000 }
-          ]
-        },
-        {
-          employee_id: 'emp002',
-          employee_name: 'Sarah Chef',
-          role: 'chef',
-          total_sales: 38000,
-          total_orders: 20,
-          avg_order_value: 1900,
-          commission_earned: 1900,
-          time_period: {
-            start_date: filters.start_date,
-            end_date: filters.end_date
-          },
-          top_items: [
-            { item_name: 'Pasta Carbonara', quantity_sold: 18, revenue: 16200 },
-            { item_name: 'Chicken Alfredo', quantity_sold: 12, revenue: 13800 },
-            { item_name: 'Caesar Salad', quantity_sold: 10, revenue: 8000 }
-          ]
-        },
-        {
-          employee_id: 'emp003',
-          employee_name: 'Mike Manager',
-          role: 'manager',
-          total_sales: 25000,
-          total_orders: 15,
-          avg_order_value: 1667,
-          commission_earned: 1250,
-          time_period: {
-            start_date: filters.start_date,
-            end_date: filters.end_date
-          },
-          top_items: [
-            { item_name: 'Wine Bottle', quantity_sold: 8, revenue: 12000 },
-            { item_name: 'Dessert Platter', quantity_sold: 12, revenue: 9600 },
-            { item_name: 'Coffee', quantity_sold: 20, revenue: 3400 }
-          ]
-        }
-      ];
-      setReports(mockData);
-      toast.error('Using demo data - API endpoint not available');
+      // Check for cached data
+      const cacheKey = `employee_sales_${filters.start_date}_${filters.end_date}_${filters.department === 'all' ? 'all' : filters.department}_${filters.employee_id === 'all' ? 'all' : filters.employee_id}`;
+      const cachedData = localStorage.getItem(cacheKey);
+      if (cachedData) {
+        setReports(JSON.parse(cachedData));
+        toast.success('Using cached employee sales data');
+      } else {
+        toast.error('No cached data available');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -148,7 +99,7 @@ export function EmployeeSalesReport() {
   };
 
   const getTopPerformers = () => {
-    if (!Array.isArray(reports)) {
+    if (!reports || !Array.isArray(reports)) {
       return [];
     }
     return reports
@@ -157,7 +108,7 @@ export function EmployeeSalesReport() {
   };
 
   const getDepartmentStats = () => {
-    if (!Array.isArray(reports)) {
+    if (!reports || !Array.isArray(reports)) {
       return [];
     }
     const departments = Array.from(new Set(reports.map(r => r.role)));
@@ -179,6 +130,9 @@ export function EmployeeSalesReport() {
 
   const topPerformers = getTopPerformers();
   const departmentStats = getDepartmentStats();
+
+  // Handle case where reports is not an array
+  const reportsArray = Array.isArray(reports) ? reports : [];
 
   return (
     <div className="space-y-6">
@@ -333,7 +287,7 @@ export function EmployeeSalesReport() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {reports.map((employee) => (
+                {reportsArray.map((employee) => (
                   <div key={employee.employee_id} className="p-4 border rounded-lg">
                     <div className="flex items-center justify-between mb-2">
                       <div>
@@ -400,7 +354,7 @@ export function EmployeeSalesReport() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {reports.map((employee) => (
+                {reportsArray.map((employee) => (
                   <div key={employee.employee_id} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div>

@@ -112,8 +112,15 @@ export function BillsManagement() {
     unpaid: bills.filter((b) => b.payment_status === 'unpaid').length,
     partial: bills.filter((b) => b.payment_status === 'partial').length,
     paid: bills.filter((b) => b.payment_status === 'paid').length,
-    total: bills.reduce((sum, b) => sum + b.total_amount, 0),
+    total: bills.reduce((sum, b) => {
+      const amount = typeof b.total_amount === 'string' ? parseFloat(b.total_amount) : (b.total_amount || 0);
+      console.log('Processing bill:', b.id, 'total_amount:', b.total_amount, 'converted:', amount, 'typeof:', typeof amount);
+      return sum + amount;
+    }, 0),
   };
+  
+  console.log('Bills array:', bills);
+  console.log('Stats calculated:', stats);
 
   return (
     <div className="space-y-6">

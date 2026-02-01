@@ -35,6 +35,10 @@ import { useDailyStats } from '@/hooks/useDailyStats';
 import { useOperationsData } from '@/hooks/useOperationsData';
 import { useStaffPerformance } from '@/hooks/useStaffPerformance';
 import { useDebugData } from '@/hooks/useDebugData';
+import { SystemHealth } from '@/components/Manager/SystemHealth';
+import { EnhancedUserManagement } from '@/components/Manager/EnhancedUserManagement';
+import { ContentManagement } from '@/components/Manager/ContentManagement';
+import { InventoryManagement } from '@/components/Manager/InventoryManagement';
 
 
 export default function ManagerDashboard() {
@@ -126,13 +130,15 @@ export default function ManagerDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="staff">Staff</TabsTrigger>
             <TabsTrigger value="manage-staff">Manage Staff</TabsTrigger>
             <TabsTrigger value="operations">Operations</TabsTrigger>
             <TabsTrigger value="financial-reports">Financial Reports</TabsTrigger>
             <TabsTrigger value="order-management">Order Management</TabsTrigger>
+            <TabsTrigger value="system-health">System Health</TabsTrigger>
+            <TabsTrigger value="content-management">Content Management</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -459,6 +465,16 @@ export default function ManagerDashboard() {
                 </Card>
               </div>
             </div>
+          </TabsContent>
+
+          {/* System Health Tab */}
+          <TabsContent value="system-health" className="space-y-6">
+            <SystemHealth />
+          </TabsContent>
+
+          {/* Content Management Tab */}
+          <TabsContent value="content-management" className="space-y-6">
+            <ContentManagement />
           </TabsContent>
 
           {/* Analytics Tab (Legacy) */}

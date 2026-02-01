@@ -728,6 +728,151 @@ async def process_housekeeping_report(
     }
 
 
+@router.get("/daily-sales/{date}")
+async def get_daily_sales_report(
+    date: str,
+    current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
+    supabase: Client = Depends(get_supabase)
+):
+    """
+    Get detailed daily sales report for a specific date.
+    Returns comprehensive sales metrics including revenue, orders, payment methods, time breakdown, and menu categories.
+    """
+    try:
+        # Validate date format
+        try:
+            report_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format. Please use YYYY-MM-DD format."
+            )
+
+        # Calculate start and end of the day
+        start_of_day = datetime.combine(report_date, datetime.min.time()).isoformat()
+        end_of_day = datetime.combine(report_date, datetime.max.time()).isoformat()
+
+        # Get bookings for the day
+        bookings_result = supabase.table("bookings").select(
+            "id, status, created_at, paid_amount, total_amount, payment_method"
+        ).gte("created_at", start_of_day).lte("created_at", end_of_day).execute()
+
+        bookings = bookings_result.data
+
+        # Get orders for the day
+        orders_result = supabase.table("orders").select(
+            "id, status, created_at, total_amount, payment_method, payment_status"
+        ).gte("created_at", start_of_day).lte("created_at", end_of_day).execute()
+
+        orders = orders_result.data
+
+        # Calculate total revenue
+        booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings)
+        order_revenue = sum(float(o.get("total_amount") or 0) for o in orders if o.get("payment_status") in ["paid", "completed"])
+        total_revenue = booking_revenue + order_revenue
+
+        # Calculate total orders
+        total_orders = len(bookings) + len(orders)
+
+        # Calculate average order value
+        avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
+
+        # Payment methods breakdown
+        payment_methods = {}
+        
+        # Process bookings payments
+        for booking in bookings:
+            amount = float(booking.get("paid_amount") or booking.get("total_amount") or 0)
+            if amount > 0:
+                method = (booking.get("payment_method") or "cash").lower()
+                payment_methods[method] = payment_methods.get(method, 0) + amount
+
+        # Process orders payments
+        for order in orders:
+            if order.get("payment_status") in ["paid", "completed"]:
+                amount = float(order.get("total_amount") or 0)
+                if amount > 0:
+                    method = (order.get("payment_method") or "cash").lower()
+                    payment_methods[method] = payment_methods.get(method, 0) + amount
+
+        # Time breakdown (hourly)
+        time_breakdown = []
+        for hour in range(24):
+            hour_start = datetime.combine(report_date, datetime.min.time().replace(hour=hour)).isoformat()
+            hour_end = datetime.combine(report_date, datetime.min.time().replace(hour=hour, minute=59, second=59)).isoformat()
+
+            # Count bookings in this hour
+            hour_bookings = [b for b in bookings if hour_start <= b["created_at"] <= hour_end]
+            hour_orders = [o for o in orders if hour_start <= o["created_at"] <= hour_end and o.get("payment_status") in ["paid", "completed"]]
+
+            hour_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in hour_bookings)
+            hour_revenue += sum(float(o.get("total_amount") or 0) for o in hour_orders)
+
+            time_breakdown.append({
+                "hour": f"{hour:02d}:00",
+                "revenue": round(hour_revenue, 2),
+                "orders": len(hour_bookings) + len(hour_orders)
+            })
+
+        # Menu categories breakdown (from orders)
+        menu_categories = {}
+        
+        # Get order items for the day
+        if orders:
+            order_ids = [o["id"] for o in orders]
+            order_items_result = supabase.table("order_items").select(
+                "menu_item_id, quantity, price"
+            ).in_("order_id", order_ids).execute()
+
+            order_items = order_items_result.data
+
+            # Get menu items to determine categories
+            if order_items:
+                menu_item_ids = [item["menu_item_id"] for item in order_items]
+                menu_items_result = supabase.table("menu_items").select(
+                    "id, name, category"
+                ).in_("id", menu_item_ids).execute()
+
+                menu_items = menu_items_result.data
+                menu_item_map = {item["id"]: item for item in menu_items}
+
+                # Aggregate by category
+                for item in order_items:
+                    menu_item = menu_item_map.get(item["menu_item_id"])
+                    if menu_item:
+                        category = menu_item.get("category", "Uncategorized")
+                        if category not in menu_categories:
+                            menu_categories[category] = {
+                                "category": category,
+                                "revenue": 0,
+                                "items_sold": 0
+                            }
+                        
+                        menu_categories[category]["revenue"] += float(item.get("price", 0)) * item.get("quantity", 0)
+                        menu_categories[category]["items_sold"] += item.get("quantity", 0)
+
+        # Convert menu_categories to list
+        menu_categories_list = list(menu_categories.values())
+
+        return {
+            "date": date,
+            "total_revenue": round(total_revenue, 2),
+            "total_orders": total_orders,
+            "avg_order_value": round(avg_order_value, 2),
+            "payment_methods": payment_methods,
+            "time_breakdown": time_breakdown,
+            "menu_categories": menu_categories_list
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate daily sales report: {str(e)}"
+        )
+
+
 @router.get("/employee/{employee_id}/details")
 async def get_employee_details(
     employee_id: str,

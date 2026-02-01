@@ -690,3 +690,342 @@ async def update_order(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
         )
+
+
+# =====================================================
+# ORDER MODIFICATION ENDPOINTS
+# =====================================================
+
+@router.post("/void-request")
+async def request_void(
+    modification: dict,
+    current_user: dict = Depends(require_staff),
+    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Request to void an order or item"""
+    try:
+        # Validate order exists
+        order_response = supabase_admin.table("orders").select("*").eq("id", modification["order_id"]).execute()
+        if not order_response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Order not found"
+            )
+
+        order = order_response.data[0]
+        
+        # Create modification request
+        modification_data = {
+            "order_id": modification["order_id"],
+            "item_id": modification.get("item_id"),
+            "modification_type": modification["modification_type"],
+            "reason": modification["reason"],
+            "amount": modification["amount"],
+            "requested_by": current_user["id"],
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        result = supabase_admin.table("order_modifications").insert(modification_data).execute()
+        return result.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create void request: {str(e)}"
+        )
+
+
+@router.post("/void-approve/{modification_id}")
+async def approve_void(
+    modification_id: str,
+    approval_data: dict,
+    current_user: dict = Depends(require_staff),
+    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Approve a void request"""
+    try:
+        # Get modification request
+        mod_response = supabase_admin.table("order_modifications").select("*").eq("id", modification_id).execute()
+        if not mod_response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Modification request not found"
+            )
+
+        modification = mod_response.data[0]
+        
+        # Update modification status
+        update_data = {
+            "status": "approved",
+            "approved_by": current_user["id"],
+            "approved_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        result = supabase_admin.table("order_modifications").update(update_data).eq("id", modification_id).execute()
+        
+        # Update order status if needed
+        if modification["modification_type"] == "void":
+            supabase_admin.table("orders").update({
+                "status": "cancelled"
+            }).eq("id", modification["order_id"]).execute()
+
+        return result.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to approve void request: {str(e)}"
+        )
+
+
+@router.post("/void-reject/{modification_id}")
+async def reject_void(
+    modification_id: str,
+    rejection_data: dict,
+    current_user: dict = Depends(require_staff),
+    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Reject a void request"""
+    try:
+        # Get modification request
+        mod_response = supabase_admin.table("order_modifications").select("*").eq("id", modification_id).execute()
+        if not mod_response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Modification request not found"
+            )
+
+        modification = mod_response.data[0]
+        
+        # Update modification status
+        update_data = {
+            "status": "rejected",
+            "rejected_by": current_user["id"],
+            "rejected_at": datetime.now(timezone.utc).isoformat(),
+            "rejection_reason": rejection_data.get("reason", "Not specified")
+        }
+
+        result = supabase_admin.table("order_modifications").update(update_data).eq("id", modification_id).execute()
+        return result.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reject void request: {str(e)}"
+        )
+
+
+@router.get("/modifications/pending")
+async def get_pending_modifications(
+    current_user: dict = Depends(require_staff),
+    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Get all pending modification requests"""
+    try:
+        result = supabase_admin.table("order_modifications").select("*").eq("status", "pending").execute()
+        return result.data
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get pending modifications: {str(e)}"
+        )
+
+
+@router.get("/{order_id}/history")
+async def get_order_history(
+    order_id: str,
+    current_user: dict = Depends(require_staff),
+    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Get order modification history"""
+    try:
+        # Get order modifications
+        mods_result = supabase_admin.table("order_modifications").select("*").eq("order_id", order_id).execute()
+        
+        # Get order status changes (simplified)
+        status_changes = []
+        
+        return {
+            "order_id": order_id,
+            "modifications": mods_result.data,
+            "status_changes": status_changes
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get order history: {str(e)}"
+        )
+
+
+@router.get("/void-statistics")
+async def get_void_statistics(
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    current_user: dict = Depends(require_staff),
+    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Get void statistics for reporting"""
+    try:
+        # Validate date format
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid date format. Please use YYYY-MM-DD format."
+            )
+
+        # Get modifications in period
+        mods_result = supabase_admin.table("order_modifications").select("*").gte(
+            "created_at", start_dt.isoformat()
+        ).lte("created_at", end_dt.isoformat()).execute()
+
+        modifications = mods_result.data
+
+        # Calculate statistics
+        total_voids = len(modifications)
+        approved_voids = len([m for m in modifications if m.get("status") == "approved"])
+        rejected_voids = len([m for m in modifications if m.get("status") == "rejected"])
+        total_amount = sum(float(m.get("amount", 0)) for m in modifications)
+        
+        # Calculate average processing time
+        processing_times = []
+        for mod in modifications:
+            if mod.get("approved_at") and mod.get("created_at"):
+                created = datetime.fromisoformat(mod["created_at"].replace('Z', '+00:00'))
+                approved = datetime.fromisoformat(mod["approved_at"].replace('Z', '+00:00'))
+                processing_times.append((approved - created).total_seconds() / 60)  # minutes
+
+        avg_processing_time = sum(processing_times) / len(processing_times) if processing_times else 0
+
+        # Voids by employee
+        voids_by_employee = {}
+        for mod in modifications:
+            employee_id = mod.get("requested_by")
+            if employee_id:
+                if employee_id not in voids_by_employee:
+                    voids_by_employee[employee_id] = {
+                        "employee_id": employee_id,
+                        "void_count": 0,
+                        "total_amount": 0
+                    }
+                voids_by_employee[employee_id]["void_count"] += 1
+                voids_by_employee[employee_id]["total_amount"] += float(mod.get("amount", 0))
+
+        return {
+            "total_voids": total_voids,
+            "approved_voids": approved_voids,
+            "rejected_voids": rejected_voids,
+            "total_amount": round(total_amount, 2),
+            "avg_processing_time": round(avg_processing_time, 2),
+            "voids_by_employee": list(voids_by_employee.values())
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get void statistics: {str(e)}"
+        )
+
+
+@router.post("/{order_id}/reverse")
+async def reverse_order(
+    order_id: str,
+    reversal_data: dict,
+    current_user: dict = Depends(require_staff),
+    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Reverse a completed order"""
+    try:
+        # Get order
+        order_response = supabase_admin.table("orders").select("*").eq("id", order_id).execute()
+        if not order_response.data:
+            raise HTTPException(
+                status_code=404,
+                detail="Order not found"
+            )
+
+        order = order_response.data[0]
+        
+        # Create reversal record
+        reversal_data = {
+            "order_id": order_id,
+            "reason": reversal_data["reason"],
+            "reversed_by": current_user["id"],
+            "reversed_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        result = supabase_admin.table("order_reversals").insert(reversal_data).execute()
+        
+        # Update order status
+        supabase_admin.table("orders").update({
+            "status": "reversed"
+        }).eq("id", order_id).execute()
+
+        return {
+            "success": True,
+            "message": "Order reversed successfully",
+            "transaction_id": result.data[0]["id"]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reverse order: {str(e)}"
+        )
+
+
+# =====================================================
+# AUDIT TRAIL ENDPOINTS
+# =====================================================
+
+@router.get("/audit/trail")
+async def get_audit_trail(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    entity_type: Optional[str] = Query(None),
+    performed_by: Optional[str] = Query(None),
+    current_user: dict = Depends(require_staff),
+    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Get audit trail for order modifications"""
+    try:
+        query = supabase_admin.table("order_modifications").select("*")
+        
+        if start_date:
+            query = query.gte("created_at", start_date)
+        if end_date:
+            query = query.lte("created_at", end_date)
+        if entity_type:
+            query = query.eq("modification_type", entity_type)
+        if performed_by:
+            query = query.eq("requested_by", performed_by)
+
+        result = query.execute()
+        return result.data
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get audit trail: {str(e)}"
+        )

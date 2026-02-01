@@ -38,38 +38,23 @@ export function DailySalesReport() {
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const data = await financialReportsService.getDailySalesReport(dateStr);
       setReport(data);
+      toast.success('Daily sales report loaded successfully');
     } catch (error: any) {
       console.error('Failed to load daily sales report:', error);
-      // Create mock data for demonstration
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const mockData: DailySalesReport = {
-        date: dateStr,
-        total_revenue: Math.floor(Math.random() * 100000) + 50000,
-        total_orders: Math.floor(Math.random() * 50) + 20,
-        avg_order_value: Math.floor(Math.random() * 2000) + 1000,
-        payment_methods: {
-          'cash': Math.floor(Math.random() * 30000) + 10000,
-          'mpesa': Math.floor(Math.random() * 40000) + 15000,
-          'card': Math.floor(Math.random() * 20000) + 5000
-        },
-        time_breakdown: [
-          { hour: '08:00', revenue: Math.floor(Math.random() * 5000) + 1000, orders: Math.floor(Math.random() * 10) + 2 },
-          { hour: '09:00', revenue: Math.floor(Math.random() * 8000) + 2000, orders: Math.floor(Math.random() * 15) + 3 },
-          { hour: '10:00', revenue: Math.floor(Math.random() * 12000) + 3000, orders: Math.floor(Math.random() * 20) + 5 },
-          { hour: '11:00', revenue: Math.floor(Math.random() * 15000) + 4000, orders: Math.floor(Math.random() * 25) + 6 },
-          { hour: '12:00', revenue: Math.floor(Math.random() * 20000) + 5000, orders: Math.floor(Math.random() * 30) + 8 },
-          { hour: '13:00', revenue: Math.floor(Math.random() * 18000) + 4000, orders: Math.floor(Math.random() * 25) + 7 },
-          { hour: '14:00', revenue: Math.floor(Math.random() * 12000) + 3000, orders: Math.floor(Math.random() * 15) + 4 },
-          { hour: '15:00', revenue: Math.floor(Math.random() * 8000) + 2000, orders: Math.floor(Math.random() * 10) + 3 }
-        ],
-        menu_categories: [
-          { category: 'food', items_sold: Math.floor(Math.random() * 50) + 20, revenue: Math.floor(Math.random() * 40000) + 15000 },
-          { category: 'drinks', items_sold: Math.floor(Math.random() * 80) + 30, revenue: Math.floor(Math.random() * 25000) + 10000 },
-          { category: 'desserts', items_sold: Math.floor(Math.random() * 30) + 10, revenue: Math.floor(Math.random() * 15000) + 5000 }
-        ]
-      };
-      setReport(mockData);
-      toast.error('Using demo data - API endpoint not available');
+      // Check for cached data
+      const cachedData = localStorage.getItem('financial_reports_daily');
+      if (cachedData) {
+        const cache = JSON.parse(cachedData);
+        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        if (cache[dateStr]) {
+          setReport(cache[dateStr]);
+          toast.success('Using cached daily sales data');
+        } else {
+          toast.error('No cached data available for this date');
+        }
+      } else {
+        toast.error('No cached data available');
+      }
     } finally {
       setIsLoading(false);
     }

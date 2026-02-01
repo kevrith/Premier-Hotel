@@ -86,19 +86,49 @@ export interface ReportFilters {
 
 class FinancialReportsService {
   async getDailySalesReport(date: string): Promise<DailySalesReport> {
-    const response = await api.get<DailySalesReport>(`/reports/daily-sales/${date}`);
-    return response.data;
+    try {
+      const response = await api.get<DailySalesReport>(`/reports/daily-sales/${date}`);
+      // Cache the successful response
+      const cachedData = localStorage.getItem('financial_reports_daily');
+      const cache = cachedData ? JSON.parse(cachedData) : {};
+      cache[date] = response.data;
+      localStorage.setItem('financial_reports_daily', JSON.stringify(cache));
+      return response.data;
+    } catch (error) {
+      // Fallback to cached data
+      const cachedData = localStorage.getItem('financial_reports_daily');
+      if (cachedData) {
+        const cache = JSON.parse(cachedData);
+        if (cache[date]) {
+          return cache[date];
+        }
+      }
+      throw error;
+    }
   }
 
   async getEmployeeSalesReport(filters: ReportFilters): Promise<EmployeeSalesReport[]> {
-    const params = new URLSearchParams();
-    params.append('start_date', filters.start_date);
-    params.append('end_date', filters.end_date);
-    if (filters.employee_id) params.append('employee_id', filters.employee_id);
-    if (filters.department) params.append('department', filters.department);
+    try {
+      const params = new URLSearchParams();
+      params.append('start_date', filters.start_date);
+      params.append('end_date', filters.end_date);
+      if (filters.employee_id) params.append('employee_id', filters.employee_id);
+      if (filters.department) params.append('department', filters.department);
 
-    const response = await api.get<EmployeeSalesReport[]>(`/reports/employee-sales?${params.toString()}`);
-    return response.data;
+      const response = await api.get<EmployeeSalesReport[]>(`/reports/employee-sales?${params.toString()}`);
+      // Cache the successful response
+      const cacheKey = `employee_sales_${filters.start_date}_${filters.end_date}_${filters.employee_id || 'all'}_${filters.department || 'all'}`;
+      localStorage.setItem(cacheKey, JSON.stringify(response.data));
+      return response.data;
+    } catch (error) {
+      // Fallback to cached data
+      const cacheKey = `employee_sales_${filters.start_date}_${filters.end_date}_${filters.employee_id || 'all'}_${filters.department || 'all'}`;
+      const cachedData = localStorage.getItem(cacheKey);
+      if (cachedData) {
+        return JSON.parse(cachedData);
+      }
+      throw error;
+    }
   }
 
   async getPLStatement(filters: ReportFilters): Promise<PLStatement> {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api/client';
 
 export function useDebugData() {
   const [debug, setDebug] = useState({
@@ -14,34 +14,28 @@ export function useDebugData() {
 
   const checkData = async () => {
     try {
-      // Check rooms
-      const { data: rooms, count: roomCount } = await supabase
-        .from('rooms')
-        .select('*', { count: 'exact' })
-        .limit(3);
+      // Get rooms from API
+      const roomsResponse = await api.get('/rooms');
+      const rooms = roomsResponse.data.data || [];
 
-      // Check orders
-      const { data: orders, count: orderCount } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact' })
-        .limit(3);
+      // Get orders from API
+      const ordersResponse = await api.get('/orders');
+      const orders = ordersResponse.data.data || [];
 
-      // Check bookings
-      const { data: bookings, count: bookingCount } = await supabase
-        .from('bookings')
-        .select('*', { count: 'exact' })
-        .limit(3);
+      // Get bookings from API
+      const bookingsResponse = await api.get('/bookings');
+      const bookings = bookingsResponse.data.data || [];
 
       setDebug({
-        rooms: { count: roomCount || 0, sample: rooms || [] },
-        orders: { count: orderCount || 0, sample: orders || [] },
-        bookings: { count: bookingCount || 0, sample: bookings || [] }
+        rooms: { count: rooms.length, sample: rooms.slice(0, 3) },
+        orders: { count: orders.length, sample: orders.slice(0, 3) },
+        bookings: { count: bookings.length, sample: bookings.slice(0, 3) }
       });
 
       console.log('=== DATABASE DEBUG ===');
-      console.log('Rooms:', roomCount, rooms);
-      console.log('Orders:', orderCount, orders);
-      console.log('Bookings:', bookingCount, bookings);
+      console.log('Rooms:', rooms.length, rooms.slice(0, 3));
+      console.log('Orders:', orders.length, orders.slice(0, 3));
+      console.log('Bookings:', bookings.length, bookings.slice(0, 3));
     } catch (error) {
       console.error('Debug data error:', error);
     }
