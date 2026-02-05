@@ -1,9 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { BookOpen, Clock, Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { BookOpen, Clock, Search, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { recipesApi, Recipe, RecipeCreate } from '@/lib/api/recipes';
+import { toast } from 'react-hot-toast';
 
 interface Recipe {
   id: string;
@@ -168,7 +175,109 @@ const recipes: Recipe[] = [
 ];
 
 export function RecipeReference() {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showDialog, setShowDialog] = useState(false);
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
+  const [formData, setFormData] = useState<RecipeCreate>({
+    name: '',
+    category: '',
+    prep_time: 15,
+    servings: 1,
+    ingredients: [''],
+    steps: [''],
+    notes: '',
+  });
+
+  const canEdit = user?.role === 'chef' || user?.role === 'manager' || user?.role === 'admin';
+
+  useEffect(() => {
+    loadRecipes();
+  }, []);
+
+  const loadRecipes = async () => {
+    try {
+      const data = await recipesApi.getAll();
+      setRecipes(data);
+    } catch (error) {
+      toast.error('Failed to load recipes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.category || formData.ingredients.filter(i => i).length === 0 || formData.steps.filter(s => s).length === 0) {
+      toast.error('Please fill all required fields');
+      return;
+    }
+
+    try {
+      const cleanData = {
+        ...formData,
+        ingredients: formData.ingredients.filter(i => i.trim()),
+        steps: formData.steps.filter(s => s.trim()),
+      };
+
+      if (editingRecipe) {
+        await recipesApi.update(editingRecipe.id, cleanData);
+        toast.success('Recipe updated!');
+      } else {
+        await recipesApi.create(cleanData);
+        toast.success('Recipe created!');
+      }
+      setShowDialog(false);
+      resetForm();
+      loadRecipes();
+    } catch (error) {
+      toast.error('Failed to save recipe');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this recipe?')) return;
+    try {
+      await recipesApi.delete(id);
+      toast.success('Recipe deleted');
+      loadRecipes();
+    } catch (error) {
+      toast.error('Failed to delete recipe');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      category: '',
+      prep_time: 15,
+      servings: 1,
+      ingredients: [''],
+      steps: [''],
+      notes: '',
+    });
+    setEditingRecipe(null);
+  };
+
+  const openCreateDialog = () => {
+    resetForm();
+    setShowDialog(true);
+  };
+
+  const openEditDialog = (recipe: Recipe) => {
+    setEditingRecipe(recipe);
+    setFormData({
+      name: recipe.name,
+      category: recipe.category,
+      prep_time: recipe.prep_time,
+      servings: recipe.servings,
+      ingredients: recipe.ingredients,
+      steps: recipe.steps,
+      notes: recipe.notes || '',
+    });
+    setShowDialog(true);
+  };
 
   const filteredRecipes = recipes.filter(recipe =>
     recipe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -177,15 +286,22 @@ export function RecipeReference() {
 
   return (
     <div className="space-y-6">
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-        <Input
-          placeholder="Search recipes..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10 h-14 text-lg"
-        />
+      <div className="flex items-center justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+          <Input
+            placeholder="Search recipes..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-14 text-lg"
+          />
+        </div>
+        {canEdit && (
+          <Button onClick={openCreateDialog} size="lg" className="h-14">
+            <Plus className="h-5 w-5 mr-2" />
+            Create Recipe
+          </Button>
+        )}
       </div>
 
       {/* Recipes Grid */}
@@ -198,6 +314,16 @@ export function RecipeReference() {
                   <CardTitle className="text-xl flex items-center gap-2">
                     <BookOpen className="h-5 w-5" />
                     {recipe.name}
+                    {canEdit && (
+                      <div className="ml-auto flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEditDialog(recipe)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleDelete(recipe.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </CardTitle>
                   <CardDescription className="mt-2 flex items-center gap-4">
                     <Badge variant="secondary">{recipe.category}</Badge>
@@ -264,6 +390,78 @@ export function RecipeReference() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingRecipe ? 'Edit Recipe' : 'Create Recipe'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Name</Label>
+              <Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+            </div>
+            <div>
+              <Label>Category</Label>
+              <Input value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} placeholder="e.g., Main Course, Salad" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Prep Time (min)</Label>
+                <Input type="number" value={formData.prep_time} onChange={(e) => setFormData({ ...formData, prep_time: parseInt(e.target.value) })} />
+              </div>
+              <div>
+                <Label>Servings</Label>
+                <Input type="number" value={formData.servings} onChange={(e) => setFormData({ ...formData, servings: parseInt(e.target.value) })} />
+              </div>
+            </div>
+            <div>
+              <Label>Ingredients</Label>
+              {formData.ingredients.map((ing, i) => (
+                <div key={i} className="flex gap-2 mb-2">
+                  <Input value={ing} onChange={(e) => {
+                    const newIng = [...formData.ingredients];
+                    newIng[i] = e.target.value;
+                    setFormData({ ...formData, ingredients: newIng });
+                  }} />
+                  <Button variant="outline" onClick={() => setFormData({ ...formData, ingredients: formData.ingredients.filter((_, idx) => idx !== i) })}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" onClick={() => setFormData({ ...formData, ingredients: [...formData.ingredients, ''] })}>
+                <Plus className="h-4 w-4 mr-2" /> Add Ingredient
+              </Button>
+            </div>
+            <div>
+              <Label>Steps</Label>
+              {formData.steps.map((step, i) => (
+                <div key={i} className="flex gap-2 mb-2">
+                  <Textarea value={step} onChange={(e) => {
+                    const newSteps = [...formData.steps];
+                    newSteps[i] = e.target.value;
+                    setFormData({ ...formData, steps: newSteps });
+                  }} />
+                  <Button variant="outline" onClick={() => setFormData({ ...formData, steps: formData.steps.filter((_, idx) => idx !== i) })}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" onClick={() => setFormData({ ...formData, steps: [...formData.steps, ''] })}>
+                <Plus className="h-4 w-4 mr-2" /> Add Step
+              </Button>
+            </div>
+            <div>
+              <Label>Notes (optional)</Label>
+              <Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+            <Button onClick={handleSubmit}>{editingRecipe ? 'Update' : 'Create'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

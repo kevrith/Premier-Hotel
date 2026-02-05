@@ -14,51 +14,67 @@ import {
   Users,
   BarChart3,
   TrendingDown,
-  Award
+  Award,
+  Clock,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
-import { financialReportsService, type EmployeeSalesReport, type ReportFilters } from '@/lib/api/financial-reports';
+import reportsService, { EmployeeSalesData, EmployeeSalesResponse } from '@/lib/api/reports';
 
 export function EmployeeSalesReport() {
-  const [reports, setReports] = useState<EmployeeSalesReport[]>([]);
+  const [selectedRole, setSelectedRole] = useState('all');
+  const [selectedEmployee, setSelectedEmployee] = useState('all');
+  const [period, setPeriod] = useState('custom');
+  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isLoading, setIsLoading] = useState(false);
-  const [filters, setFilters] = useState({
-    start_date: format(new Date(), 'yyyy-MM-dd'),
-    end_date: format(new Date(), 'yyyy-MM-dd'),
-    department: 'all',
-    employee_id: 'all'
+  const [staffPerformance, setStaffPerformance] = useState<EmployeeSalesData[]>([]);
+  const [summaryData, setSummaryData] = useState<{ totalSales: number; totalOrders: number; totalEmployees: number }>({
+    totalSales: 0,
+    totalOrders: 0,
+    totalEmployees: 0
   });
-  const [exportFormat, setExportFormat] = useState<'pdf' | 'excel'>('pdf');
 
   useEffect(() => {
     loadReport();
-  }, [filters]);
+  }, [period, selectedRole, startDate, endDate]);
 
   const loadReport = async () => {
     setIsLoading(true);
     try {
-      const reportFilters: ReportFilters = {
-        start_date: filters.start_date,
-        end_date: filters.end_date,
-        department: filters.department === 'all' ? undefined : filters.department,
-        employee_id: filters.employee_id === 'all' ? undefined : filters.employee_id
-      };
+      let dateRange;
       
-      const data = await financialReportsService.getEmployeeSalesReport(reportFilters);
-      setReports(data);
+      if (period === 'custom') {
+        // Use custom date range
+        dateRange = {
+          start: new Date(startDate).toISOString(),
+          end: new Date(endDate).toISOString()
+        };
+      } else {
+        // Use predefined periods
+        dateRange = reportsService.getDateRange(period as 'today' | 'week' | 'month' | 'year');
+      }
+
+      const data = await reportsService.getEmployeeSales(
+        dateRange.start,
+        dateRange.end,
+        undefined,
+        undefined,
+        selectedRole === 'all' ? undefined : selectedRole
+      );
+
+      setStaffPerformance(data.employees);
+      setSummaryData({
+        totalSales: data.total_sales,
+        totalOrders: data.total_orders,
+        totalEmployees: data.total_employees
+      });
+
       toast.success('Employee sales report loaded successfully');
     } catch (error: any) {
       console.error('Failed to load employee sales report:', error);
-      // Check for cached data
-      const cacheKey = `employee_sales_${filters.start_date}_${filters.end_date}_${filters.department === 'all' ? 'all' : filters.department}_${filters.employee_id === 'all' ? 'all' : filters.employee_id}`;
-      const cachedData = localStorage.getItem(cacheKey);
-      if (cachedData) {
-        setReports(JSON.parse(cachedData));
-        toast.success('Using cached employee sales data');
-      } else {
-        toast.error('No cached data available');
-      }
+      toast.error('Failed to load employee sales data');
     } finally {
       setIsLoading(false);
     }
@@ -66,27 +82,36 @@ export function EmployeeSalesReport() {
 
   const exportReport = async () => {
     try {
-      const reportFilters: ReportFilters = {
-        start_date: filters.start_date,
-        end_date: filters.end_date,
-        department: filters.department === 'all' ? undefined : filters.department,
-        employee_id: filters.employee_id === 'all' ? undefined : filters.employee_id
-      };
-      
-      const blob = await financialReportsService.exportReport('employee-sales', reportFilters, exportFormat);
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
+      // Create CSV content
+      const headers = ['Employee Name', 'Role', 'Total Sales', 'Total Orders', 'Avg Order Value'];
+      const csvContent = [
+        headers.join(','),
+        ...staffPerformanceArray.map(emp => [
+          `"${emp.employee_name}"`,
+          `"${emp.role}"`,
+          emp.total_sales,
+          emp.total_orders,
+          emp.avg_order_value
+        ].join(','))
+      ].join('\n');
+
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
-      link.download = `employee-sales-report-${filters.start_date}-to-${filters.end_date}.${exportFormat}`;
+      const periodText = period === 'custom' 
+        ? `${startDate}_to_${endDate}` 
+        : period;
+      link.setAttribute('href', url);
+      link.setAttribute('download', `employee_sales_report_${periodText}.csv`);
       document.body.appendChild(link);
       link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
       toast.success('Report exported successfully');
     } catch (error: any) {
+      console.error('Export failed:', error);
       toast.error('Failed to export report');
     }
   };
@@ -99,21 +124,21 @@ export function EmployeeSalesReport() {
   };
 
   const getTopPerformers = () => {
-    if (!reports || !Array.isArray(reports)) {
+    if (!staffPerformance || !Array.isArray(staffPerformance)) {
       return [];
     }
-    return reports
+    return staffPerformance
       .sort((a, b) => b.total_sales - a.total_sales)
       .slice(0, 5);
   };
 
   const getDepartmentStats = () => {
-    if (!reports || !Array.isArray(reports)) {
+    if (!staffPerformance || !Array.isArray(staffPerformance)) {
       return [];
     }
-    const departments = Array.from(new Set(reports.map(r => r.role)));
+    const departments = Array.from(new Set(staffPerformance.map(r => r.role)));
     return departments.map(dept => {
-      const deptReports = reports.filter(r => r.role === dept);
+      const deptReports = staffPerformance.filter(r => r.role === dept);
       const totalSales = deptReports.reduce((sum, r) => sum + r.total_sales, 0);
       const totalOrders = deptReports.reduce((sum, r) => sum + r.total_orders, 0);
       const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
@@ -128,11 +153,19 @@ export function EmployeeSalesReport() {
     });
   };
 
+  const getEmployeeDetails = () => {
+    if (!staffPerformance || !Array.isArray(staffPerformance)) {
+      return null;
+    }
+    return staffPerformance.find(emp => emp.employee_id === selectedEmployee);
+  };
+
   const topPerformers = getTopPerformers();
   const departmentStats = getDepartmentStats();
+  const selectedEmployeeDetails = getEmployeeDetails();
 
-  // Handle case where reports is not an array
-  const reportsArray = Array.isArray(reports) ? reports : [];
+  // Handle case where staffPerformance is not an array
+  const staffPerformanceArray = Array.isArray(staffPerformance) ? staffPerformance : [];
 
   return (
     <div className="space-y-6">
@@ -142,31 +175,62 @@ export function EmployeeSalesReport() {
           <div>
             <CardTitle>Employee Sales Report</CardTitle>
             <CardDescription>
-              Sales performance by employee from {format(new Date(filters.start_date), 'MMM d, yyyy')} to {format(new Date(filters.end_date), 'MMM d, yyyy')}
+              Sales performance by employee from {period === 'today' ? 'Today' : 
+                period === 'week' ? 'Last 7 Days' : 
+                period === 'month' ? 'Last 30 Days' : 
+                period === 'year' ? 'This Year' :
+                `${format(new Date(startDate), 'MMM d, yyyy')} to ${format(new Date(endDate), 'MMM d, yyyy')}`}
             </CardDescription>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <div className="flex gap-2">
-              <Select value={filters.department} onValueChange={(value) => setFilters({...filters, department: value})}>
+              <Select value={selectedRole} onValueChange={setSelectedRole}>
                 <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Filter by department" />
+                  <SelectValue placeholder="Filter by role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Departments</SelectItem>
+                  <SelectItem value="all">All Roles</SelectItem>
                   <SelectItem value="waiter">Waiters</SelectItem>
                   <SelectItem value="chef">Chefs</SelectItem>
                   <SelectItem value="manager">Managers</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={exportFormat} onValueChange={(value: 'pdf' | 'excel') => setExportFormat(value)}>
+              <Select value={period} onValueChange={setPeriod}>
                 <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Export format" />
+                  <SelectValue placeholder="Select period" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pdf">PDF</SelectItem>
-                  <SelectItem value="excel">Excel</SelectItem>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="week">Last 7 Days</SelectItem>
+                  <SelectItem value="month">Last 30 Days</SelectItem>
+                  <SelectItem value="year">This Year</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
                 </SelectContent>
               </Select>
+              {period === 'custom' && (
+                <div className="flex gap-2">
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="start-date" className="text-xs text-muted-foreground">Start Date</Label>
+                    <Input
+                      id="start-date"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-[140px]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="end-date" className="text-xs text-muted-foreground">End Date</Label>
+                    <Input
+                      id="end-date"
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-[140px]"
+                    />
+                  </div>
+                </div>
+              )}
               <Button onClick={exportReport} variant="outline">
                 <Download className="h-4 w-4 mr-2" />
                 Export
@@ -187,7 +251,7 @@ export function EmployeeSalesReport() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Employees</p>
-                <p className="text-2xl font-bold">{reports.length}</p>
+                <p className="text-2xl font-bold">{summaryData.totalEmployees}</p>
               </div>
               <Users className="h-8 w-8 text-blue-500" />
             </div>
@@ -199,7 +263,7 @@ export function EmployeeSalesReport() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Sales</p>
-                <p className="text-2xl font-bold">{formatCurrency(Array.isArray(reports) ? reports.reduce((sum, r) => sum + r.total_sales, 0) : 0)}</p>
+                <p className="text-2xl font-bold">{formatCurrency(summaryData.totalSales)}</p>
               </div>
               <DollarSign className="h-8 w-8 text-green-500" />
             </div>
@@ -211,7 +275,7 @@ export function EmployeeSalesReport() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Orders</p>
-                <p className="text-2xl font-bold">{Array.isArray(reports) ? reports.reduce((sum, r) => sum + r.total_orders, 0) : 0}</p>
+                <p className="text-2xl font-bold">{summaryData.totalOrders}</p>
               </div>
               <BarChart3 className="h-8 w-8 text-purple-500" />
             </div>
@@ -225,10 +289,7 @@ export function EmployeeSalesReport() {
                 <p className="text-sm text-muted-foreground">Avg Order Value</p>
                 <p className="text-2xl font-bold">
                   {formatCurrency(
-                    Array.isArray(reports) ? 
-                      reports.reduce((sum, r) => sum + r.total_sales, 0) / 
-                      Math.max(1, reports.reduce((sum, r) => sum + r.total_orders, 0))
-                    : 0
+                    summaryData.totalOrders > 0 ? summaryData.totalSales / summaryData.totalOrders : 0
                   )}
                 </p>
               </div>
@@ -276,6 +337,7 @@ export function EmployeeSalesReport() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="departments">Departments</TabsTrigger>
+          <TabsTrigger value="employee-details">Employee Details</TabsTrigger>
           <TabsTrigger value="detailed">Detailed View</TabsTrigger>
         </TabsList>
 
@@ -287,7 +349,7 @@ export function EmployeeSalesReport() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {reportsArray.map((employee) => (
+                {staffPerformanceArray.map((employee) => (
                   <div key={employee.employee_id} className="p-4 border rounded-lg">
                     <div className="flex items-center justify-between mb-2">
                       <div>
@@ -305,12 +367,6 @@ export function EmployeeSalesReport() {
                         <span className="text-sm text-muted-foreground">Avg Order Value</span>
                         <span className="font-bold">{formatCurrency(employee.avg_order_value)}</span>
                       </div>
-                      {employee.commission_earned && (
-                        <div className="flex justify-between">
-                          <span className="text-sm text-muted-foreground">Commission</span>
-                          <span className="font-bold text-green-600">{formatCurrency(employee.commission_earned)}</span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -345,6 +401,159 @@ export function EmployeeSalesReport() {
           </Card>
         </TabsContent>
 
+        {/* Employee Details Tab */}
+        <TabsContent value="employee-details" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Employee-Specific Report</CardTitle>
+              <CardDescription>View detailed report for a specific employee</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select employee" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Employees</SelectItem>
+                      {staffPerformanceArray.map((employee) => (
+                        <SelectItem key={employee.employee_id} value={employee.employee_id}>
+                          {employee.employee_name} ({employee.role})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button onClick={() => window.print()} variant="outline">
+                    <Printer className="h-4 w-4 mr-2" />
+                    Print Employee Report
+                  </Button>
+                </div>
+
+                {selectedEmployee !== 'all' && selectedEmployeeDetails ? (
+                  <div className="space-y-4">
+                    {/* Employee Header */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="text-center">
+                            <div className="h-16 w-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-2 flex items-center justify-center text-white text-xl font-bold">
+                              {selectedEmployeeDetails.employee_name.charAt(0)}
+                            </div>
+                            <h3 className="font-semibold">{selectedEmployeeDetails.employee_name}</h3>
+                            <p className="text-sm text-muted-foreground capitalize">{selectedEmployeeDetails.role}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="text-center">
+                            <p className="text-sm text-muted-foreground">Total Sales</p>
+                            <p className="text-2xl font-bold text-green-600">{formatCurrency(selectedEmployeeDetails.total_sales)}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="text-center">
+                            <p className="text-sm text-muted-foreground">Total Orders</p>
+                            <p className="text-2xl font-bold">{selectedEmployeeDetails.total_orders}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="text-center">
+                            <p className="text-sm text-muted-foreground">Avg Order Value</p>
+                            <p className="text-2xl font-bold">{formatCurrency(selectedEmployeeDetails.avg_order_value)}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Employee Details */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Employee Performance Details</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Employee ID</span>
+                              <span className="font-medium">{selectedEmployeeDetails.employee_id}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Role</span>
+                              <span className="font-medium capitalize">{selectedEmployeeDetails.role}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Department</span>
+                              <span className="font-medium capitalize">{selectedEmployeeDetails.department}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Total Items Sold</span>
+                              <span className="font-medium">{selectedEmployeeDetails.total_items_sold || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Orders Today</span>
+                              <span className="font-medium">{selectedEmployeeDetails.orders_today || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Orders This Week</span>
+                              <span className="font-medium">{selectedEmployeeDetails.orders_this_week || 0}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Orders This Month</span>
+                              <span className="font-medium">{selectedEmployeeDetails.orders_this_month || 0}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Performance Summary */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Performance Summary</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-4 bg-green-50 rounded-lg">
+                            <p className="text-sm font-medium text-green-800">Sales Performance</p>
+                            <p className="text-lg font-bold text-green-600">{formatCurrency(selectedEmployeeDetails.total_sales)}</p>
+                            <p className="text-xs text-green-600">Total sales for selected period</p>
+                          </div>
+                          <div className="p-4 bg-blue-50 rounded-lg">
+                            <p className="text-sm font-medium text-blue-800">Order Volume</p>
+                            <p className="text-lg font-bold text-blue-600">{selectedEmployeeDetails.total_orders}</p>
+                            <p className="text-xs text-blue-600">Total orders completed</p>
+                          </div>
+                          <div className="p-4 bg-purple-50 rounded-lg">
+                            <p className="text-sm font-medium text-purple-800">Average Value</p>
+                            <p className="text-lg font-bold text-purple-600">{formatCurrency(selectedEmployeeDetails.avg_order_value)}</p>
+                            <p className="text-xs text-purple-600">Per order average</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : selectedEmployee !== 'all' ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No data available for the selected employee
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Select an employee to view their detailed report
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Detailed View Tab */}
         <TabsContent value="detailed" className="space-y-4">
           <Card>
@@ -354,7 +563,7 @@ export function EmployeeSalesReport() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {reportsArray.map((employee) => (
+                {staffPerformanceArray.map((employee) => (
                   <div key={employee.employee_id} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div>
@@ -367,27 +576,10 @@ export function EmployeeSalesReport() {
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                       <div className="p-3 bg-gray-50 rounded">
                         <p className="text-sm text-muted-foreground">Avg Order Value</p>
                         <p className="font-bold">{formatCurrency(employee.avg_order_value)}</p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded">
-                        <p className="text-sm text-muted-foreground">Commission Earned</p>
-                        <p className="font-bold text-green-600">
-                          {employee.commission_earned ? formatCurrency(employee.commission_earned) : 'N/A'}
-                        </p>
-                      </div>
-                      <div className="p-3 bg-gray-50 rounded">
-                        <p className="text-sm text-muted-foreground">Top Items</p>
-                        <div className="mt-1 space-y-1">
-                          {employee.top_items.slice(0, 3).map((item, index) => (
-                            <div key={index} className="text-sm">
-                              <span className="font-medium">{item.item_name}</span>
-                              <span className="text-muted-foreground ml-2">x{item.quantity_sold}</span>
-                            </div>
-                          ))}
-                        </div>
                       </div>
                     </div>
                   </div>

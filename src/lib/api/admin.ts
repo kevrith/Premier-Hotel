@@ -147,6 +147,18 @@ class AdminAPIService {
   }
 
   /**
+   * Update user permissions
+   */
+  async updateUserPermissions(userId: string, permissions: string[]): Promise<{ message: string }> {
+    try {
+      const response = await api.patch(`/users/${userId}/permissions`, permissions);
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.detail || 'Failed to update permissions');
+    }
+  }
+
+  /**
    * Deactivate a user
    */
   async deactivateUser(userId: string): Promise<{ message: string }> {

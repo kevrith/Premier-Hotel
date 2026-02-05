@@ -268,7 +268,13 @@ async def update_inventory_item(
     current_user: dict = Depends(require_role(["admin", "manager"])),
     supabase: Client = Depends(get_supabase)
 ):
-    """Update inventory item"""
+    """Update inventory item (admin, manager, or users with manage_inventory permission)"""
+    # Check if user has manage_inventory permission
+    if current_user["role"] not in ["admin", "manager"]:
+        permissions = current_user.get("permissions", [])
+        if "manage_inventory" not in permissions:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+    
     update_data = item.model_dump(exclude_unset=True)
 
     result = supabase.table("inventory_items").update(update_data).eq("id", item_id).execute()
@@ -336,7 +342,12 @@ async def create_stock_movement(
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
     supabase: Client = Depends(get_supabase)
 ):
-    """Create a stock movement and update inventory quantity"""
+    """Create a stock movement and update inventory quantity (admin, manager, staff, or users with manage_inventory permission)"""
+    # Check if user has manage_inventory permission
+    if current_user["role"] not in ["admin", "manager", "staff"]:
+        permissions = current_user.get("permissions", [])
+        if "manage_inventory" not in permissions:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
     movement_data = movement.model_dump()
     movement_data["created_by"] = current_user["id"]
 

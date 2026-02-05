@@ -3,7 +3,7 @@ API v1 Router - Combines all endpoint routers
 SECURITY: Using auth_secure for httpOnly cookie-based authentication
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth_secure as auth, admin_enhanced as admin, rooms, bookings, menu, orders, bills, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector, customers, purchase_orders, order_payments
+from app.api.v1.endpoints import auth_secure as auth, admin_enhanced as admin, rooms, bookings, menu, orders, bills, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector, customers, purchase_orders, order_payments, recipes
 
 api_router = APIRouter()
 
@@ -39,3 +39,6 @@ api_router.include_router(customers.router, prefix="/customers", tags=["Customer
 # QuickBooks POS Integration
 api_router.include_router(quickbooks.router, prefix="/quickbooks", tags=["QuickBooks Admin"])
 api_router.include_router(quickbooks_connector.router, prefix="/quickbooks-connector", tags=["QuickBooks Web Connector"])
+
+# Recipes
+api_router.include_router(recipes.router, prefix="/recipes", tags=["Recipes"])

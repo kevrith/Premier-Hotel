@@ -16,15 +16,29 @@ const authApi = axios.create({
   withCredentials: true, // Enable cookies for auth
 });
 
-// Add request interceptor to handle cookie-based auth
+// Add request interceptor - no need to manually set headers for cookie auth
 authApi.interceptors.request.use(
   (config) => {
-    // For cookie-based auth, we don't need to manually set headers
-    // The cookies will be sent automatically with withCredentials: true
+    // For cookie-based auth, cookies are sent automatically with withCredentials: true
     return config;
   },
   (error) => Promise.reject(error)
 );
+
+// Track if a refresh is in progress to prevent concurrent refresh attempts
+let isRefreshing = false;
+let failedQueue: Array<{resolve: (value?: any) => void; reject: (reason?: any) => void}> = [];
+
+const processQueue = (error: any = null) => {
+  failedQueue.forEach(promise => {
+    if (error) {
+      promise.reject(error);
+    } else {
+      promise.resolve();
+    }
+  });
+  failedQueue = [];
+};
 
 // Add response interceptor for authentication errors
 authApi.interceptors.response.use(
@@ -32,17 +46,49 @@ authApi.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Skip refresh logic for auth check endpoints - let them fail silently
+    // This prevents infinite loops when checking if user is authenticated
+    const skipRefreshEndpoints = ['/auth/me', '/auth/refresh'];
+    const requestUrl = originalRequest?.url || '';
+    const shouldSkipRefresh = skipRefreshEndpoints.some(endpoint =>
+      requestUrl.includes(endpoint) || requestUrl.endsWith(endpoint.split('/').pop())
+    );
+
+    if (shouldSkipRefresh) {
+      return Promise.reject(error);
+    }
+
     // If 401 and we haven't retried yet, try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // If refresh is already in progress, queue this request
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(() => {
+          return authApi(originalRequest);
+        }).catch(err => {
+          return Promise.reject(err);
+        });
+      }
+
       originalRequest._retry = true;
+      isRefreshing = true;
 
       try {
-        // For cookie-based auth, refresh is handled by the backend
-        // Just retry the original request
+        // For cookie-based auth, try to refresh using the refresh endpoint
+        await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+          withCredentials: true
+        });
+
+        processQueue();
+        isRefreshing = false;
+
+        // Retry original request
         return authApi(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, logout user
-        window.location.href = '/login';
+        processQueue(refreshError);
+        isRefreshing = false;
+        // Don't redirect here - let the application handle routing
         return Promise.reject(refreshError);
       }
     }
@@ -193,10 +239,8 @@ export const socialAuth = async (data: SocialAuthData) => {
 /**
  * Refresh Access Token
  */
-export const refreshAccessToken = async (refreshToken: string) => {
-  const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-    refresh_token: refreshToken,
-  }, {
+export const refreshAccessToken = async () => {
+  const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
     withCredentials: true
   });
   return response.data;
@@ -207,8 +251,8 @@ export const refreshAccessToken = async (refreshToken: string) => {
  */
 export const refreshToken = async () => {
   // For cookie-based auth, this is handled by the backend automatically
-  // Just return success to indicate refresh was attempted
-  return { success: true };
+  const response = await refreshAccessToken();
+  return response;
 };
 
 /**
@@ -283,7 +327,7 @@ export const logout = async () => {
   } catch (error) {
     console.error('Logout error:', error);
   } finally {
-    // Clear tokens regardless of API response
+    // Clear any local storage tokens (if any were stored)
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
   }

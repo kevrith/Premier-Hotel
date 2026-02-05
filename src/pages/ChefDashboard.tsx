@@ -513,15 +513,32 @@ export default function ChefDashboard() {
           )}
 
           {order.status === 'ready' && (
-            <Button
-              variant="outline"
-              disabled
-              className="h-14 text-lg font-bold bg-green-50 border-green-500"
-              size="lg"
-            >
-              <CheckCircle2 className="h-6 w-6 mr-2 text-green-600" />
-              Ready for Pickup
-            </Button>
+            <>
+              <Button
+                onClick={async () => {
+                  try {
+                    await ordersApi.notifyWaiter(order.id);
+                    toast.success('Waiter notified!');
+                  } catch (error) {
+                    toast.error('Failed to notify waiter');
+                  }
+                }}
+                className="h-14 text-lg font-bold bg-orange-600 hover:bg-orange-700"
+                size="lg"
+              >
+                <AlertCircle className="h-6 w-6 mr-2" />
+                Remind Waiter
+              </Button>
+              <Button
+                variant="outline"
+                disabled
+                className="h-14 text-lg font-bold bg-green-50 border-green-500"
+                size="lg"
+              >
+                <CheckCircle2 className="h-6 w-6 mr-2 text-green-600" />
+                Ready for Pickup
+              </Button>
+            </>
           )}
         </div>
       </CardContent>
@@ -532,9 +549,9 @@ export default function ChefDashboard() {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <div className="container mx-auto p-4 md:p-6">
+      <div className="container mx-auto p-4 md:p-6 pt-20">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6" style={{ paddingTop: '2.5em' }}>
           <div>
             <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-2">
               <ChefHat className="h-10 w-10" />
@@ -546,26 +563,31 @@ export default function ChefDashboard() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Current Chef Workload */}
-            {user?.role === 'chef' && (
+            {/* Current Chef Workload - Show for chef, manager, and admin */}
+            {user?.id && (user?.role === 'chef' || user?.role === 'manager' || user?.role === 'admin') && (
               <Badge variant="outline" className="flex items-center gap-2 px-3 py-2 text-base">
                 <ChefHat className="h-5 w-5" />
-                {chefWorkloads[user.id] || 0}/5 Orders
+                <span className="font-semibold">{chefWorkloads[user.id] || 0}/5 Orders</span>
               </Badge>
             )}
             
             {/* WebSocket Status */}
-            {isConnected ? (
-              <Badge variant="outline" className="flex items-center gap-2 px-3 py-2 text-base">
-                <Wifi className="h-5 w-5 text-green-500" />
-                Live
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="flex items-center gap-2 px-3 py-2 text-base">
-                <WifiOff className="h-5 w-5 text-red-500" />
-                Offline
-              </Badge>
-            )}
+            <Badge 
+              variant={isConnected ? "default" : "destructive"} 
+              className="flex items-center gap-2 px-3 py-2 text-base"
+            >
+              {isConnected ? (
+                <>
+                  <Wifi className="h-5 w-5" />
+                  <span className="font-semibold">Live</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-5 w-5" />
+                  <span className="font-semibold">Offline</span>
+                </>
+              )}
+            </Badge>
 
             {/* New Orders Badge */}
             {newOrderCount > 0 && (

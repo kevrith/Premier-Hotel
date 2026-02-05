@@ -126,6 +126,13 @@ export const ordersApi = {
   update: async (orderId: string, orderData: UpdateOrderData): Promise<Order> => {
     const response = await apiClient.patch(`/orders/${orderId}`, orderData);
     return response.data;
+  },
+
+  /**
+   * Notify waiter about ready order
+   */
+  notifyWaiter: async (orderId: string): Promise<void> => {
+    await apiClient.post(`/orders/${orderId}/notify-waiter`);
   }
 };
 

@@ -34,11 +34,11 @@ export function useRevenueStats() {
 
       // Get revenue analytics from API
       const revenueResponse = await api.get(`/analytics/revenue?start_date=${monthAgo}&end_date=${today}`);
-      const revenueData = revenueResponse.data.data;
+      const revenueData = revenueResponse.data;
       
       // Get occupancy analytics from API
       const occupancyResponse = await api.get(`/analytics/occupancy?start_date=${today}&end_date=${today}`);
-      const occupancyData = occupancyResponse.data.data;
+      const occupancyData = occupancyResponse.data;
 
       // Calculate period-specific revenue
       const totalRevenue = parseFloat(revenueData.total_revenue || '0');

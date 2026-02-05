@@ -158,7 +158,7 @@ async def get_occupancy_analytics(
 ):
     """Get occupancy analytics"""
     # Get total rooms
-    rooms_result = supabase.table("rooms").select("*").eq("is_active", True).execute()
+    rooms_result = supabase.table("rooms").select("*").execute()
     total_rooms = len(rooms_result.data)
 
     # Get bookings in period
@@ -829,7 +829,7 @@ async def get_revenue_optimization(
         
         # Calculate occupancy rate
         days_in_period = (end_dt - start_dt).days + 1
-        rooms_result = supabase.table("rooms").select("*").eq("is_active", True).execute()
+        rooms_result = supabase.table("rooms").select("*").execute()
         total_rooms = len(rooms_result.data)
         
         occupancy_rate = (confirmed_bookings / (total_rooms * days_in_period) * 100) if total_rooms > 0 else 0

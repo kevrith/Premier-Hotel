@@ -5,7 +5,14 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import axios from 'axios';
 import * as authApi from '@/lib/api/auth';
+
+const API_BASE_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+
+// Track if auth check is in progress to prevent concurrent calls
+let authCheckInProgress = false;
+let authCheckPromise: Promise<boolean> | null = null;
 
 interface User {
   id: string;
@@ -205,47 +212,66 @@ const useAuthStore = create<AuthState>()(
 
       // Check Auth - Verify if user is authenticated
       checkAuth: async () => {
-        try {
-          // Try to get current user from httpOnly cookie
-          const response = await authApi.getCurrentUser();
+        // Prevent concurrent auth checks - return existing promise if in progress
+        if (authCheckInProgress && authCheckPromise) {
+          return authCheckPromise;
+        }
 
-          if (response && response.user) {
-            set({
-              user: response.user,
-              role: response.user.role,
-              isAuthenticated: true,
-              error: null,
+        authCheckInProgress = true;
+        authCheckPromise = (async () => {
+          try {
+            // Use direct axios call to bypass interceptor and prevent refresh loops
+            const response = await axios.get(`${API_BASE_URL}/auth/me`, {
+              withCredentials: true,
             });
-            return true;
-          } else {
+
+            const user = response.data?.user || response.data;
+
+            if (user && user.id) {
+              set({
+                user,
+                role: user.role,
+                isAuthenticated: true,
+                error: null,
+              });
+              return true;
+            } else {
+              set({
+                user: null,
+                role: null,
+                isAuthenticated: false,
+              });
+              return false;
+            }
+          } catch (error) {
+            // Cookie is invalid or expired - don't try to refresh, just mark as unauthenticated
             set({
               user: null,
               role: null,
               isAuthenticated: false,
             });
             return false;
+          } finally {
+            authCheckInProgress = false;
+            authCheckPromise = null;
           }
-        } catch (error) {
-          // Cookie is invalid or expired
-          set({
-            user: null,
-            role: null,
-            isAuthenticated: false,
-          });
-          return false;
-        }
+        })();
+
+        return authCheckPromise;
       },
 
       // Refresh Access Token
       refreshAccessToken: async () => {
         try {
-          // Call refresh endpoint (uses refresh token cookie)
-          await authApi.refreshToken();
+          // Use direct axios call to bypass interceptor
+          await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+            withCredentials: true,
+          });
 
           // Check if still authenticated
           return await get().checkAuth();
         } catch (error) {
-          // Refresh token is invalid or expired
+          // Refresh token is invalid or expired - don't loop, just mark as unauthenticated
           set({
             user: null,
             role: null,
@@ -374,6 +400,9 @@ const useAuthStore = create<AuthState>()(
         role: state.role,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

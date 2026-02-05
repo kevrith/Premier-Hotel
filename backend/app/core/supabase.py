@@ -13,7 +13,8 @@ class SupabaseClient:
         """Get or create Supabase client instance"""
         if cls._instance is None:
             cls._instance = create_client(
-                settings.SUPABASE_URL, settings.SUPABASE_KEY
+                settings.SUPABASE_URL, 
+                settings.SUPABASE_KEY
             )
         return cls._instance
 
@@ -22,7 +23,8 @@ class SupabaseClient:
         """Get or create Supabase admin client instance (singleton)"""
         if cls._admin_instance is None:
             cls._admin_instance = create_client(
-                settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY
+                settings.SUPABASE_URL, 
+                settings.SUPABASE_SERVICE_KEY
             )
         return cls._admin_instance
 

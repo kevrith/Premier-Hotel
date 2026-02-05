@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { jwtDecode } from 'jwt-decode';
+import axios from 'axios';
 import * as authApi from '@/lib/api/auth';
+
+const API_BASE_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+
+// Track if auth check is in progress to prevent concurrent calls
+let authCheckInProgress = false;
+let authCheckPromise: Promise<boolean> | null = null;
 
 interface User {
   id: string;
@@ -90,8 +97,8 @@ const useAuthStore = create<AuthState>()(
 
           const { user } = response;
 
-          // For cookie-based auth, we don't store tokens in localStorage
-          // The backend sets httpOnly cookies automatically
+          // For cookie-based auth, tokens are stored in httpOnly cookies
+          // No need to store tokens in localStorage
 
           // Check if user needs verification
           const needsEmailVerification = user.email && !user.email_verified;
@@ -147,8 +154,8 @@ const useAuthStore = create<AuthState>()(
 
           const { user } = response;
 
-          // For cookie-based auth, we don't store tokens in localStorage
-          // The backend sets httpOnly cookies automatically
+          // For cookie-based auth, tokens are stored in httpOnly cookies
+          // No need to store tokens in localStorage
 
           set({
             user,
@@ -242,8 +249,8 @@ const useAuthStore = create<AuthState>()(
 
           const { user } = response;
 
-          // For cookie-based auth, we don't store tokens in localStorage
-          // The backend sets httpOnly cookies automatically
+          // For cookie-based auth, tokens are stored in httpOnly cookies
+          // No need to store tokens in localStorage
 
           set({
             user,
@@ -329,51 +336,70 @@ const useAuthStore = create<AuthState>()(
 
       // Check if user is authenticated (for cookie-based auth)
       checkAuth: async () => {
-        try {
-          // Try to get current user to check if cookies are valid
-          const response = await authApi.getCurrentUser();
-          const { user } = response;
-
-          set({
-            user,
-            isAuthenticated: true,
-            token: null, // No token for cookie-based auth
-            refreshToken: null,
-            role: user.role,
-          });
-
-          return true;
-        } catch (error) {
-          // If we can't get user, clear auth state
-          set({
-            user: null,
-            isAuthenticated: false,
-            token: null,
-            refreshToken: null,
-            role: null,
-          });
-          return false;
+        // Prevent concurrent auth checks - return existing promise if in progress
+        if (authCheckInProgress && authCheckPromise) {
+          return authCheckPromise;
         }
+
+        authCheckInProgress = true;
+        authCheckPromise = (async () => {
+          try {
+            // Use direct axios call to bypass interceptor and prevent refresh loops
+            const response = await axios.get(`${API_BASE_URL}/auth/me`, {
+              withCredentials: true,
+            });
+            const user = response.data?.user || response.data;
+
+            if (user && user.id) {
+              set({
+                user,
+                isAuthenticated: true,
+                token: null, // No token for cookie-based auth
+                refreshToken: null,
+                role: user.role,
+              });
+              return true;
+            } else {
+              set({
+                user: null,
+                isAuthenticated: false,
+                token: null,
+                refreshToken: null,
+                role: null,
+              });
+              return false;
+            }
+          } catch (error) {
+            // If we can't get user, clear auth state - don't try to refresh
+            set({
+              user: null,
+              isAuthenticated: false,
+              token: null,
+              refreshToken: null,
+              role: null,
+            });
+            return false;
+          } finally {
+            authCheckInProgress = false;
+            authCheckPromise = null;
+          }
+        })();
+
+        return authCheckPromise;
       },
 
-      // Refresh Access Token (for cookie-based auth, this is handled by backend)
+      // Refresh Access Token (for cookie-based auth)
       refreshAccessToken: async () => {
-        // For cookie-based auth, refresh is handled automatically by the backend
-        // Just try to get current user to ensure cookies are still valid
         try {
-          const response = await authApi.getCurrentUser();
-          const { user } = response;
-
-          set({
-            user,
-            isAuthenticated: true,
-            token: null, // No token for cookie-based auth
-            refreshToken: null,
-            role: user.role,
+          // Use direct axios call to bypass interceptor
+          await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+            withCredentials: true,
           });
 
-          return true;
+          // Check if still authenticated
+          return await get().checkAuth();
         } catch (error) {
+          // Clear auth state on refresh failure - don't loop
           set({
             user: null,
             isAuthenticated: false,

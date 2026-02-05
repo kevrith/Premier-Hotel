@@ -387,6 +387,51 @@ async def create_order(
         )
 
 
+@router.post("/{order_id}/notify-waiter")
+async def notify_waiter(
+    order_id: str,
+    current_user: dict = Depends(require_chef),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """
+    Send reminder notification to waiters about ready order
+    """
+    try:
+        # Get order details
+        order_response = supabase_admin.table("orders").select("*").eq("id", order_id).execute()
+        if not order_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Order not found"
+            )
+        
+        order = order_response.data[0]
+        
+        # Send browser push notification to all waiters
+        await ws_manager.broadcast({
+            "type": "ORDER_REMINDER",
+            "data": {
+                "order_id": order_id,
+                "order_number": order["order_number"],
+                "location": order["location"],
+                "location_type": order["location_type"],
+                "message": f"⏰ REMINDER: Order {order['order_number']} ready at {order['location']}",
+                "priority": "high"
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        
+        return {"success": True, "message": "Waiter notified"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 @router.patch("/{order_id}/status", response_model=OrderResponse)
 async def update_order_status(
     order_id: str,

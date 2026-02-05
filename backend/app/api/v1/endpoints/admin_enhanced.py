@@ -315,6 +315,51 @@ async def list_users(
         )
 
 
+@router.patch("/users/{user_id}/permissions")
+async def update_user_permissions(
+    user_id: str,
+    permissions: List[str],
+    request: Request,
+    current_user: dict = Depends(require_role(["admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Update user permissions (admin/manager only)"""
+    try:
+        # Get target user
+        user_result = supabase.table("users").select("role, email").eq("id", user_id).execute()
+        if not user_result.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Update permissions
+        result = supabase.table("users").update({
+            "permissions": permissions,
+            "updated_by_user_id": current_user["id"]
+        }).eq("id", user_id).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Log audit
+        await log_audit(
+            supabase,
+            user_id,
+            "permissions_updated",
+            current_user["id"],
+            {"permissions": permissions},
+            get_client_ip(request)
+        )
+
+        return {"message": "Permissions updated successfully", "user_id": user_id, "permissions": permissions}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error updating permissions: {str(e)}"
+        )
+
+
 @router.patch("/users/{user_id}/role")
 async def update_user_role(
     user_id: str,
