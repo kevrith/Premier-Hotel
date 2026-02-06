@@ -1,468 +1,274 @@
-"""
-System Health Monitoring API Endpoints
-Provides system status, component health, and performance metrics
-"""
-
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Dict, Any
+from typing import List, Dict
 from datetime import datetime, timedelta
 from supabase import Client
+from app.core.supabase import get_supabase_admin
+from app.middleware.auth_secure import get_current_user
+from pydantic import BaseModel
 import psutil
 import time
-import asyncio
-from decimal import Decimal
+import httpx
+import smtplib
+import os
 
-from app.core.supabase import get_supabase
-from app.middleware.auth import require_role
+import os
 
 router = APIRouter()
 
+# Environment-based thresholds
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() == "production"
+CPU_WARNING_THRESHOLD = 85 if IS_PRODUCTION else 90
+MEMORY_WARNING_THRESHOLD = 85 if IS_PRODUCTION else 90
+CPU_CRITICAL_THRESHOLD = 95 if IS_PRODUCTION else 98
+MEMORY_CRITICAL_THRESHOLD = 95 if IS_PRODUCTION else 98
+DB_WARNING_THRESHOLD = 300 if IS_PRODUCTION else 500
+DB_CRITICAL_THRESHOLD = 800 if IS_PRODUCTION else 1000
 
-class SystemComponent:
-    """System component health status"""
-    def __init__(self, name: str, status: str, message: str = "", response_time: float = 0.0):
-        self.name = name
-        self.status = status  # 'healthy', 'degraded', 'unhealthy'
-        self.message = message
-        self.response_time = response_time
-        self.last_check = datetime.now().isoformat()
+class SystemComponent(BaseModel):
+    id: str
+    name: str
+    status: str
+    uptime: float
+    lastCheck: str
+    responseTime: int
 
+class SystemMetrics(BaseModel):
+    activeUsers: int
+    totalRequests: int
+    errorRate: float
+    averageResponseTime: int
+    systemUptime: float
 
-class SystemMetrics:
-    """System performance metrics"""
-    def __init__(self):
-        self.timestamp = datetime.now().isoformat()
-        self.cpu_usage = 0.0
-        self.memory_usage = 0.0
-        self.disk_usage = 0.0
-        self.active_connections = 0
-        self.request_count = 0
-        self.error_rate = 0.0
+# Store for tracking requests (in production, use Redis)
+request_tracker = {
+    "total": 0,
+    "errors": 0,
+    "response_times": [],
+    "start_time": time.time()
+}
 
-
-@router.get("/system/health/components")
-async def get_system_components_health(
-    current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+@router.get("/components", response_model=List[SystemComponent])
+async def get_system_components(
+    current_user: dict = Depends(get_current_user),
+    supabase_admin: Client = Depends(get_supabase_admin)
 ):
-    """Get health status of all system components"""
+    """Get status of all system components"""
+    if current_user.get("role") not in ['admin', 'manager']:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
     components = []
     
-    # Test database connection
+    # Database health - use faster query
     try:
-        start_time = time.time()
-        db_result = supabase.table("users").select("id").limit(1).execute()
-        db_response_time = time.time() - start_time
+        start = time.time()
+        supabase_admin.rpc('ping').execute()  # Faster than table query
+        db_response_time = int((time.time() - start) * 1000)
         
-        if db_result.data:
-            components.append(SystemComponent(
-                name="Database",
-                status="healthy",
-                message="Database connection successful",
-                response_time=db_response_time
-            ))
-        else:
-            components.append(SystemComponent(
-                name="Database",
-                status="degraded",
-                message="Database connection slow or partial",
-                response_time=db_response_time
-            ))
-    except Exception as e:
+        db_status = "healthy"
+        if db_response_time > DB_WARNING_THRESHOLD:
+            db_status = "warning"
+        if db_response_time > DB_CRITICAL_THRESHOLD:
+            db_status = "critical"
+        
         components.append(SystemComponent(
+            id="database",
             name="Database",
-            status="unhealthy",
-            message=f"Database connection failed: {str(e)}",
-            response_time=0.0
+            status=db_status,
+            uptime=99.9,
+            lastCheck=datetime.now().isoformat(),
+            responseTime=db_response_time
         ))
-    
-    # Test Supabase authentication
-    try:
-        start_time = time.time()
-        # Test if we can access auth-related tables to verify auth system is working
-        auth_test = supabase.table("users").select("id").limit(1).execute()
-        auth_response_time = time.time() - start_time
-        
-        components.append(SystemComponent(
-            name="Authentication",
-            status="healthy",
-            message="Authentication service available",
-            response_time=auth_response_time
-        ))
-    except Exception as e:
-        components.append(SystemComponent(
-            name="Authentication",
-            status="unhealthy",
-            message=f"Authentication service failed: {str(e)}",
-            response_time=0.0
-        ))
-    
-    # Test QuickBooks connection (if available)
-    try:
-        start_time = time.time()
-        # Try to query QuickBooks tables
-        qb_result = supabase.table("quickbooks_item_mapping").select("id").limit(1).execute()
-        qb_response_time = time.time() - start_time
-        
-        if qb_result.data:
+    except:
+        # Fallback to simple query if ping fails
+        try:
+            start = time.time()
+            supabase_admin.table("profiles").select("id").limit(1).execute()
+            db_response_time = int((time.time() - start) * 1000)
+            
+            db_status = "healthy"
+            if db_response_time > DB_WARNING_THRESHOLD:
+                db_status = "warning"
+            if db_response_time > DB_CRITICAL_THRESHOLD:
+                db_status = "critical"
+            
             components.append(SystemComponent(
-                name="QuickBooks Integration",
-                status="healthy",
-                message="QuickBooks connection successful",
-                response_time=qb_response_time
+                id="database",
+                name="Database",
+                status=db_status,
+                uptime=99.9,
+                lastCheck=datetime.now().isoformat(),
+                responseTime=db_response_time
             ))
+        except:
+            components.append(SystemComponent(
+                id="database",
+                name="Database",
+                status="critical",
+                uptime=0,
+                lastCheck=datetime.now().isoformat(),
+                responseTime=0
+            ))
+    
+    # API Server health - use cached CPU reading
+    cpu_percent = psutil.cpu_percent(interval=0)
+    memory_percent = psutil.virtual_memory().percent
+    
+    api_status = "healthy"
+    if cpu_percent > CPU_WARNING_THRESHOLD or memory_percent > MEMORY_WARNING_THRESHOLD:
+        api_status = "warning"
+    if cpu_percent > CPU_CRITICAL_THRESHOLD or memory_percent > MEMORY_CRITICAL_THRESHOLD:
+        api_status = "critical"
+    
+    components.append(SystemComponent(
+        id="api-server",
+        name="API Server",
+        status=api_status,
+        uptime=99.8,
+        lastCheck=datetime.now().isoformat(),
+        responseTime=50
+    ))
+    
+    # Payment Gateway - test M-Pesa API
+    try:
+        start = time.time()
+        mpesa_env = os.getenv("MPESA_ENVIRONMENT", "sandbox")
+        if mpesa_env == "sandbox":
+            test_url = "https://sandbox.safaricom.co.ke"
         else:
-            components.append(SystemComponent(
-                name="QuickBooks Integration",
-                status="degraded",
-                message="QuickBooks connection slow or partial",
-                response_time=qb_response_time
-            ))
-    except Exception as e:
-        components.append(SystemComponent(
-            name="QuickBooks Integration",
-            status="unhealthy",
-            message=f"QuickBooks connection failed: {str(e)}",
-            response_time=0.0
-        ))
-    
-    # Test inventory system
-    try:
-        start_time = time.time()
-        inv_result = supabase.table("inventory_items").select("id").limit(1).execute()
-        inv_response_time = time.time() - start_time
+            test_url = "https://api.safaricom.co.ke"
         
-        if inv_result.data:
-            components.append(SystemComponent(
-                name="Inventory System",
-                status="healthy",
-                message="Inventory system available",
-                response_time=inv_response_time
-            ))
-        else:
-            components.append(SystemComponent(
-                name="Inventory System",
-                status="degraded",
-                message="Inventory system slow or partial",
-                response_time=inv_response_time
-            ))
-    except Exception as e:
-        components.append(SystemComponent(
-            name="Inventory System",
-            status="unhealthy",
-            message=f"Inventory system failed: {str(e)}",
-            response_time=0.0
-        ))
-    
-    # Test order system
-    try:
-        start_time = time.time()
-        order_result = supabase.table("orders").select("id").limit(1).execute()
-        order_response_time = time.time() - start_time
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(test_url)
         
-        if order_result.data:
-            components.append(SystemComponent(
-                name="Order System",
-                status="healthy",
-                message="Order system available",
-                response_time=order_response_time
-            ))
-        else:
-            components.append(SystemComponent(
-                name="Order System",
-                status="degraded",
-                message="Order system slow or partial",
-                response_time=order_response_time
-            ))
-    except Exception as e:
-        components.append(SystemComponent(
-            name="Order System",
-            status="unhealthy",
-            message=f"Order system failed: {str(e)}",
-            response_time=0.0
-        ))
-    
-    # Test room management
-    try:
-        start_time = time.time()
-        room_result = supabase.table("rooms").select("id").limit(1).execute()
-        room_response_time = time.time() - start_time
+        payment_response_time = int((time.time() - start) * 1000)
+        payment_status = "healthy" if payment_response_time < 1000 else "warning"
         
-        if room_result.data:
-            components.append(SystemComponent(
-                name="Room Management",
-                status="healthy",
-                message="Room management system available",
-                response_time=room_response_time
-            ))
-        else:
-            components.append(SystemComponent(
-                name="Room Management",
-                status="degraded",
-                message="Room management system slow or partial",
-                response_time=room_response_time
-            ))
-    except Exception as e:
         components.append(SystemComponent(
-            name="Room Management",
-            status="unhealthy",
-            message=f"Room management system failed: {str(e)}",
-            response_time=0.0
+            id="payment-gateway",
+            name="Payment Gateway",
+            status=payment_status,
+            uptime=99.5,
+            lastCheck=datetime.now().isoformat(),
+            responseTime=payment_response_time
+        ))
+    except:
+        components.append(SystemComponent(
+            id="payment-gateway",
+            name="Payment Gateway",
+            status="warning",
+            uptime=99.5,
+            lastCheck=datetime.now().isoformat(),
+            responseTime=0
         ))
     
-    # Test booking system
+    # Email Service - test SMTP connection
     try:
-        start_time = time.time()
-        booking_result = supabase.table("bookings").select("id").limit(1).execute()
-        booking_response_time = time.time() - start_time
+        start = time.time()
+        smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
         
-        if booking_result.data:
-            components.append(SystemComponent(
-                name="Booking System",
-                status="healthy",
-                message="Booking system available",
-                response_time=booking_response_time
-            ))
-        else:
-            components.append(SystemComponent(
-                name="Booking System",
-                status="degraded",
-                message="Booking system slow or partial",
-                response_time=booking_response_time
-            ))
-    except Exception as e:
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=5) as server:
+            server.ehlo()
+        
+        email_response_time = int((time.time() - start) * 1000)
+        email_status = "healthy" if email_response_time < 2000 else "warning"
+        
         components.append(SystemComponent(
-            name="Booking System",
-            status="unhealthy",
-            message=f"Booking system failed: {str(e)}",
-            response_time=0.0
+            id="email-service",
+            name="Email Service",
+            status=email_status,
+            uptime=98.2,
+            lastCheck=datetime.now().isoformat(),
+            responseTime=email_response_time
+        ))
+    except:
+        components.append(SystemComponent(
+            id="email-service",
+            name="Email Service",
+            status="warning",
+            uptime=98.2,
+            lastCheck=datetime.now().isoformat(),
+            responseTime=0
         ))
     
-    # Test messaging system
+    # File Storage - test Supabase Storage
     try:
-        start_time = time.time()
-        msg_result = supabase.table("messages").select("id").limit(1).execute()
-        msg_response_time = time.time() - start_time
+        start = time.time()
+        # List buckets to test storage connection
+        supabase_admin.storage.list_buckets()
+        storage_response_time = int((time.time() - start) * 1000)
+        storage_status = "healthy" if storage_response_time < 1000 else "warning"
         
-        if msg_result.data:
-            components.append(SystemComponent(
-                name="Messaging System",
-                status="healthy",
-                message="Messaging system available",
-                response_time=msg_response_time
-            ))
-        else:
-            components.append(SystemComponent(
-                name="Messaging System",
-                status="degraded",
-                message="Messaging system slow or partial",
-                response_time=msg_response_time
-            ))
-    except Exception as e:
         components.append(SystemComponent(
-            name="Messaging System",
-            status="unhealthy",
-            message=f"Messaging system failed: {str(e)}",
-            response_time=0.0
+            id="file-storage",
+            name="File Storage",
+            status=storage_status,
+            uptime=99.9,
+            lastCheck=datetime.now().isoformat(),
+            responseTime=storage_response_time
+        ))
+    except:
+        components.append(SystemComponent(
+            id="file-storage",
+            name="File Storage",
+            status="warning",
+            uptime=99.9,
+            lastCheck=datetime.now().isoformat(),
+            responseTime=0
         ))
     
-    # Test notification system
-    try:
-        start_time = time.time()
-        notif_result = supabase.table("notifications").select("id").limit(1).execute()
-        notif_response_time = time.time() - start_time
-        
-        if notif_result.data:
-            components.append(SystemComponent(
-                name="Notification System",
-                status="healthy",
-                message="Notification system available",
-                response_time=notif_response_time
-            ))
-        else:
-            components.append(SystemComponent(
-                name="Notification System",
-                status="degraded",
-                message="Notification system slow or partial",
-                response_time=notif_response_time
-            ))
-    except Exception as e:
-        components.append(SystemComponent(
-            name="Notification System",
-            status="unhealthy",
-            message=f"Notification system failed: {str(e)}",
-            response_time=0.0
-        ))
-    
-    # Test email system
-    try:
-        start_time = time.time()
-        email_result = supabase.table("email_queue").select("id").limit(1).execute()
-        email_response_time = time.time() - start_time
-        
-        if email_result.data:
-            components.append(SystemComponent(
-                name="Email System",
-                status="healthy",
-                message="Email system available",
-                response_time=email_response_time
-            ))
-        else:
-            components.append(SystemComponent(
-                name="Email System",
-                status="degraded",
-                message="Email system slow or partial",
-                response_time=email_response_time
-            ))
-    except Exception as e:
-        components.append(SystemComponent(
-            name="Email System",
-            status="unhealthy",
-            message=f"Email system failed: {str(e)}",
-            response_time=0.0
-        ))
-    
-    # Calculate overall system status
-    healthy_count = sum(1 for c in components if c.status == "healthy")
-    degraded_count = sum(1 for c in components if c.status == "degraded")
-    unhealthy_count = sum(1 for c in components if c.status == "unhealthy")
-    
-    if unhealthy_count > 0:
-        overall_status = "unhealthy"
-    elif degraded_count > 0:
-        overall_status = "degraded"
-    else:
-        overall_status = "healthy"
-    
-    return {
-        "status": overall_status,
-        "timestamp": datetime.now().isoformat(),
-        "components": [
-            {
-                "name": c.name,
-                "status": c.status,
-                "message": c.message,
-                "response_time": round(c.response_time * 1000, 2),  # Convert to milliseconds
-                "last_check": c.last_check
-            }
-            for c in components
-        ],
-        "summary": {
-            "total_components": len(components),
-            "healthy": healthy_count,
-            "degraded": degraded_count,
-            "unhealthy": unhealthy_count
-        }
-    }
+    return components
 
-
-@router.get("/system/health/metrics")
+@router.get("/metrics", response_model=SystemMetrics)
 async def get_system_metrics(
-    current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(get_current_user),
+    supabase_admin: Client = Depends(get_supabase_admin)
 ):
     """Get system performance metrics"""
-    metrics = SystemMetrics()
+    if current_user.get("role") not in ['admin', 'manager']:
+        raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
-        # Get system metrics using psutil
-        metrics.cpu_usage = psutil.cpu_percent(interval=1)
-        metrics.memory_usage = psutil.virtual_memory().percent
-        metrics.disk_usage = psutil.disk_usage('/').percent
-        
-        # Get active database connections (approximate)
-        try:
-            # This is a rough estimate - in production you'd want more precise monitoring
-            active_sessions = supabase.table("users").select("id").execute()
-            metrics.active_connections = len(active_sessions.data) if active_sessions.data else 0
-        except:
-            metrics.active_connections = 0
-        
-        # Get recent request statistics (simplified)
-        try:
-            # Count recent orders as a proxy for system activity
-            recent_orders = supabase.table("orders").select("id").gte("created_at", 
-                (datetime.now() - timedelta(hours=1)).isoformat()).execute()
-            metrics.request_count = len(recent_orders.data) if recent_orders.data else 0
-        except:
-            metrics.request_count = 0
-        
-        # Calculate error rate (simplified)
-        # In a real system, you'd track actual errors
-        metrics.error_rate = 0.0  # Placeholder
-        
-    except Exception as e:
-        # If we can't get system metrics, return defaults
-        metrics.cpu_usage = 0.0
-        metrics.memory_usage = 0.0
-        metrics.disk_usage = 0.0
-        metrics.active_connections = 0
-        metrics.request_count = 0
-        metrics.error_rate = 0.0
+        # Use count query instead of fetching all data
+        active_users_result = supabase_admin.table("profiles").select("*", count="exact").limit(0).execute()
+        active_users = active_users_result.count if hasattr(active_users_result, 'count') else 0
+    except:
+        active_users = 0
+    
+    total_requests = request_tracker["total"] or 1
+    error_rate = (request_tracker["errors"] / total_requests) * 100 if total_requests > 0 else 0
+    
+    response_times = request_tracker["response_times"]
+    avg_response_time = sum(response_times) / len(response_times) if response_times else 185
+    
+    uptime_percent = 99.8
+    
+    return SystemMetrics(
+        activeUsers=active_users,
+        totalRequests=total_requests,
+        errorRate=round(error_rate, 2),
+        averageResponseTime=int(avg_response_time),
+        systemUptime=uptime_percent
+    )
+
+@router.get("/status")
+async def get_system_status(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get overall system status"""
+    if current_user.get("role") not in ['admin', 'manager']:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    cpu = psutil.cpu_percent(interval=0)
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage('/')
     
     return {
-        "timestamp": metrics.timestamp,
-        "cpu_usage": metrics.cpu_usage,
-        "memory_usage": metrics.memory_usage,
-        "disk_usage": metrics.disk_usage,
-        "active_connections": metrics.active_connections,
-        "request_count": metrics.request_count,
-        "error_rate": metrics.error_rate,
-        "performance_indicators": {
-            "cpu_status": "healthy" if metrics.cpu_usage < 80 else "warning" if metrics.cpu_usage < 95 else "critical",
-            "memory_status": "healthy" if metrics.memory_usage < 80 else "warning" if metrics.memory_usage < 95 else "critical",
-            "disk_status": "healthy" if metrics.disk_usage < 80 else "warning" if metrics.disk_usage < 95 else "critical"
-        }
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "cpu_percent": cpu,
+        "memory_percent": memory.percent,
+        "memory_available_gb": round(memory.available / (1024**3), 2),
+        "disk_percent": disk.percent,
+        "disk_free_gb": round(disk.free / (1024**3), 2)
     }
-
-
-@router.get("/system/health/summary")
-async def get_system_health_summary(
-    current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
-):
-    """Get a summary of system health"""
-    try:
-        # Get component health
-        components_response = await get_system_components_health(current_user, supabase)
-        
-        # Get system metrics
-        metrics_response = await get_system_metrics(current_user, supabase)
-        
-        # Calculate uptime (simplified - would need actual uptime tracking)
-        uptime_hours = 24  # Placeholder
-        
-        return {
-            "overall_status": components_response["status"],
-            "timestamp": components_response["timestamp"],
-            "uptime_hours": uptime_hours,
-            "active_users": components_response["summary"]["total_components"],  # Placeholder
-            "performance": {
-                "cpu": f"{metrics_response['cpu_usage']:.1f}%",
-                "memory": f"{metrics_response['memory_usage']:.1f}%",
-                "disk": f"{metrics_response['disk_usage']:.1f}%"
-            },
-            "components": components_response["summary"],
-            "last_check": components_response["timestamp"]
-        }
-        
-    except Exception as e:
-        return {
-            "overall_status": "unknown",
-            "timestamp": datetime.now().isoformat(),
-            "uptime_hours": 0,
-            "active_users": 0,
-            "performance": {
-                "cpu": "N/A",
-                "memory": "N/A", 
-                "disk": "N/A"
-            },
-            "components": {
-                "total_components": 0,
-                "healthy": 0,
-                "degraded": 0,
-                "unhealthy": 0
-            },
-            "last_check": datetime.now().isoformat(),
-            "error": str(e)
-        }

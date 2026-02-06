@@ -136,16 +136,22 @@ const useCartStore = create<CartStore>()(
       // Computed values
       getSubtotal: () => {
         const { items } = get();
-        return items.reduce((sum, item) => sum + item.subtotal, 0);
+        const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+        // Prices already include VAT, so extract the subtotal (excl VAT)
+        return total / 1.16;
       },
 
       getTax: () => {
-        const subtotal = get().getSubtotal();
-        return subtotal * 0.16; // 16% VAT
+        const { items } = get();
+        const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+        // Extract VAT portion from total (which already includes VAT)
+        return total - (total / 1.16);
       },
 
       getTotal: () => {
-        return get().getSubtotal() + get().getTax();
+        const { items } = get();
+        // Return the actual total (prices already include VAT)
+        return items.reduce((sum, item) => sum + item.subtotal, 0);
       },
 
       getItemCount: () => {

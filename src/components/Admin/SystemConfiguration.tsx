@@ -6,8 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings, CreditCard, Bell, Globe, Zap } from 'lucide-react';
+import { Settings, CreditCard, Bell, Globe, Zap, Receipt } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import TaxSettings from './TaxSettings';
 
 export function SystemConfiguration() {
   const [config, setConfig] = useState({
@@ -52,10 +53,14 @@ export function SystemConfiguration() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="payment" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="payment">
                 <CreditCard className="h-4 w-4 mr-2" />
                 Payment
+              </TabsTrigger>
+              <TabsTrigger value="tax">
+                <Receipt className="h-4 w-4 mr-2" />
+                Tax
               </TabsTrigger>
               <TabsTrigger value="notifications">
                 <Bell className="h-4 w-4 mr-2" />
@@ -115,30 +120,14 @@ export function SystemConfiguration() {
                   </>
                 )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="taxRate">Tax Rate (%)</Label>
-                  <Input
-                    id="taxRate"
-                    type="number"
-                    value={config.taxRate}
-                    onChange={(e) => updateConfig('taxRate', parseFloat(e.target.value))}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="serviceCharge">Service Charge (%)</Label>
-                  <Input
-                    id="serviceCharge"
-                    type="number"
-                    value={config.serviceCharge}
-                    onChange={(e) => updateConfig('serviceCharge', parseFloat(e.target.value))}
-                  />
-                </div>
-
                 <Button onClick={() => handleSave('Payment')}>
                   Save Payment Settings
                 </Button>
               </div>
+            </TabsContent>
+
+            <TabsContent value="tax" className="space-y-4">
+              <TaxSettings />
             </TabsContent>
 
             <TabsContent value="notifications" className="space-y-4">

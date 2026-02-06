@@ -17,7 +17,8 @@ import {
   Timer,
   Package,
   BarChart3,
-  BookOpen
+  BookOpen,
+  Flag
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
@@ -97,6 +98,11 @@ export default function ChefDashboard() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [customPrepTime, setCustomPrepTime] = useState('15');
 
+  // Priority management
+  const [showPriorityDialog, setShowPriorityDialog] = useState(false);
+  const [priorityReason, setPriorityReason] = useState('');
+  const [newPriority, setNewPriority] = useState('medium');
+
   // Active tab for main view
   const [activeTab, setActiveTab] = useState('orders');
   const [chefWorkloads, setChefWorkloads] = useState<Record<string, number>>({});
@@ -116,6 +122,14 @@ export default function ChefDashboard() {
       try {
         setLoading(true);
         const data = await ordersApi.getKitchenOrders();
+        console.log('[CHEF DEBUG] Kitchen orders loaded:', data);
+        console.log('[CHEF DEBUG] All orders:', JSON.stringify(data.map(o => ({
+          order_number: o.order_number,
+          assigned_waiter_id: o.assigned_waiter_id,
+          assigned_chef_id: o.assigned_chef_id,
+          assigned_waiter: o.assigned_waiter,
+          assigned_chef: o.assigned_chef
+        })), null, 2));
         setAllOrders(data);
       } catch (error) {
         console.error('Failed to load orders:', error);
@@ -237,12 +251,20 @@ export default function ChefDashboard() {
   useEffect(() => {
     const workloads: Record<string, number> = {};
     orders.forEach(order => {
-      if (order.assigned_chef_id && (order.status === 'preparing' || order.status === 'ready')) {
+      // Only count orders that are actively being prepared, not ready orders
+      if (order.assigned_chef_id && order.status === 'preparing') {
         workloads[order.assigned_chef_id] = (workloads[order.assigned_chef_id] || 0) + 1;
       }
     });
+    console.log('[DEBUG] Chef workloads:', workloads);
+    console.log('[DEBUG] Current user ID:', user?.id);
+    console.log('[DEBUG] Orders with chef assignments:', orders.filter(o => o.assigned_chef_id).map(o => ({
+      order_number: o.order_number,
+      status: o.status,
+      assigned_chef_id: o.assigned_chef_id
+    })));
     setChefWorkloads(workloads);
-  }, [orders]);
+  }, [orders, user?.id]);
 
   // Get chef name from order data
   const getChefName = (order: Order): string => {
@@ -259,12 +281,13 @@ export default function ChefDashboard() {
     return currentWorkload < 5; // Max 5 orders per chef
   };
   useEffect(() => {
+    // Recalculate prep times whenever orders change
+    const newPrepTimes: Record<string, number> = {};
     orders.forEach(order => {
-      if (!prepTimes[order.id]) {
-        const estimatedTime = calculateCumulativeWaitTime(order);
-        setPrepTimes(prev => ({ ...prev, [order.id]: estimatedTime }));
-      }
+      const estimatedTime = calculateCumulativeWaitTime(order);
+      newPrepTimes[order.id] = estimatedTime;
     });
+    setPrepTimes(newPrepTimes);
   }, [orders]);
 
   // Prep time management
@@ -287,6 +310,22 @@ export default function ChefDashboard() {
     }
   };
 
+  const handlePriorityChange = async () => {
+    if (!selectedOrderId || !priorityReason.trim()) {
+      toast.error('Please provide a reason for priority change');
+      return;
+    }
+    try {
+      await ordersApi.updatePriority(selectedOrderId, newPriority, priorityReason);
+      toast.success('Priority updated');
+      setShowPriorityDialog(false);
+      setPriorityReason('');
+      await refreshOrders();
+    } catch (error) {
+      toast.error('Failed to update priority');
+    }
+  };
+
   const getEstimatedCompletionTime = (orderId: string) => {
     const prepTime = prepTimes[orderId] || 15;
     const completionTime = new Date(Date.now() + prepTime * 60 * 1000);
@@ -294,9 +333,18 @@ export default function ChefDashboard() {
   };
 
   // Filter orders by status
-  const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'confirmed');
-  const preparingOrders = orders.filter(o => o.status === 'preparing');
-  const readyOrders = orders.filter(o => o.status === 'ready');
+  const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'confirmed').sort((a, b) => {
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+    return priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder];
+  });
+  const preparingOrders = orders.filter(o => o.status === 'preparing').sort((a, b) => {
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+    return priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder];
+  });
+  const readyOrders = orders.filter(o => o.status === 'ready').sort((a, b) => {
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+    return priorityOrder[a.priority as keyof typeof priorityOrder] - priorityOrder[b.priority as keyof typeof priorityOrder];
+  });
 
   // Get time since order
   const getTimeSince = (dateString: string) => {
@@ -327,6 +375,20 @@ export default function ChefDashboard() {
               <Badge variant={getPriorityVariant(order.priority)} className="text-sm px-2 py-1">
                 {order.priority}
               </Badge>
+              {(user?.role === 'manager' || user?.role === 'chef' || user?.role === 'admin') && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setSelectedOrderId(order.id);
+                    setNewPriority(order.priority);
+                    setShowPriorityDialog(true);
+                  }}
+                  className="h-6 px-2"
+                >
+                  <Flag className="h-3 w-3" />
+                </Button>
+              )}
               {/* Status Badge - Shows current status */}
               <Badge
                 variant={order.status === 'pending' ? 'destructive' : order.status === 'confirmed' ? 'default' : 'secondary'}
@@ -405,6 +467,24 @@ export default function ChefDashboard() {
           <div className="p-4 bg-yellow-50 rounded-lg border-2 border-yellow-300">
             <p className="text-sm font-bold text-yellow-900 mb-1">⚠️ Special Instructions:</p>
             <p className="text-base font-semibold text-yellow-800">{order.special_instructions}</p>
+          </div>
+        )}
+
+        {/* Waiter Assignment Info */}
+        {order.assigned_waiter && (
+          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+            <p className="text-sm font-medium text-purple-900">
+              🍽️ Waiter: <span className="font-bold">{order.assigned_waiter.full_name}</span>
+            </p>
+          </div>
+        )}
+
+        {/* Waiter Assignment Info */}
+        {order.assigned_waiter && (
+          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+            <p className="text-sm font-medium text-purple-900">
+              🍽️ Waiter: <span className="font-bold">{order.assigned_waiter.full_name}</span>
+            </p>
           </div>
         )}
 
@@ -788,6 +868,45 @@ export default function ChefDashboard() {
             <Button onClick={handleSetPrepTime} className="h-12 text-base font-semibold">
               Set Time
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Priority Change Dialog */}
+      <Dialog open={showPriorityDialog} onOpenChange={setShowPriorityDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Order Priority</DialogTitle>
+            <DialogDescription>
+              Update the priority level for this order
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>New Priority</Label>
+              <select
+                value={newPriority}
+                onChange={(e) => setNewPriority(e.target.value)}
+                className="w-full p-2 border rounded bg-background text-foreground"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div>
+              <Label>Reason (required)</Label>
+              <Input
+                value={priorityReason}
+                onChange={(e) => setPriorityReason(e.target.value)}
+                placeholder="Why is this priority change needed?"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPriorityDialog(false)}>Cancel</Button>
+            <Button onClick={handlePriorityChange}>Update Priority</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -48,6 +48,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { orderPaymentsApi, OrderPaymentRequest } from '@/lib/api/orderPayments';
+import { combinedCheckoutApi, CombinedCheckoutRequest } from '@/lib/api/combinedCheckout';
 import { Textarea } from '@/components/ui/textarea';
 import { Smartphone, Banknote } from 'lucide-react';
 
@@ -98,6 +99,10 @@ export default function WaiterDashboard() {
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Order | null>(null);
   const [processing, setProcessing] = useState(false);
 
+  // Combined checkout dialog
+  const [showCombinedCheckoutDialog, setShowCombinedCheckoutDialog] = useState(false);
+  const [selectedRoomForCheckout, setSelectedRoomForCheckout] = useState<string>('');
+
   // Offline detection
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -117,16 +122,12 @@ export default function WaiterDashboard() {
         const data = await ordersApi.getAll({ limit: 100 });
         console.log('All orders loaded:', data);
         
-        // Filter to show active orders only
+        // Filter to show active orders only (including served orders with unpaid bills)
         const activeOrders = data.filter(o =>
           ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(o.status)
         );
         
         console.log('Active orders after filtering:', activeOrders);
-        
-        // Debug: Check for room 201 specifically
-        const room201Orders = data.filter(o => o.location === 'Room 201' || o.location === '201');
-        console.log('Room 201 orders:', room201Orders);
         
         setAllOrders(activeOrders);
       } catch (error) {
@@ -232,12 +233,15 @@ export default function WaiterDashboard() {
     }
 
     // Store order context and navigate to menu
-    sessionStorage.setItem('orderContext', JSON.stringify({
+    const orderContext = {
       location_type: locationType,
       location: locationType === 'table' ? `Table ${location}` : `Room ${location}`,
       customer_name: newOrderForm.customerName,
       customer_phone: newOrderForm.customerPhone
-    }));
+    };
+    
+    console.log('WaiterDashboard: Storing orderContext:', orderContext);
+    sessionStorage.setItem('orderContext', JSON.stringify(orderContext));
 
     setShowNewOrderDialog(false);
     navigate('/menu');
@@ -294,7 +298,7 @@ export default function WaiterDashboard() {
   };
 
   // Handle payment completion
-  const handlePaymentComplete = async (paymentMethod: string, amount: number, mpesaPhone?: string, cardRef?: string, notes?: string) => {
+  const handlePaymentComplete = async (paymentMethod: string, amount: number, mpesaPhone?: string, cardRef?: string, notes?: string, roomNumber?: string) => {
     if (!selectedOrderForPayment) return;
 
     try {
@@ -302,11 +306,12 @@ export default function WaiterDashboard() {
       
       const paymentData: OrderPaymentRequest = {
         order_id: selectedOrderForPayment.id,
-        payment_method: paymentMethod as 'cash' | 'mpesa' | 'card',
+        payment_method: paymentMethod as 'cash' | 'mpesa' | 'card' | 'room_charge',
         amount: amount,
         mpesa_phone: mpesaPhone,
         card_reference: cardRef,
-        notes: notes
+        notes: notes,
+        room_number: roomNumber
       };
       
       const result = await orderPaymentsApi.processPayment(paymentData);
@@ -359,9 +364,11 @@ export default function WaiterDashboard() {
     const isPending = order.status === 'pending' || order.status === 'confirmed';
     const isPreparing = order.status === 'preparing';
     const isServed = order.status === 'served';
+    const isMyOrder = !order.assigned_waiter_id || order.assigned_waiter_id === user?.id;
+    const isOtherWaiterOrder = role === 'waiter' && order.assigned_waiter_id && order.assigned_waiter_id !== user?.id;
 
     return (
-      <Card className={`${isReady ? 'border-green-500 border-2' : ''}`}>
+      <Card className={`${isReady ? 'border-green-500 border-2' : ''} ${isOtherWaiterOrder ? 'opacity-60' : ''}`}>
         <CardHeader>
           <div className="flex items-start justify-between">
             <div>
@@ -370,6 +377,11 @@ export default function WaiterDashboard() {
                 {order.location}
                 {isReady && (
                   <Bell className="h-4 w-4 text-green-500 animate-bounce" />
+                )}
+                {isOtherWaiterOrder && (
+                  <Badge variant="outline" className="text-xs">
+                    👤 {order.assigned_waiter?.full_name || 'Another waiter'}
+                  </Badge>
                 )}
               </CardTitle>
               <CardDescription className="flex items-center gap-1 mt-1">
@@ -409,6 +421,13 @@ export default function WaiterDashboard() {
             </div>
           )}
 
+          {/* Chef Assignment Info */}
+          {order.assigned_chef && (
+            <div className="p-2 bg-blue-50 rounded text-sm text-blue-800">
+              <span className="font-medium">👨🍳 Chef:</span> {order.assigned_chef.full_name}
+            </div>
+          )}
+
           <Separator />
 
           {/* Bill */}
@@ -426,26 +445,42 @@ export default function WaiterDashboard() {
                 <Button
                   className="flex-1"
                   onClick={() => handleStatusUpdate(order.id, 'served')}
-                  disabled={updating === order.id}
+                  disabled={updating === order.id || isOtherWaiterOrder}
                 >
                   {updating === order.id ? (
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Utensils className="h-4 w-4 mr-2" />
                   )}
-                  Serve Order
+                  {isOtherWaiterOrder ? 'Assigned to Another Waiter' : 'Serve Order'}
                 </Button>
               )}
               {isServed && (
-                <Button
-                  className="flex-1"
-                  variant="default"
-                  onClick={() => handlePaymentClick(order)}
-                  disabled={updating === order.id}
-                >
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Process Payment
-                </Button>
+                <>
+                  <Button
+                    className="flex-1"
+                    variant="default"
+                    onClick={() => handlePaymentClick(order)}
+                    disabled={updating === order.id || isOtherWaiterOrder}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    {isOtherWaiterOrder ? 'Not Your Order' : 'Process Payment'}
+                  </Button>
+                  {order.location_type === 'room' && (
+                    <Button
+                      className="flex-1"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedRoomForCheckout(order.location);
+                        setShowCombinedCheckoutDialog(true);
+                      }}
+                      disabled={updating === order.id}
+                    >
+                      <Receipt className="h-4 w-4 mr-2" />
+                      Full Checkout
+                    </Button>
+                  )}
+                </>
               )}
               {(isPending || isPreparing) && (
                 <Button
@@ -474,10 +509,10 @@ export default function WaiterDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-24">
       <Navbar />
 
-      <div className="container mx-auto px-4 py-8 mt-16">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 mt-16">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
@@ -651,12 +686,12 @@ export default function WaiterDashboard() {
 
                 {/* Served Orders */}
                 {tableOrders.filter(o => o.status === 'served').length > 0 && (
-                  <div>
+                  <div className="pb-8">
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                       <CheckCircle2 className="h-5 w-5 text-orange-500" />
                       Awaiting Payment
                     </h2>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pb-8">
                       {tableOrders.filter(o => o.status === 'served').map(order => (
                         <OrderCard key={order.id} order={order} />
                       ))}
@@ -699,14 +734,29 @@ export default function WaiterDashboard() {
                   </div>
                 )}
 
+                {/* Served Orders - Awaiting Payment */}
+                {roomOrders.filter(o => o.status === 'served').length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-orange-500" />
+                      Awaiting Payment
+                    </h2>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {roomOrders.filter(o => o.status === 'served').map(order => (
+                        <OrderCard key={order.id} order={order} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* In Kitchen */}
                 {roomOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).length > 0 && (
-                  <div>
+                  <div className="pb-8">
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                       <Clock className="h-5 w-5 text-blue-500" />
                       In Kitchen
                     </h2>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pb-8">
                       {roomOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).map(order => (
                         <OrderCard key={order.id} order={order} />
                       ))}
@@ -852,9 +902,19 @@ export default function WaiterDashboard() {
             totalAmount={selectedOrderForPayment?.total_amount || 0}
             onPaymentComplete={handlePaymentComplete}
             onCancel={() => setShowPaymentDialog(false)}
+            isRoomService={selectedOrderForPayment?.location_type === 'room'}
+            roomNumber={selectedOrderForPayment?.location}
           />
         </DialogContent>
       </Dialog>
+
+      {/* Combined Checkout Dialog */}
+      <CombinedCheckoutDialog
+        open={showCombinedCheckoutDialog}
+        onOpenChange={setShowCombinedCheckoutDialog}
+        roomNumber={selectedRoomForCheckout}
+        onCheckoutComplete={refreshOrders}
+      />
     </div>
   );
 }
@@ -863,13 +923,19 @@ export default function WaiterDashboard() {
 function PaymentMethodSelector({ 
   totalAmount, 
   onPaymentComplete, 
-  onCancel 
+  onCancel,
+  isRoomService = false,
+  roomNumber
 }: { 
   totalAmount: number;
-  onPaymentComplete: (method: string, amount: number, mpesaPhone?: string, cardRef?: string, notes?: string) => void;
+  onPaymentComplete: (method: string, amount: number, mpesaPhone?: string, cardRef?: string, notes?: string, roomNumber?: string) => void;
   onCancel: () => void;
+  isRoomService?: boolean;
+  roomNumber?: string;
 }) {
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card' | 'room_charge'>(
+    isRoomService ? 'room_charge' : 'cash'
+  );
   const [amount, setAmount] = useState(() => totalAmount.toString());
   
   // Update amount when totalAmount prop changes
@@ -899,7 +965,12 @@ function PaymentMethodSelector({
       return;
     }
 
-    const validPaymentMethods = ['cash', 'mpesa', 'card'] as const;
+    if (paymentMethod === 'room_charge' && !roomNumber) {
+      toast.error('Room number is required for room charge');
+      return;
+    }
+
+    const validPaymentMethods = ['cash', 'mpesa', 'card', 'room_charge'] as const;
     const isValidMethod = (method: string): method is typeof validPaymentMethods[number] => {
       return validPaymentMethods.includes(method as any);
     };
@@ -912,7 +983,7 @@ function PaymentMethodSelector({
     setProcessing(true);
 
     try {
-      await onPaymentComplete(paymentMethod, paymentAmount, mpesaPhone, cardRef, notes);
+      await onPaymentComplete(paymentMethod, paymentAmount, mpesaPhone, cardRef, notes, roomNumber);
     } catch (error) {
       toast.error('Payment processing failed');
     } finally {
@@ -939,7 +1010,7 @@ function PaymentMethodSelector({
 
       {/* Payment Method Tabs */}
       <Tabs value={paymentMethod} onValueChange={(value) => {
-        const validMethods = ['cash', 'mpesa', 'card'] as const;
+        const validMethods = ['cash', 'mpesa', 'card', 'room_charge'] as const;
         const isValidMethod = (method: string): method is typeof validMethods[number] => {
           return validMethods.includes(method as any);
         };
@@ -948,7 +1019,13 @@ function PaymentMethodSelector({
           setPaymentMethod(value);
         }
       }}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className={`grid w-full ${isRoomService ? 'grid-cols-4' : 'grid-cols-3'}`}>
+          {isRoomService && (
+            <TabsTrigger value="room_charge" className="flex items-center gap-1">
+              <Receipt className="h-3 w-3" />
+              Room
+            </TabsTrigger>
+          )}
           <TabsTrigger value="cash" className="flex items-center gap-1">
             <Banknote className="h-3 w-3" />
             Cash
@@ -962,6 +1039,17 @@ function PaymentMethodSelector({
             Card
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="room_charge" className="space-y-2">
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <p className="text-sm font-medium text-blue-900 mb-1">
+              Charge to Room {roomNumber}
+            </p>
+            <p className="text-xs text-blue-700">
+              This charge will be added to the guest's room bill and paid at checkout.
+            </p>
+          </div>
+        </TabsContent>
 
         <TabsContent value="cash" className="space-y-2">
           <p className="text-sm text-muted-foreground">
@@ -1026,5 +1114,222 @@ function PaymentMethodSelector({
         </Button>
       </div>
     </div>
+  );
+}
+
+// Combined Checkout Dialog Component
+function CombinedCheckoutDialog({
+  open,
+  onOpenChange,
+  roomNumber,
+  onCheckoutComplete
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  roomNumber: string;
+  onCheckoutComplete: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [folio, setFolio] = useState<any>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card'>('cash');
+  const [mpesaPhone, setMpesaPhone] = useState('');
+  const [cardRef, setCardRef] = useState('');
+  const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (open && roomNumber) {
+      loadFolio();
+    }
+  }, [open, roomNumber]);
+
+  const loadFolio = async () => {
+    try {
+      setLoading(true);
+      const data = await combinedCheckoutApi.getRoomFolio(roomNumber);
+      setFolio(data);
+    } catch (error: any) {
+      console.error('Failed to load folio:', error);
+      toast.error('Failed to load room charges');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCheckout = async () => {
+    if (!folio) return;
+
+    if (paymentMethod === 'mpesa' && !mpesaPhone) {
+      toast.error('Please enter M-Pesa phone number');
+      return;
+    }
+
+    if (paymentMethod === 'card' && !cardRef) {
+      toast.error('Please enter card transaction reference');
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      
+      const checkoutData: CombinedCheckoutRequest = {
+        room_number: roomNumber,
+        payment_method: paymentMethod,
+        mpesa_phone: mpesaPhone,
+        card_reference: cardRef,
+        notes: notes
+      };
+
+      const result = await combinedCheckoutApi.processCombinedCheckout(checkoutData);
+      
+      toast.success(result.message);
+      onOpenChange(false);
+      onCheckoutComplete();
+    } catch (error: any) {
+      console.error('Checkout failed:', error);
+      toast.error(error.response?.data?.detail || 'Checkout failed');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>Combined Checkout - {roomNumber}</DialogTitle>
+          <DialogDescription>
+            Process payment for both room and food/beverage charges
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="h-8 w-8 animate-spin" />
+          </div>
+        ) : folio && folio.total_amount > 0 ? (
+          <div className="space-y-4 py-4">
+            {/* Charges Breakdown */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Charges Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {folio.items.map((item: any, idx: number) => (
+                  <div key={idx} className="flex justify-between items-center py-2 border-b last:border-0">
+                    <div>
+                      <p className="font-medium text-sm">{item.description}</p>
+                      <Badge variant="outline" className="mt-1">
+                        {item.type === 'room' ? 'Room Charge' : 'F&B Charge'}
+                      </Badge>
+                    </div>
+                    <span className="font-bold">KES {item.amount.toLocaleString()}</span>
+                  </div>
+                ))}
+                <Separator />
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-lg font-bold">Total Amount</span>
+                  <span className="text-2xl font-bold text-primary">
+                    KES {folio.total_amount.toLocaleString()}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Payment Method */}
+            <Tabs value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="cash">
+                  <Banknote className="h-3 w-3 mr-1" />
+                  Cash
+                </TabsTrigger>
+                <TabsTrigger value="mpesa">
+                  <Smartphone className="h-3 w-3 mr-1" />
+                  M-Pesa
+                </TabsTrigger>
+                <TabsTrigger value="card">
+                  <CreditCard className="h-3 w-3 mr-1" />
+                  Card
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="cash" className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Accept cash payment from the guest.
+                </p>
+              </TabsContent>
+
+              <TabsContent value="mpesa" className="space-y-2">
+                <Label>M-Pesa Phone Number</Label>
+                <Input
+                  type="tel"
+                  placeholder="254712345678"
+                  value={mpesaPhone}
+                  onChange={(e) => setMpesaPhone(e.target.value)}
+                />
+              </TabsContent>
+
+              <TabsContent value="card" className="space-y-2">
+                <Label>Card Transaction Reference</Label>
+                <Input
+                  placeholder="Enter card transaction ref"
+                  value={cardRef}
+                  onChange={(e) => setCardRef(e.target.value)}
+                />
+              </TabsContent>
+            </Tabs>
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label>Notes (Optional)</Label>
+              <Textarea
+                placeholder="Add any notes..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            {/* Info Box */}
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-900">
+                <strong>Note:</strong> Room charges will be updated in the booking, and F&B charges will be attributed to you as the serving waiter.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Receipt className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <p className="text-lg font-semibold mb-2">No Outstanding Charges</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Room {roomNumber} has no unpaid charges at this time.
+            </p>
+            <div className="text-left max-w-md mx-auto p-4 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-900 font-medium mb-2">To use Combined Checkout:</p>
+              <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+                <li>Guest must have an active booking (checked-in)</li>
+                <li>Or have unpaid F&B bills charged to room</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={processing}>
+            Cancel
+          </Button>
+          <Button onClick={handleCheckout} disabled={processing || !folio || folio.total_amount <= 0}>
+            {processing ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              `Process Payment - KES ${folio?.total_amount.toLocaleString() || 0}`
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

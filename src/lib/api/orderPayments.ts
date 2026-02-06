@@ -7,11 +7,12 @@ import { api } from './client';
 
 export interface OrderPaymentRequest {
   order_id: string;
-  payment_method: 'cash' | 'mpesa' | 'card';
+  payment_method: 'cash' | 'mpesa' | 'card' | 'room_charge';
   amount: number;
   mpesa_phone?: string;
   card_reference?: string;
   notes?: string;
+  room_number?: string; // For room_charge method
 }
 
 export interface OrderPaymentResponse {

@@ -28,6 +28,7 @@ import { EmployeeSalesReport } from '@/components/Manager/Reports/EmployeeSalesR
 import { PendingModifications } from '@/components/Manager/OrderManagement/PendingModifications';
 import { SalesAnalytics } from '@/components/Manager/Analytics/SalesAnalytics';
 import { EmployeePerformance } from '@/components/Manager/Analytics/EmployeePerformance';
+import OrderManagement from '@/components/Manager/OrderManagement';
 import { useStaffStats } from '@/hooks/useStaffStats';
 import { useRevenueStats } from '@/hooks/useRevenueStats';
 import { usePendingTasks } from '@/hooks/usePendingTasks';
@@ -39,6 +40,22 @@ import { SystemHealth } from '@/components/Manager/SystemHealth';
 import { EnhancedUserManagement } from '@/components/Manager/EnhancedUserManagement';
 import { ContentManagement } from '@/components/Manager/ContentManagement';
 import { InventoryManagement } from '@/components/Manager/InventoryManagement';
+import { PermissionManagement } from '@/components/Permissions/PermissionManagement';
+import { EnhancedFinancialReports } from '@/components/Manager/Reports/EnhancedFinancialReports';
+import { ComprehensiveSalesReports } from '@/components/Manager/Reports/ComprehensiveSalesReports';
+import { ProfitLossStatement } from '@/components/Manager/Reports/ProfitLossStatement';
+import { CashFlowReport } from '@/components/Manager/Reports/CashFlowReport';
+import { BalanceSheet } from '@/components/Manager/Reports/BalanceSheet';
+import { VATReport } from '@/components/Manager/Reports/VATReport';
+import { ComparativeAnalysis } from '@/components/Manager/Reports/ComparativeAnalysis';
+import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClosingStock';
+import { OccupancyReport } from '@/components/Manager/Reports/OccupancyReport';
+import { MenuProfitabilityReport } from '@/components/Manager/Reports/MenuProfitabilityReport';
+import { CustomerLifetimeValueReport } from '@/components/Manager/Reports/CustomerLifetimeValueReport';
+import { RecentActivityFeed } from '@/components/Dashboard/RecentActivityFeed';
+import { NotificationCenter } from '@/components/Dashboard/NotificationCenter';
+import { DashboardCustomization, useWidgetVisibility } from '@/components/Dashboard/DashboardCustomization';
+import { RefreshCw } from 'lucide-react';
 
 
 export default function ManagerDashboard() {
@@ -52,6 +69,11 @@ export default function ManagerDashboard() {
   const { roomStats, kitchenStats, isLoading: operationsLoading } = useOperationsData();
   const { performance: staffPerformance, isLoading: performanceLoading } = useStaffPerformance();
   const debugData = useDebugData();
+  const { isVisible } = useWidgetVisibility();
+
+  const refreshAllStats = () => {
+    window.location.reload();
+  };
 
   useEffect(() => {
     if (!isAuthenticated || (role !== 'manager' && role !== 'admin')) {
@@ -87,17 +109,28 @@ export default function ManagerDashboard() {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <div className="container mx-auto px-4 py-8 mt-16">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 mt-16 pb-24 sm:pb-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">Manager Dashboard</h1>
-          <p className="text-muted-foreground">
-            Welcome back, {user?.full_name || 'Manager'}! Manage operations and staff performance.
-          </p>
+        <div className="mb-4 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1 sm:mb-2">Manager Dashboard</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">
+              Welcome back, {user?.full_name || 'Manager'}!
+            </p>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button variant="outline" size="sm" onClick={refreshAllStats} className="flex-1 sm:flex-none">
+              <RefreshCw className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+            <DashboardCustomization />
+            <NotificationCenter />
+          </div>
         </div>
 
         {/* Quick Stats */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-8">
+          {isVisible('revenue') && (
           <StatCard
             title="Today's Revenue"
             value={revenueLoading ? '...' : `KES ${revenueStats.todayRevenue.toLocaleString()}`}
@@ -105,6 +138,8 @@ export default function ManagerDashboard() {
             icon={DollarSign}
             color="text-green-500"
           />
+          )}
+          {isVisible('occupancy') && (
           <StatCard
             title="Occupancy Rate"
             value={revenueLoading ? '...' : `${revenueStats.occupancyToday}%`}
@@ -112,6 +147,8 @@ export default function ManagerDashboard() {
             icon={BedDouble}
             color="text-blue-500"
           />
+          )}
+          {isVisible('staff') && (
           <StatCard
             title="Active Staff"
             value={statsLoading ? '...' : staffStats.activeStaff}
@@ -119,6 +156,8 @@ export default function ManagerDashboard() {
             icon={UserCheck}
             color="text-purple-500"
           />
+          )}
+          {isVisible('tasks') && (
           <StatCard
             title="Pending Tasks"
             value={tasksLoading ? '...' : pendingTasks.length}
@@ -126,24 +165,33 @@ export default function ManagerDashboard() {
             icon={Clock}
             color="text-orange-500"
           />
+          )}
         </div>
 
+        {/* Recent Activity Feed */}
+        {isVisible('activity') && (
+          <div className="mb-4 sm:mb-8">
+            <RecentActivityFeed />
+          </div>
+        )}
+
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="staff">Staff</TabsTrigger>
-            <TabsTrigger value="manage-staff">Manage Staff</TabsTrigger>
-            <TabsTrigger value="operations">Operations</TabsTrigger>
-            <TabsTrigger value="financial-reports">Financial Reports</TabsTrigger>
-            <TabsTrigger value="order-management">Order Management</TabsTrigger>
-            <TabsTrigger value="system-health">System Health</TabsTrigger>
-            <TabsTrigger value="content-management">Content Management</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1 h-auto">
+            <TabsTrigger value="overview" className="text-xs sm:text-sm px-1 sm:px-3">Overview</TabsTrigger>
+            <TabsTrigger value="staff" className="text-xs sm:text-sm px-1 sm:px-3">Staff</TabsTrigger>
+            <TabsTrigger value="manage-staff" className="text-xs sm:text-sm px-1 sm:px-3">Manage</TabsTrigger>
+            <TabsTrigger value="permissions" className="text-xs sm:text-sm px-1 sm:px-3">Perms</TabsTrigger>
+            <TabsTrigger value="operations" className="text-xs sm:text-sm px-1 sm:px-3">Ops</TabsTrigger>
+            <TabsTrigger value="financial-reports" className="text-xs sm:text-sm px-1 sm:px-3">Reports</TabsTrigger>
+            <TabsTrigger value="order-management" className="text-xs sm:text-sm px-1 sm:px-3">Orders</TabsTrigger>
+            <TabsTrigger value="system-health" className="text-xs sm:text-sm px-1 sm:px-3">Health</TabsTrigger>
+            <TabsTrigger value="content-management" className="text-xs sm:text-sm px-1 sm:px-3">Content</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
+          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
+            <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
               {/* Pending Tasks */}
               <Card className="md:col-span-2">
                 <CardHeader>
@@ -331,6 +379,11 @@ export default function ManagerDashboard() {
             <StaffManagement />
           </TabsContent>
 
+          {/* Permissions Tab */}
+          <TabsContent value="permissions" className="space-y-6">
+            <PermissionManagement />
+          </TabsContent>
+
           {/* Operations Tab */}
           <TabsContent value="operations" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
@@ -387,84 +440,101 @@ export default function ManagerDashboard() {
           </TabsContent>
 
           {/* Financial Reports Tab */}
-          <TabsContent value="financial-reports" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-3">
-              <div className="md:col-span-3">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Financial Reports</CardTitle>
-                    <CardDescription>Comprehensive financial analysis and reporting</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-6">
-                      <div className="grid gap-4 md:grid-cols-3">
-                        <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">Today's Revenue</p>
-                          <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.todayRevenue.toLocaleString()}</p>
-                          <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                            <TrendingUp className="h-3 w-3" />
-                            <span>Live data</span>
-                          </div>
-                        </div>
-                        <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">This Week</p>
-                          <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.weekRevenue.toLocaleString()}</p>
-                          <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                            <TrendingUp className="h-3 w-3" />
-                            <span>Live data</span>
-                          </div>
-                        </div>
-                        <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">This Month</p>
-                          <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()}</p>
-                          <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                            <TrendingUp className="h-3 w-3" />
-                            <span>Live data</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="grid gap-6 md:grid-cols-2">
-                        <DailySalesReport />
-                        <EmployeeSalesReport />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+          <TabsContent value="financial-reports" className="space-y-4 sm:space-y-6">
+            <Tabs defaultValue="overview" className="space-y-4">
+              <div className="overflow-x-auto">
+                <TabsList className="grid w-full grid-cols-4 sm:grid-cols-6 lg:grid-cols-11 gap-1 min-w-max">
+                  <TabsTrigger value="overview" className="text-xs sm:text-sm px-2">Overview</TabsTrigger>
+                  <TabsTrigger value="sales" className="text-xs sm:text-sm px-2">Sales</TabsTrigger>
+                  <TabsTrigger value="pl" className="text-xs sm:text-sm px-2">P&L</TabsTrigger>
+                  <TabsTrigger value="balance" className="text-xs sm:text-sm px-2">Balance</TabsTrigger>
+                  <TabsTrigger value="cashflow" className="text-xs sm:text-sm px-2">Cash</TabsTrigger>
+                  <TabsTrigger value="inventory" className="text-xs sm:text-sm px-2">Inventory</TabsTrigger>
+                  <TabsTrigger value="vat" className="text-xs sm:text-sm px-2">VAT</TabsTrigger>
+                  <TabsTrigger value="compare" className="text-xs sm:text-sm px-2">Compare</TabsTrigger>
+                  <TabsTrigger value="occupancy" className="text-xs sm:text-sm px-2">Occupancy</TabsTrigger>
+                  <TabsTrigger value="menu-profit" className="text-xs sm:text-sm px-2">Menu</TabsTrigger>
+                  <TabsTrigger value="clv" className="text-xs sm:text-sm px-2">CLV</TabsTrigger>
+                </TabsList>
               </div>
-            </div>
+
+              <TabsContent value="overview">
+                <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-4 sm:mb-6">
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-1">Today's Revenue</p>
+                    <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.todayRevenue.toLocaleString()}</p>
+                    <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
+                      <TrendingUp className="h-3 w-3" />
+                      <span>Live data</span>
+                    </div>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-1">This Week</p>
+                    <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.weekRevenue.toLocaleString()}</p>
+                    <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
+                      <TrendingUp className="h-3 w-3" />
+                      <span>Live data</span>
+                    </div>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-1">This Month</p>
+                    <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()}</p>
+                    <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
+                      <TrendingUp className="h-3 w-3" />
+                      <span>Live data</span>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="sales">
+                <ComprehensiveSalesReports />
+              </TabsContent>
+
+              <TabsContent value="pl">
+                <ProfitLossStatement />
+              </TabsContent>
+
+              <TabsContent value="balance">
+                <BalanceSheet />
+              </TabsContent>
+
+              <TabsContent value="cashflow">
+                <CashFlowReport />
+              </TabsContent>
+
+              <TabsContent value="inventory">
+                <InventoryClosingStock />
+              </TabsContent>
+
+              <TabsContent value="vat">
+                <VATReport />
+              </TabsContent>
+
+              <TabsContent value="compare">
+                <ComparativeAnalysis />
+                <div className="mt-6">
+                  <EnhancedFinancialReports />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="occupancy">
+                <OccupancyReport />
+              </TabsContent>
+
+              <TabsContent value="menu-profit">
+                <MenuProfitabilityReport />
+              </TabsContent>
+
+              <TabsContent value="clv">
+                <CustomerLifetimeValueReport />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           {/* Order Management Tab */}
           <TabsContent value="order-management" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-3">
-              <div className="md:col-span-3">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Order Management</CardTitle>
-                    <CardDescription>Order modifications, voids, and audit trails</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <PendingModifications />
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="md:col-span-3">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Advanced Analytics</CardTitle>
-                    <CardDescription>Sales analytics, performance metrics, and insights</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <SalesAnalytics />
-                      <EmployeePerformance />
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+            <OrderManagement />
           </TabsContent>
 
           {/* System Health Tab */}

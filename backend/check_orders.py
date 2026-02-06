@@ -1,100 +1,96 @@
 #!/usr/bin/env python3
-"""
-Check and clean up orders in the database
-"""
+"""Quick script to check orders and bills in the database"""
 import asyncio
 import os
-from supabase import create_client, Client
 from datetime import datetime, timedelta
-
-# Load environment variables
 from dotenv import load_dotenv
+from supabase import create_client, Client
+
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
-async def main():
-    # Initialize Supabase client
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+async def check_orders():
+    supabase: Client = create_client(
+        os.getenv("SUPABASE_URL"),
+        os.getenv("SUPABASE_SERVICE_KEY")
+    )
     
-    print("🔍 Checking orders in database...")
+    print("=" * 60)
+    print("CHECKING ORDERS AND BILLS")
+    print("=" * 60)
     
-    # Get all orders
-    response = supabase.table("orders").select("*").order("created_at", desc=True).execute()
-    orders = response.data
+    # Get today's orders
+    today = datetime.now().date()
+    print(f"\n📅 Checking orders for: {today}")
     
-    print(f"📊 Total orders in database: {len(orders)}")
+    # Get all orders from today
+    response = supabase.table("orders").select("*").gte(
+        "created_at", f"{today}T00:00:00"
+    ).order("created_at", desc=True).execute()
     
-    # Group by status
-    status_counts = {}
-    for order in orders:
-        status = order.get('status', 'unknown')
-        status_counts[status] = status_counts.get(status, 0) + 1
+    if response.data:
+        print(f"\n✅ Found {len(response.data)} orders today:")
+        for order in response.data:
+            status = order.get('status', 'unknown')
+            total = order.get('total_amount', 0)
+            created = order.get('created_at', '')[:19]
+            order_id = order.get('id', '')[:8]
+            print(f"  • Order {order_id}... | {status:12} | KES {total:8.2f} | {created}")
+    else:
+        print("\n❌ No orders found today")
     
-    print("\n📈 Orders by status:")
-    for status, count in status_counts.items():
-        print(f"  {status}: {count}")
+    # Get yesterday's orders
+    yesterday = today - timedelta(days=1)
+    print(f"\n📅 Checking orders for: {yesterday}")
     
-    # Show recent orders
-    print(f"\n📋 Recent orders (last 10):")
-    for i, order in enumerate(orders[:10]):
-        created_at = order.get('created_at', 'unknown')
-        order_number = order.get('order_number', 'N/A')
-        status = order.get('status', 'unknown')
-        location = order.get('location', 'N/A')
-        total = order.get('total_amount', 0)
-        
-        print(f"  {i+1}. {order_number} | {status} | {location} | KES {total} | {created_at}")
+    response = supabase.table("orders").select("*").gte(
+        "created_at", f"{yesterday}T00:00:00"
+    ).lt("created_at", f"{today}T00:00:00").order("created_at", desc=True).execute()
     
-    # Check for old test orders
-    cutoff_date = datetime.now() - timedelta(days=7)
-    old_orders = [o for o in orders if o.get('created_at') and datetime.fromisoformat(o['created_at'].replace('Z', '+00:00')) < cutoff_date]
+    if response.data:
+        print(f"\n✅ Found {len(response.data)} orders yesterday:")
+        for order in response.data:
+            status = order.get('status', 'unknown')
+            total = order.get('total_amount', 0)
+            created = order.get('created_at', '')[:19]
+            order_id = order.get('id', '')[:8]
+            print(f"  • Order {order_id}... | {status:12} | KES {total:8.2f} | {created}")
+    else:
+        print("\n❌ No orders found yesterday")
     
-    if old_orders:
-        print(f"\n🗑️  Found {len(old_orders)} orders older than 7 days")
-        cleanup = input("Do you want to delete old test orders? (y/N): ").lower().strip()
-        
-        if cleanup == 'y':
-            print("🧹 Cleaning up old orders...")
-            for order in old_orders:
-                try:
-                    supabase.table("orders").delete().eq("id", order["id"]).execute()
-                    print(f"  ✅ Deleted order {order.get('order_number', order['id'])}")
-                except Exception as e:
-                    print(f"  ❌ Failed to delete order {order.get('order_number', order['id'])}: {e}")
-            
-            print(f"✅ Cleanup completed!")
-        else:
-            print("Skipping cleanup.")
+    # Check unpaid bills
+    print(f"\n💰 Checking unpaid orders...")
+    response = supabase.table("orders").select("*").eq(
+        "payment_status", "pending"
+    ).order("created_at", desc=True).limit(10).execute()
     
-    # Check for orders in 'preparing' status
-    preparing_orders = [o for o in orders if o.get('status') == 'preparing']
-    if preparing_orders:
-        print(f"\n👨‍🍳 Found {len(preparing_orders)} orders in 'preparing' status:")
-        for order in preparing_orders:
-            print(f"  - {order.get('order_number')} at {order.get('location')} (created: {order.get('created_at')})")
-        
-        reset_preparing = input("Do you want to reset 'preparing' orders to 'pending'? (y/N): ").lower().strip()
-        
-        if reset_preparing == 'y':
-            print("🔄 Resetting preparing orders...")
-            for order in preparing_orders:
-                try:
-                    supabase.table("orders").update({
-                        "status": "pending",
-                        "assigned_chef_id": None,
-                        "preparing_started_at": None
-                    }).eq("id", order["id"]).execute()
-                    print(f"  ✅ Reset order {order.get('order_number')} to pending")
-                except Exception as e:
-                    print(f"  ❌ Failed to reset order {order.get('order_number')}: {e}")
-            
-            print("✅ Reset completed!")
-        else:
-            print("Keeping orders as-is.")
+    if response.data:
+        print(f"\n⚠️  Found {len(response.data)} unpaid orders:")
+        for order in response.data:
+            status = order.get('status', 'unknown')
+            total = order.get('total_amount', 0)
+            created = order.get('created_at', '')[:19]
+            order_id = order.get('id', '')[:8]
+            print(f"  • Order {order_id}... | {status:12} | KES {total:8.2f} | {created}")
+    else:
+        print("\n✅ No unpaid orders found")
     
-    print("\n✅ Database check completed!")
+    # Total statistics
+    print(f"\n📊 OVERALL STATISTICS")
+    print("=" * 60)
+    
+    # Total orders
+    response = supabase.table("orders").select("id", count="exact").execute()
+    print(f"Total orders in database: {response.count}")
+    
+    # Total paid
+    response = supabase.table("orders").select("id", count="exact").eq("payment_status", "paid").execute()
+    print(f"Total paid orders: {response.count}")
+    
+    # Total pending
+    response = supabase.table("orders").select("id", count="exact").eq("payment_status", "pending").execute()
+    print(f"Total pending orders: {response.count}")
+    
+    print("\n" + "=" * 60)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(check_orders())

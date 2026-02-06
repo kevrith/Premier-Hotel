@@ -14,11 +14,12 @@ router = APIRouter()
 
 class OrderPaymentRequest(BaseModel):
     order_id: str
-    payment_method: str  # 'cash', 'mpesa', 'card'
+    payment_method: str  # 'cash', 'mpesa', 'card', 'room_charge'
     amount: float
     mpesa_phone: Optional[str] = None
     card_reference: Optional[str] = None
     notes: Optional[str] = None
+    room_number: Optional[str] = None  # For room_charge method
 
 class OrderPaymentResponse(BaseModel):
     success: bool
@@ -72,29 +73,66 @@ async def process_order_payment(
             except Exception as e:
                 print(f"[DEBUG] Could not fetch customer info: {e}")
 
-        bill_record = {
-            "bill_number": f"BILL-{order.get('order_number', payment_data.order_id)}",
-            "location_type": order.get("location_type", "table"),
-            "table_number": order.get("location") if order.get("location_type") == "table" else None,
-            "room_number": order.get("location") if order.get("location_type") == "room" else None,
-            "customer_name": customer_name,
-            "customer_phone": customer_phone,
-            "subtotal": payment_data.amount,
-            "tax": 0,
-            "total_amount": payment_data.amount,
-            "payment_status": "paid",
-            "paid_at": datetime.utcnow().isoformat(),
-            "settled_by_waiter_id": current_user.get("id")
-        }
+        # Check if bill already exists for this order
+        existing_bill_response = supabase_admin.table("bills").select("*").eq("order_id", payment_data.order_id).execute()
         
-        # Insert bill record
-        bill_response = supabase_admin.table("bills").insert(bill_record).execute()
-        
-        if not bill_response.data:
-            print(f"[DEBUG] Failed to create bill record: {bill_response}")
-            # Continue anyway, just log the error
+        if existing_bill_response.data:
+            # Bill already exists, update it instead of creating new one
+            existing_bill = existing_bill_response.data[0]
+            print(f"[DEBUG] Bill already exists: {existing_bill['id']}, updating payment status")
+            
+            # Determine payment status based on payment method
+            payment_status = "paid" if payment_data.payment_method != "room_charge" else "unpaid"
+            paid_at = datetime.utcnow().isoformat() if payment_data.payment_method != "room_charge" else None
+            
+            # Update existing bill
+            bill_update = {
+                "payment_status": payment_status,
+                "paid_at": paid_at
+            }
+            
+            bill_response = supabase_admin.table("bills").update(bill_update).eq("id", existing_bill["id"]).execute()
+            print(f"[DEBUG] Bill updated successfully: {existing_bill['id']}")
         else:
-            print(f"[DEBUG] Bill created successfully: {bill_response.data[0]['id']}")
+            # No existing bill, create new one
+            print(f"[DEBUG] No existing bill found, creating new one")
+            
+            # Determine payment status based on payment method
+            payment_status = "paid" if payment_data.payment_method != "room_charge" else "unpaid"
+            paid_at = datetime.utcnow().isoformat() if payment_data.payment_method != "room_charge" else None
+
+            bill_record = {
+                "order_id": payment_data.order_id,
+                "bill_number": f"BILL-{order.get('order_number', payment_data.order_id)}",
+                "location_type": order.get("location_type", "table"),
+                "table_number": order.get("location") if order.get("location_type") == "table" else None,
+                "room_number": payment_data.room_number or (order.get("location") if order.get("location_type") == "room" else None),
+                "customer_name": customer_name,
+                "customer_phone": customer_phone,
+                "subtotal": payment_data.amount,
+                "tax": 0,
+                "total_amount": payment_data.amount,
+                "payment_status": payment_status,
+                "paid_at": paid_at,
+                "settled_by_waiter_id": current_user.get("id")
+            }
+            
+            print(f"[DEBUG] Creating bill with record: {bill_record}")
+            
+            # Insert bill record
+            try:
+                bill_response = supabase_admin.table("bills").insert(bill_record).execute()
+                
+                if not bill_response.data:
+                    print(f"[DEBUG] Failed to create bill record - no data returned")
+                    print(f"[DEBUG] Response: {bill_response}")
+                else:
+                    print(f"[DEBUG] Bill created successfully: {bill_response.data[0]['id']}")
+            except Exception as bill_insert_error:
+                print(f"[ERROR] Bill insert failed: {str(bill_insert_error)}")
+                import traceback
+                print(f"[ERROR] Traceback: {traceback.format_exc()}")
+                raise
         
         # Update order status to completed
         order_update = supabase_admin.table("orders").update({
@@ -110,8 +148,12 @@ async def process_order_payment(
         
         return OrderPaymentResponse(
             success=True,
-            message=f"Payment of KES {payment_data.amount:,.2f} processed successfully via {payment_data.payment_method.upper()}",
-            payment_id="temp-payment-id",  # Temporary until payments table is fixed
+            message=(
+                f"Charged KES {payment_data.amount:,.2f} to room {payment_data.room_number}. Will be paid at checkout."
+                if payment_data.payment_method == "room_charge"
+                else f"Payment of KES {payment_data.amount:,.2f} processed successfully via {payment_data.payment_method.upper()}"
+            ),
+            payment_id="temp-payment-id",
             order_status="completed"
         )
         

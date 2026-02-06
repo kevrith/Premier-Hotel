@@ -120,6 +120,41 @@ export default function EnhancedMenu() {
   const [loading, setLoading] = useState(true);
   const [showCustomerDialog, setShowCustomerDialog] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [orderContextData, setOrderContextData] = useState<{
+    customerName?: string;
+    customerPhone?: string;
+    location?: string;
+    locationType?: 'table' | 'room';
+  } | undefined>(undefined);
+
+  // Check for order context from waiter dashboard when dialog opens
+  useEffect(() => {
+    console.log('EnhancedMenu: showCustomerDialog changed to:', showCustomerDialog);
+    if (showCustomerDialog) {
+      const orderContextStr = sessionStorage.getItem('orderContext');
+      console.log('EnhancedMenu: orderContextStr from sessionStorage:', orderContextStr);
+      if (orderContextStr) {
+        try {
+          const orderContext = JSON.parse(orderContextStr);
+          console.log('EnhancedMenu: Parsed orderContext:', orderContext);
+          const initialData = {
+            customerName: orderContext.customer_name || '',
+            customerPhone: orderContext.customer_phone || '',
+            location: orderContext.location || '',
+            locationType: orderContext.location_type || 'table'
+          };
+          console.log('EnhancedMenu: Setting orderContextData:', initialData);
+          setOrderContextData(initialData);
+        } catch (e) {
+          console.error('Failed to parse order context:', e);
+          setOrderContextData(undefined);
+        }
+      } else {
+        console.log('EnhancedMenu: No orderContext in sessionStorage');
+        setOrderContextData(undefined);
+      }
+    }
+  }, [showCustomerDialog]);
 
   // Fetch menu items from API
   useEffect(() => {
@@ -547,6 +582,7 @@ export default function EnhancedMenu() {
         onSubmit={handleCustomerOrderSubmit}
         totalAmount={getTotal()}
         itemCount={cartItems.length}
+        initialData={orderContextData}
       />
     </div>
   );

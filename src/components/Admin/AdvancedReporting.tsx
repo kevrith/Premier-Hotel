@@ -5,7 +5,8 @@ import { SalesReports } from './Reports/SalesReports';
 import { InventoryReports } from './Reports/InventoryReports';
 import { StaffPerformanceReports } from './Reports/StaffPerformanceReports';
 import { CustomerInsightsReports } from './Reports/CustomerInsightsReports';
-import { BarChart, DollarSign, Package, Users, MessageSquare, FileBarChart } from 'lucide-react';
+import { FinancialReports } from './Reports/FinancialReports';
+import { BarChart, DollarSign, Package, Users, MessageSquare, FileBarChart, TrendingUp } from 'lucide-react';
 
 export function AdvancedReporting() {
   return (
@@ -21,8 +22,12 @@ export function AdvancedReporting() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="sales" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-5">
+          <Tabs defaultValue="financial" className="space-y-4">
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="financial">
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Financial
+              </TabsTrigger>
               <TabsTrigger value="sales">
                 <DollarSign className="h-4 w-4 mr-2" />
                 Sales
@@ -44,6 +49,10 @@ export function AdvancedReporting() {
                 QuickBooks
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="financial" className="space-y-4">
+              <FinancialReports />
+            </TabsContent>
 
             <TabsContent value="sales" className="space-y-4">
               <SalesReports />

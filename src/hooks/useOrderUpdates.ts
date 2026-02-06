@@ -161,7 +161,7 @@ export function useOrderUpdates(options: OrderUpdatesOptions = {}) {
           cancelled: '❌'
         };
 
-        toast.info(data.message || `Order ${data.order_number} is now ${data.new_status}`, {
+        toast.success(data.message || `Order ${data.order_number} is now ${data.new_status}`, {
           icon: statusEmojis[data.new_status] || 'ℹ️',
           duration: 5000
         });

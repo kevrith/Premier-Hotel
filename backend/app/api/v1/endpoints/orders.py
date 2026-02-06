@@ -142,12 +142,59 @@ async def get_kitchen_orders(
         # Use admin client to bypass RLS
         response = (
             supabase_admin.table("orders")
-            .select("*, assigned_chef:profiles!assigned_chef_id(first_name, last_name), assigned_waiter:profiles!assigned_waiter_id(first_name, last_name)")
+            .select("*")
             .in_("status", ["pending", "confirmed", "preparing", "in-progress", "ready"])
             .order("priority", desc=True)
             .order("created_at", desc=False)
             .execute()
         )
+        
+        # Collect all unique chef and waiter IDs
+        chef_ids = set()
+        waiter_ids = set()
+        for order in response.data:
+            if order.get("assigned_chef_id"):
+                chef_ids.add(order["assigned_chef_id"])
+            if order.get("assigned_waiter_id"):
+                waiter_ids.add(order["assigned_waiter_id"])
+        
+        logging.info(f"[KITCHEN] Chef IDs: {chef_ids}")
+        logging.info(f"[KITCHEN] Waiter IDs: {waiter_ids}")
+        print(f"[KITCHEN DEBUG] Chef IDs: {chef_ids}")
+        print(f"[KITCHEN DEBUG] Waiter IDs: {waiter_ids}")
+        
+        # Fetch all staff info in one query
+        staff_map = {}
+        if chef_ids or waiter_ids:
+            all_staff_ids = list(chef_ids | waiter_ids)
+            logging.info(f"[KITCHEN] Fetching staff for IDs: {all_staff_ids}")
+            print(f"[KITCHEN DEBUG] Fetching staff for IDs: {all_staff_ids}")
+            try:
+                staff_response = supabase_admin.table("users").select("id, full_name").in_("id", all_staff_ids).execute()
+                logging.info(f"[KITCHEN] Staff response: {staff_response.data}")
+                print(f"[KITCHEN DEBUG] Staff response: {staff_response.data}")
+                for staff in staff_response.data:
+                    staff_map[staff["id"]] = {
+                        "full_name": staff.get('full_name', ''),
+                        "first_name": staff.get('full_name', '').split(' ')[0] if staff.get('full_name') else '',
+                        "last_name": ' '.join(staff.get('full_name', '').split(' ')[1:]) if staff.get('full_name') and len(staff.get('full_name', '').split(' ')) > 1 else ''
+                    }
+            except Exception as e:
+                logging.error(f"[KITCHEN] Error fetching staff: {e}")
+                print(f"[KITCHEN DEBUG] Error fetching staff: {e}")
+        
+        logging.info(f"[KITCHEN] Staff map: {staff_map}")
+        print(f"[KITCHEN DEBUG] Staff map: {staff_map}")
+        
+        # Attach staff info to orders
+        orders_with_staff = []
+        for order in response.data:
+            order_dict = dict(order)
+            if order.get("assigned_chef_id") and order["assigned_chef_id"] in staff_map:
+                order_dict["assigned_chef"] = staff_map[order["assigned_chef_id"]]
+            if order.get("assigned_waiter_id") and order["assigned_waiter_id"] in staff_map:
+                order_dict["assigned_waiter"] = staff_map[order["assigned_waiter_id"]]
+            orders_with_staff.append(order_dict)
 
         # Debug: Log the statuses of orders being returned
         if logging.getLogger().isEnabledFor(logging.DEBUG):
@@ -155,10 +202,10 @@ async def get_kitchen_orders(
                 'id': o.get('id')[:8] + '...',
                 'order_number': o.get('order_number'),
                 'status': o.get('status')
-            } for o in response.data]
+            } for o in orders_with_staff]
             logging.debug(f"Kitchen orders returned: {order_summary}")
 
-        return [OrderResponse(**order) for order in response.data]
+        return [OrderResponse(**order) for order in orders_with_staff]
 
     except Exception as e:
         raise HTTPException(
@@ -283,23 +330,94 @@ async def create_order(
 
             order_items.append({
                 "menu_item_id": order_item.menu_item_id,
-                "name": order_item.name or menu_item["name"],  # Use provided name or fetch from menu
+                "name": order_item.name or menu_item["name"],
                 "quantity": order_item.quantity,
-                "price": float(order_item.price) if order_item.price else float(item_price),  # Use provided price or fetch from menu
+                "price": float(order_item.price) if order_item.price else float(item_price),
                 "customizations": order_item.customizations,
                 "special_instructions": order_item.special_instructions,
                 "total": float(item_total),
             })
 
-        # Calculate tax and total
-        tax = subtotal * Decimal("0.16")  # 16% tax
-        total_amount = subtotal + tax
+        # Get tax configuration
+        tax_config_response = supabase_admin.table("hotel_settings").select("setting_value").eq("setting_key", "tax_config").execute()
+        
+        # Default tax config if not found
+        tax_config = {
+            "vat_enabled": True,
+            "vat_rate": 0.16,
+            "tourism_levy_enabled": False,
+            "tourism_levy_rate": 0.0,
+            "tax_inclusive": True
+        }
+        
+        if tax_config_response.data:
+            tax_config = tax_config_response.data[0]["setting_value"]
+        
+        # Calculate taxes based on configuration
+        if tax_config["tax_inclusive"]:
+            # Prices include tax - extract tax from total
+            total_tax_rate = 0
+            if tax_config["vat_enabled"]:
+                total_tax_rate += Decimal(str(tax_config["vat_rate"]))
+            if tax_config["tourism_levy_enabled"]:
+                total_tax_rate += Decimal(str(tax_config["tourism_levy_rate"]))
+            
+            # Total amount is the subtotal (which already includes tax)
+            total_amount = subtotal
+            
+            # Extract base amount and taxes from inclusive price
+            base_amount = subtotal / (1 + total_tax_rate)
+            
+            if tax_config["vat_enabled"]:
+                vat = base_amount * Decimal(str(tax_config["vat_rate"]))
+            else:
+                vat = Decimal(0)
+            
+            if tax_config["tourism_levy_enabled"]:
+                tourism_levy = base_amount * Decimal(str(tax_config["tourism_levy_rate"]))
+            else:
+                tourism_levy = Decimal(0)
+        else:
+            # Tax is added on top of prices
+            base_amount = subtotal
+            
+            if tax_config["vat_enabled"]:
+                vat = subtotal * Decimal(str(tax_config["vat_rate"]))
+            else:
+                vat = Decimal(0)
+            
+            if tax_config["tourism_levy_enabled"]:
+                tourism_levy = subtotal * Decimal(str(tax_config["tourism_levy_rate"]))
+            else:
+                tourism_levy = Decimal(0)
+            
+            total_amount = subtotal + vat + tourism_levy
+        
+        # Legacy tax field for backward compatibility
+        tax = vat + tourism_levy
 
         # Calculate estimated ready time based on preparation times
         max_prep_time = max(
             (item.get("preparation_time", 20) for item in menu_items_response.data), default=20
         )
         estimated_ready_time = datetime.now(timezone.utc) + timedelta(minutes=max_prep_time)
+
+        # Auto-assign priority based on business rules
+        priority = "medium"  # Default
+        
+        # Rule 1: Room service gets high priority
+        if order_data.location_type == "room":
+            priority = "high"
+        
+        # Rule 2: Late orders (after 9 PM) get high priority
+        current_hour = datetime.now(timezone.utc).hour
+        if current_hour >= 21 or current_hour < 6:  # 9 PM to 6 AM
+            priority = "high"
+        
+        # Rule 3: Large orders (>3 items or total >5000) get high priority
+        total_items = sum(item.quantity for item in order_data.items)
+        if total_items > 3 or total_amount > 5000:
+            priority = "high"
 
         # Generate order number
         order_number = await generate_order_number(supabase_admin)
@@ -315,18 +433,19 @@ async def create_order(
             "subtotal": float(subtotal),
             "tax": float(tax),
             "total_amount": float(total_amount),
+            "base_amount": float(base_amount),
+            "vat_amount": float(vat),
+            "tourism_levy_amount": float(tourism_levy),
+            "tax_inclusive": tax_config["tax_inclusive"],
             "special_instructions": order_data.special_instructions,
-            "priority": "medium",
-            "estimated_ready_time": estimated_ready_time.isoformat(),  # Important for customer experience
-            # Customer information (for walk-in and room service orders)
+            "priority": priority,
+            "estimated_ready_time": estimated_ready_time.isoformat(),
             "customer_name": order_data.customer_name,
             "customer_phone": order_data.customer_phone,
             "order_type": order_data.order_type,
-            # Payment tracking (payment happens later at bill settlement)
-            "payment_status": "unpaid",  # All orders start as unpaid
-            # Staff attribution
-            "created_by_staff_id": current_user["id"],  # Track which staff member created the order
-            # Extract room/table numbers for easier querying
+            "payment_status": "unpaid",
+            "created_by_staff_id": current_user["id"],
+            "assigned_waiter_id": current_user["id"] if current_user.get("role") == "waiter" else None,
             "room_number": order_data.location if order_data.location_type == "room" else None,
             "table_number": order_data.location if order_data.location_type == "table" else None,
         }
@@ -432,6 +551,61 @@ async def notify_waiter(
         )
 
 
+@router.patch("/{order_id}/priority", response_model=OrderResponse)
+async def update_order_priority(
+    order_id: str,
+    priority: str,
+    reason: str,
+    current_user: dict = Depends(require_staff),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Update order priority (manager/chef only)"""
+    if current_user["role"] not in ["manager", "chef", "admin"]:
+        raise HTTPException(status_code=403, detail="Only managers and chefs can change priority")
+    
+    if priority not in ["low", "medium", "high", "urgent"]:
+        raise HTTPException(status_code=400, detail="Invalid priority")
+    
+    try:
+        # Get existing order
+        existing = supabase_admin.table("orders").select("*").eq("id", order_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        old_priority = existing.data[0]["priority"]
+        
+        # Update priority
+        response = supabase_admin.table("orders").update({
+            "priority": priority,
+            "priority_change_reason": reason,
+            "priority_changed_by": current_user["id"],
+            "priority_changed_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", order_id).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to update priority")
+        
+        # Broadcast priority change
+        await ws_manager.broadcast({
+            "type": "ORDER_PRIORITY_CHANGED",
+            "data": {
+                "order_id": order_id,
+                "order_number": existing.data[0]["order_number"],
+                "old_priority": old_priority,
+                "new_priority": priority,
+                "changed_by": current_user["full_name"],
+                "reason": reason
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        
+        return OrderResponse(**response.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.patch("/{order_id}/status", response_model=OrderResponse)
 async def update_order_status(
     order_id: str,
@@ -529,12 +703,13 @@ async def update_order_status(
             update_data["confirmed_at"] = datetime.now(timezone.utc).isoformat()
         elif mapped_new_status == "preparing" or new_status == "in-progress":
             # Check chef workload before assignment
-            if user_exists and current_user.get("role") == "chef":
-                # Count current orders assigned to this chef
+            if current_user.get("role") == "chef":
+                # Count current orders assigned to this chef that are still being prepared
+                # Only count 'preparing' status, not 'ready' (chef is done with ready orders)
                 workload_check = supabase_admin.table("orders")\
                     .select("id")\
                     .eq("assigned_chef_id", current_user["id"])\
-                    .in_("status", ["preparing", "ready"])\
+                    .eq("status", "preparing")\
                     .execute()
                 
                 current_workload = len(workload_check.data)
@@ -547,15 +722,14 @@ async def update_order_status(
                     )
                 
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    logging.debug(f"Chef workload: {current_workload}/{max_workload}")
+                    logging.debug(f"Chef workload: {current_workload}/{max_workload} (only counting 'preparing' orders)")
             
             # Handle both new 'preparing' and old 'in-progress' status
             update_data["preparing_started_at"] = datetime.now(timezone.utc).isoformat()
-            if user_exists:
-                update_data["assigned_chef_id"] = current_user["id"]
-            else:
-                if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    logging.debug("Skipping assigned_chef_id - user not found in profiles table")
+            # Always assign chef ID when starting preparation
+            update_data["assigned_chef_id"] = current_user["id"]
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                logging.debug(f"Assigning chef ID {current_user['id']} to order")
         elif mapped_new_status == "ready":
             update_data["ready_at"] = datetime.now(timezone.utc).isoformat()
         elif mapped_new_status == "served" or new_status == "delivered":
@@ -566,6 +740,55 @@ async def update_order_status(
             else:
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug("Skipping assigned_waiter_id - user not found in profiles table")
+            
+            # AUTO-CREATE UNPAID BILL when order is served
+            try:
+                logging.info(f"[AUTO-BILL] Starting auto-bill creation for order {order_id}")
+                logging.info(f"[AUTO-BILL] Order details: location={order.get('location')}, location_type={order.get('location_type')}, total={order.get('total_amount')}")
+                
+                # Get customer info
+                customer_name = None
+                customer_phone = None
+                if order.get("customer_id"):
+                    try:
+                        customer_response = supabase_admin.table("users").select("full_name, phone").eq("id", order["customer_id"]).execute()
+                        if customer_response.data:
+                            customer_name = customer_response.data[0].get("full_name")
+                            customer_phone = customer_response.data[0].get("phone")
+                            logging.info(f"[AUTO-BILL] Customer info: {customer_name}, {customer_phone}")
+                    except Exception as e:
+                        logging.warning(f"[AUTO-BILL] Could not fetch customer info: {e}")
+                
+                # Create unpaid bill automatically
+                bill_record = {
+                    "order_id": order_id,
+                    "bill_number": f"BILL-{order.get('order_number', order_id)}",
+                    "location_type": order.get("location_type", "table"),
+                    "table_number": order.get("location") if order.get("location_type") == "table" else None,
+                    "room_number": order.get("location") if order.get("location_type") == "room" else None,
+                    "customer_name": customer_name,
+                    "customer_phone": customer_phone,
+                    "subtotal": order.get("subtotal", order.get("total_amount", 0)),
+                    "tax": order.get("tax", 0),
+                    "total_amount": order.get("total_amount", 0),
+                    "payment_status": "unpaid",
+                    "paid_at": None,
+                    "settled_by_waiter_id": current_user.get("id")
+                }
+                
+                logging.info(f"[AUTO-BILL] Creating bill with data: {bill_record}")
+                bill_response = supabase_admin.table("bills").insert(bill_record).execute()
+                
+                if bill_response.data:
+                    logging.info(f"[AUTO-BILL] ✅ Successfully created unpaid bill {bill_response.data[0]['id']} for order {order_id}")
+                    logging.info(f"[AUTO-BILL] Bill number: {bill_response.data[0].get('bill_number')}, Amount: {bill_response.data[0].get('total_amount')}")
+                else:
+                    logging.error(f"[AUTO-BILL] ❌ Failed to auto-create bill for order {order_id} - no data returned")
+            except Exception as bill_error:
+                logging.error(f"[AUTO-BILL] ❌ Error auto-creating bill for order {order_id}: {str(bill_error)}")
+                import traceback
+                logging.error(f"[AUTO-BILL] Traceback: {traceback.format_exc()}")
+                # Don't fail the order status update if bill creation fails
         elif mapped_new_status == "completed":
             update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
         elif mapped_new_status == "cancelled":

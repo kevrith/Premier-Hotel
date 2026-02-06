@@ -55,6 +55,9 @@ class OrderResponse(BaseModel):
     total_amount: Decimal
     assigned_waiter_id: Optional[str] = None
     assigned_chef_id: Optional[str] = None
+    # Staff information (populated from users table)
+    assigned_waiter: Optional[Dict[str, Any]] = None
+    assigned_chef: Optional[Dict[str, Any]] = None
     priority: str
     special_instructions: Optional[str] = None
     notes: Optional[str] = None

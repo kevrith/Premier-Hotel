@@ -17,6 +17,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { api } from '@/lib/api/client';
 
 interface SystemComponent {
   id: string;
@@ -50,41 +51,29 @@ export function SystemHealth() {
   const loadSystemHealth = async () => {
     setIsLoading(true);
     try {
-      // Fetch real system health data from backend
-      const [componentsResponse, metricsResponse] = await Promise.all([
-        fetch('/api/v1/system/health/components'),
-        fetch('/api/v1/system/health/metrics')
+      const [componentsRes, metricsRes] = await Promise.all([
+        api.get('/system/health/components'),
+        api.get('/system/health/metrics')
       ]);
 
-      if (!componentsResponse.ok || !metricsResponse.ok) {
-        throw new Error('Failed to fetch system health data');
-      }
-
-      const componentsData = await componentsResponse.json();
-      const metricsData = await metricsResponse.json();
-
-      setComponents(componentsData);
-      setMetrics(metricsData);
+      setComponents(componentsRes.data);
+      setMetrics(metricsRes.data);
       setLastUpdated(new Date());
-      } catch (error: any) {
-      console.error('Error loading system health:', error);
-      toast.error('Failed to load system health data');
       
-      // Fallback to localStorage data if API is not available
+      localStorage.setItem('system_health_components', JSON.stringify(componentsRes.data));
+      localStorage.setItem('system_health_metrics', JSON.stringify(metricsRes.data));
+    } catch (error: any) {
+      console.error('Error loading system health:', error);
+      
       const cachedComponents = localStorage.getItem('system_health_components');
       const cachedMetrics = localStorage.getItem('system_health_metrics');
       
       if (cachedComponents && cachedMetrics) {
-        try {
-          setComponents(JSON.parse(cachedComponents));
-          setMetrics(JSON.parse(cachedMetrics));
-          toast.success('Using cached system health data');
-        } catch (parseError) {
-          console.error('Failed to parse cached data:', parseError);
-          toast.error('Cached data is corrupted');
-        }
+        setComponents(JSON.parse(cachedComponents));
+        setMetrics(JSON.parse(cachedMetrics));
+        toast.success('Using cached system health data');
       } else {
-        toast.error('No cached data available');
+        toast.error('Failed to load system health data');
       }
     } finally {
       setIsLoading(false);

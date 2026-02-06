@@ -133,6 +133,16 @@ export const ordersApi = {
    */
   notifyWaiter: async (orderId: string): Promise<void> => {
     await apiClient.post(`/orders/${orderId}/notify-waiter`);
+  },
+
+  /**
+   * Update order priority (manager/chef only)
+   */
+  updatePriority: async (orderId: string, priority: string, reason: string): Promise<Order> => {
+    const response = await apiClient.patch(`/orders/${orderId}/priority`, null, {
+      params: { priority, reason }
+    });
+    return response.data;
   }
 };
 

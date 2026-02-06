@@ -117,6 +117,11 @@ async def get_revenue_analytics(
         orders = supabase.table("orders").select(
             "total_amount, total, payment_method, payment_status, created_at"
         ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
+        
+        # Get bills (waiter bills system)
+        bills = supabase.table("bills").select(
+            "total_amount, payment_method, payment_status, created_at"
+        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
 
         # Group revenue by date
         revenue_by_date: Dict[str, Dict[str, Any]] = {}
@@ -161,8 +166,12 @@ async def get_revenue_analytics(
 
         # Process orders
         for order in orders.data:
-            # Only count paid orders
-            if order.get("payment_status") not in ["paid", "completed"]:
+            # Count paid orders OR cash orders that are delivered/completed
+            is_paid = order.get("payment_status") in ["paid", "completed"]
+            is_cash_completed = (order.get("payment_method", "").lower() == "cash" and 
+                                order.get("status") in ["delivered", "completed", "served"])
+            
+            if not (is_paid or is_cash_completed):
                 continue
 
             created_at = datetime.fromisoformat(order["created_at"].replace('Z', '+00:00'))
@@ -194,6 +203,44 @@ async def get_revenue_analytics(
 
                 # By payment method
                 method = (order.get("payment_method") or "cash").lower()
+                if method in ["mpesa", "m-pesa"]:
+                    revenue_by_date[date_key]["mpesa"] += amount
+                elif method == "card":
+                    revenue_by_date[date_key]["card"] += amount
+                else:
+                    revenue_by_date[date_key]["cash"] += amount
+        
+        # Process bills (waiter bills system)
+        for bill in bills.data:
+            if bill.get("payment_status") != "paid":
+                continue
+            
+            created_at = datetime.fromisoformat(bill["created_at"].replace('Z', '+00:00'))
+            if group_by == "day":
+                date_key = created_at.strftime("%Y-%m-%d")
+            elif group_by == "week":
+                date_key = created_at.strftime("%Y-W%W")
+            else:
+                date_key = created_at.strftime("%Y-%m")
+
+            if date_key not in revenue_by_date:
+                revenue_by_date[date_key] = {
+                    "date": date_key,
+                    "total": 0,
+                    "bookings": 0,
+                    "orders": 0,
+                    "mpesa": 0,
+                    "cash": 0,
+                    "card": 0,
+                    "count": 0
+                }
+
+            amount = float(bill.get("total_amount") or 0)
+            if amount > 0:
+                revenue_by_date[date_key]["total"] += amount
+                revenue_by_date[date_key]["orders"] += amount
+                revenue_by_date[date_key]["count"] += 1
+                method = (bill.get("payment_method") or "cash").lower()
                 if method in ["mpesa", "m-pesa"]:
                     revenue_by_date[date_key]["mpesa"] += amount
                 elif method == "card":
@@ -469,7 +516,7 @@ async def get_employee_sales_report(
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
         # Get all staff users (waiter, chef, etc.)
-        users_query = supabase.table("users").select("id, full_name, email, role")
+        users_query = supabase.table("profiles").select("id, full_name, email, role")
 
         # Apply role filter
         if role:
@@ -491,12 +538,19 @@ async def get_employee_sales_report(
         for employee in employees:
             emp_id = employee["id"]
 
-            # Get orders created by this employee
-            emp_orders_result = supabase.table("orders").select(
-                "id, customer_id, total_amount, status, created_at, location"
-            ).eq("created_by_staff_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
-
-            emp_orders = emp_orders_result.data
+            # Get orders assigned to this employee (waiter or chef)
+            waiter_orders = supabase.table("orders").select(
+                "id, customer_id, total, status, created_at, location"
+            ).eq("assigned_waiter_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
+            
+            chef_orders = supabase.table("orders").select(
+                "id, customer_id, total, status, created_at, location"
+            ).eq("assigned_chef_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
+            
+            # Combine and deduplicate orders
+            emp_orders_dict = {o["id"]: o for o in waiter_orders.data}
+            emp_orders_dict.update({o["id"]: o for o in chef_orders.data})
+            emp_orders = list(emp_orders_dict.values())
 
             # Get order items for this employee's orders
             emp_order_ids = [o["id"] for o in emp_orders]
@@ -507,9 +561,9 @@ async def get_employee_sales_report(
                 ).in_("order_id", emp_order_ids).execute()
                 emp_order_items = emp_order_items_result.data
 
-            total_sales = sum(float(o.get("total_amount", 0)) for o in emp_orders)
+            total_sales = sum(float(o.get("total", 0)) for o in emp_orders)
             total_orders = len(emp_orders)
-            completed_orders = len([o for o in emp_orders if o.get("status") == "delivered"])
+            completed_orders = len([o for o in emp_orders if o.get("status") in ["delivered", "completed"]])
 
             total_items_sold = sum(oi.get("quantity", 0) for oi in emp_order_items)
 
@@ -870,6 +924,54 @@ async def get_daily_sales_report(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate daily sales report: {str(e)}"
+        )
+
+
+@router.get("/category-breakdown")
+async def get_category_breakdown(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
+    supabase: Client = Depends(get_supabase)
+):
+    """Get sales breakdown by menu category"""
+    try:
+        if not end_date:
+            end_date = datetime.now().isoformat()
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).isoformat()
+
+        orders = supabase.table("orders").select("id, created_at").gte(
+            "created_at", start_date
+        ).lte("created_at", end_date).eq("payment_status", "paid").execute()
+
+        if not orders.data:
+            return []
+
+        order_ids = [o["id"] for o in orders.data]
+        order_items = supabase.table("order_items").select(
+            "menu_item_id, quantity, price"
+        ).in_("order_id", order_ids).execute()
+
+        menu_item_ids = list(set(item["menu_item_id"] for item in order_items.data))
+        menu_items = supabase.table("menu_items").select(
+            "id, category"
+        ).in_("id", menu_item_ids).execute()
+
+        menu_map = {item["id"]: item["category"] for item in menu_items.data}
+        category_data = {}
+
+        for item in order_items.data:
+            category = menu_map.get(item["menu_item_id"], "Other")
+            value = float(item["price"]) * item["quantity"]
+            category_data[category] = category_data.get(category, 0) + value
+
+        return [{"name": k, "value": round(v, 2)} for k, v in category_data.items()]
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get category breakdown: {str(e)}"
         )
 
 

@@ -116,7 +116,7 @@ export function SystemOverview({ onStatsUpdate }) {
         setRevenueData(transformedRevenue);
 
         // Calculate sales projection using linear regression
-        if (transformedRevenue.length >= 3) {
+        if (transformedRevenue.length >= 2) {
           const { slope, intercept } = calculateLinearRegression(transformedRevenue);
           const confidence = calculateRSquared(transformedRevenue, slope, intercept);
 

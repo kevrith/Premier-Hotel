@@ -35,26 +35,73 @@ export function BillsManagement() {
     setLoading(true);
     try {
       console.log('Fetching bills with status:', status);
-      const data = await billsApi.listBills({
-        payment_status: status,
-        limit: 100,
-      });
       
-      console.log('Raw bills data:', data);
-      console.log('Number of bills fetched:', data.length);
+      let filteredBills = [];
       
-      // For waiters, filter bills to show only those they created or are relevant to their location
-      // This ensures waiters see bills for tables/rooms they are responsible for
-      const filteredBills = data;
+      if (status === 'unpaid') {
+        // For unpaid: Get ALL unpaid bills (no date filter)
+        const data = await billsApi.listBills({
+          payment_status: 'unpaid',
+          limit: 100,
+        });
+        filteredBills = data;
+        console.log('Unpaid bills (all time):', filteredBills);
+      } else if (status === 'paid') {
+        // For paid: Get only today's paid bills
+        const data = await billsApi.listBills({
+          payment_status: 'paid',
+          limit: 100,
+        });
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        filteredBills = data.filter(bill => {
+          const billDate = new Date(bill.created_at);
+          billDate.setHours(0, 0, 0, 0);
+          return billDate.getTime() === today.getTime();
+        });
+        console.log('Paid bills (today only):', filteredBills);
+      } else {
+        // For 'all': Get unpaid (all time) + paid (today)
+        const unpaidData = await billsApi.listBills({
+          payment_status: 'unpaid',
+          limit: 100,
+        });
+        
+        const paidData = await billsApi.listBills({
+          payment_status: 'paid',
+          limit: 100,
+        });
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const todayPaid = paidData.filter(bill => {
+          const billDate = new Date(bill.created_at);
+          billDate.setHours(0, 0, 0, 0);
+          return billDate.getTime() === today.getTime();
+        });
+        
+        filteredBills = [...unpaidData, ...todayPaid];
+        console.log('All bills (unpaid all time + paid today):', filteredBills);
+      }
       
-      console.log('Filtered bills:', filteredBills);
       setBills(filteredBills);
       
       // Show success message if we found bills
-      if (data.length > 0) {
-        toast.success(`Loaded ${data.length} bills`);
+      if (filteredBills.length > 0) {
+        if (status === 'unpaid') {
+          toast.success(`Loaded ${filteredBills.length} unpaid bills`);
+        } else if (status === 'paid') {
+          toast.success(`Loaded ${filteredBills.length} paid bills for today`);
+        } else {
+          toast.success(`Loaded ${filteredBills.length} bills`);
+        }
       } else if (status === 'unpaid') {
         toast(`No unpaid bills found`);
+      } else {
+        toast(`No bills found`);
       }
     } catch (error: any) {
       console.error('Error fetching bills:', error);
@@ -128,7 +175,7 @@ export function BillsManagement() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Bills & Payments</h2>
-          <p className="text-muted-foreground">Manage customer bills and process payments</p>
+          <p className="text-muted-foreground">Manage customer bills and process payments (All unpaid bills, today's paid bills)</p>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
           <Plus className="mr-2 h-4 w-4" />
@@ -183,6 +230,7 @@ export function BillsManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats.total)}</div>
+            <p className="text-xs text-muted-foreground mt-1">All unpaid + today's paid</p>
           </CardContent>
         </Card>
       </div>

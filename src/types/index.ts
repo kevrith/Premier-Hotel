@@ -19,6 +19,7 @@ export interface User {
   full_name?: string;
   phone?: string;
   role: UserRole;
+  permissions?: string[];
   loyalty_points?: number;
   created_at: string;
   updated_at?: string;
