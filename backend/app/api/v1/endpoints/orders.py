@@ -84,7 +84,42 @@ async def get_all_orders(
         query = query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
         response = query.execute()
-        return [OrderResponse(**order) for order in response.data]
+        
+        # Collect all unique chef and waiter IDs
+        chef_ids = set()
+        waiter_ids = set()
+        for order in response.data:
+            if order.get("assigned_chef_id"):
+                chef_ids.add(order["assigned_chef_id"])
+            if order.get("assigned_waiter_id"):
+                waiter_ids.add(order["assigned_waiter_id"])
+        
+        # Fetch all staff info in one query
+        staff_map = {}
+        if chef_ids or waiter_ids:
+            all_staff_ids = list(chef_ids | waiter_ids)
+            try:
+                staff_response = supabase_admin.table("users").select("id, full_name").in_("id", all_staff_ids).execute()
+                for staff in staff_response.data:
+                    staff_map[staff["id"]] = {
+                        "full_name": staff.get('full_name', ''),
+                        "first_name": staff.get('full_name', '').split(' ')[0] if staff.get('full_name') else '',
+                        "last_name": ' '.join(staff.get('full_name', '').split(' ')[1:]) if staff.get('full_name') and len(staff.get('full_name', '').split(' ')) > 1 else ''
+                    }
+            except Exception as e:
+                logging.error(f"Error fetching staff: {e}")
+        
+        # Attach staff info to orders
+        orders_with_staff = []
+        for order in response.data:
+            order_dict = dict(order)
+            if order.get("assigned_chef_id") and order["assigned_chef_id"] in staff_map:
+                order_dict["assigned_chef"] = staff_map[order["assigned_chef_id"]]
+            if order.get("assigned_waiter_id") and order["assigned_waiter_id"] in staff_map:
+                order_dict["assigned_waiter"] = staff_map[order["assigned_waiter_id"]]
+            orders_with_staff.append(order_dict)
+        
+        return [OrderResponse(**order) for order in orders_with_staff]
 
     except Exception as e:
         raise HTTPException(
