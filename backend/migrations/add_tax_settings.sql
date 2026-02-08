@@ -42,3 +42,7 @@ COMMENT ON COLUMN orders.tax_inclusive IS 'Whether prices include tax (true) or 
 COMMENT ON COLUMN orders.vat_amount IS 'VAT amount charged on this order';
 COMMENT ON COLUMN orders.tourism_levy_amount IS 'Tourism levy amount charged on this order';
 COMMENT ON COLUMN orders.base_amount IS 'Base amount before taxes and levies';
+Why metrics show 0:
+
+Why metrics show 0:
+

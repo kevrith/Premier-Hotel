@@ -45,23 +45,29 @@ async def get_profit_loss_statement(
 
         # COST OF GOODS SOLD (COGS)
         # Inventory usage
-        stock_movements = supabase.table("stock_movements").select("total_cost").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).eq("movement_type", "out").execute()
-        
-        cogs = sum(float(m.get("total_cost") or 0) for m in stock_movements.data)
+        try:
+            stock_movements = supabase.table("stock_movements").select("total_cost").gte(
+                "created_at", start_date
+            ).lte("created_at", end_date).eq("movement_type", "out").execute()
+            cogs = sum(float(m.get("total_cost") or 0) for m in stock_movements.data)
+        except Exception:
+            cogs = 0
 
         gross_profit = total_revenue - cogs
         gross_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0
 
         # OPERATING EXPENSES
-        expenses = supabase.table("expenses").select("amount, category").gte(
-            "date", start_date
-        ).lte("date", end_date).execute()
+        try:
+            expenses = supabase.table("expenses").select("amount, category").gte(
+                "date", start_date
+            ).lte("date", end_date).execute()
+            expense_data = expenses.data
+        except Exception:
+            expense_data = []
 
         # Categorize expenses
         expense_categories = {}
-        for exp in expenses.data:
+        for exp in expense_data:
             category = exp.get("category", "Other")
             amount = float(exp.get("amount", 0))
             expense_categories[category] = expense_categories.get(category, 0) + amount

@@ -674,12 +674,24 @@ async def get_team_performance(
         for employee in employees:
             emp_id = employee["id"]
 
-            # Get orders created by this employee
-            emp_orders_result = supabase.table("orders").select(
+            # Get orders where employee is creator, waiter, or chef
+            created_orders = supabase.table("orders").select(
                 "id, customer_id, total_amount, status, created_at, location"
             ).eq("created_by_staff_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
+            
+            waiter_orders = supabase.table("orders").select(
+                "id, customer_id, total_amount, status, created_at, location"
+            ).eq("assigned_waiter_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
+            
+            chef_orders = supabase.table("orders").select(
+                "id, customer_id, total_amount, status, created_at, location"
+            ).eq("assigned_chef_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
 
-            emp_orders = emp_orders_result.data
+            # Combine and deduplicate orders
+            orders_dict = {}
+            for order in created_orders.data + waiter_orders.data + chef_orders.data:
+                orders_dict[order["id"]] = order
+            emp_orders = list(orders_dict.values())
 
             # Calculate metrics
             total_sales = sum(float(o.get("total_amount", 0)) for o in emp_orders)
