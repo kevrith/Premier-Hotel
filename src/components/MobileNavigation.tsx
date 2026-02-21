@@ -21,6 +21,7 @@ export function MobileNavigation() {
       case 'waiter':
         return '/waiter';
       case 'cleaner':
+      case 'housekeeping':
         return '/cleaner';
       case 'customer':
       default:

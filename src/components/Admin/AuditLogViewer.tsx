@@ -51,7 +51,7 @@ export function AuditLogViewer({ userId, userFullName }: AuditLogViewerProps) {
       if (userId) {
         data = await adminAPI.getUserAuditLog(userId, 100);
       } else {
-        data = await adminAPI.getAllAuditLogs(100);
+        data = await adminAPI.getAllAuditLogs(undefined, 100);
       }
       setLogs(data);
     } catch (error: any) {
@@ -107,7 +107,7 @@ export function AuditLogViewer({ userId, userFullName }: AuditLogViewerProps) {
     const matchesSearch =
       !searchTerm ||
       log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.performed_by_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      log.performed_by_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.ip_address?.toLowerCase().includes(searchTerm.toLowerCase());
 
     return matchesAction && matchesSearch;
@@ -230,7 +230,7 @@ export function AuditLogViewer({ userId, userFullName }: AuditLogViewerProps) {
                           <User className="h-4 w-4 text-gray-400" />
                           <div className="text-sm">
                             <div className="font-medium">{log.performed_by_name || 'Unknown'}</div>
-                            <div className="text-gray-500 text-xs">{log.performed_by_email}</div>
+                            <div className="text-gray-500 text-xs">{log.performed_by_name}</div>
                           </div>
                         </div>
                       </TableCell>

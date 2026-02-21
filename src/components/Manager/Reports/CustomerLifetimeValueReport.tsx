@@ -5,7 +5,7 @@ import { Users, DollarSign, TrendingUp } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ExportButton } from '@/components/Dashboard/ExportButton';
-import axios from 'axios';
+import api from '@/lib/api/client';
 
 export function CustomerLifetimeValueReport() {
   const [loading, setLoading] = useState(false);
@@ -15,14 +15,9 @@ export function CustomerLifetimeValueReport() {
   const fetchReport = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/financial-statements/customer-lifetime-value`,
-        {
-          params: { limit },
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
+      const response = await api.get('/financial/customer-lifetime-value', {
+        params: { limit }
+      });
       setData(response.data);
     } catch (error) {
       console.error('Error fetching CLV report:', error);

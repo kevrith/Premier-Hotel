@@ -19,6 +19,7 @@ interface AuthContextType {
   role: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isOfflineSession: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<any>;
   logout: () => void;
@@ -37,6 +38,7 @@ export function AuthProvider({ children }) {
     isLoading: storeLoading,
     hasHydrated,
     error,
+    isOfflineSession,
     login: storeLogin,
     logout: storeLogout,
     register: storeRegister,
@@ -77,6 +79,11 @@ export function AuthProvider({ children }) {
 
     const refreshInterval = setInterval(
       async () => {
+        // Skip refresh when offline - store handles this gracefully
+        if (!navigator.onLine) {
+          console.debug('Offline: skipping scheduled token refresh');
+          return;
+        }
         try {
           const success = await refreshAccessToken();
           if (!success) {
@@ -134,6 +141,7 @@ export function AuthProvider({ children }) {
     role,
     isAuthenticated,
     isLoading: isLoading || storeLoading,
+    isOfflineSession,
     error,
     login,
     logout,

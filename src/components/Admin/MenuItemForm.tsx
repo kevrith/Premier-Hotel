@@ -7,7 +7,13 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
 
-export default function MenuItemForm({ item, onSave, onCancel }) {
+interface MenuItemFormProps {
+  item?: any;
+  onSave: (data: any) => void;
+  onCancel: () => void;
+}
+
+export default function MenuItemForm({ item, onSave, onCancel }: MenuItemFormProps) {
   const [formData, setFormData] = useState(item || {
     name: '',
     name_sw: '',
@@ -23,24 +29,24 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
     popular: false,
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
   };
 
-  const addDietaryInfo = (info) => {
+  const addDietaryInfo = (info: any) => {
     if (info && !formData.dietary_info.includes(info)) {
-      setFormData(prev => ({
+      setFormData((prev: any) => ({
         ...prev,
         dietary_info: [...prev.dietary_info, info]
       }));
     }
   };
 
-  const removeDietaryInfo = (info) => {
-    setFormData(prev => ({
+  const removeDietaryInfo = (info: any) => {
+    setFormData((prev: any) => ({
       ...prev,
-      dietary_info: prev.dietary_info.filter(i => i !== info)
+      dietary_info: prev.dietary_info.filter((i: any) => i !== info)
     }));
   };
 
@@ -51,7 +57,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
           <label className="text-sm font-medium mb-2 block">Name</label>
           <Input
             value={formData.name}
-            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, name: e.target.value }))}
             required
           />
         </div>
@@ -60,7 +66,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
           <Input
             type="number"
             value={formData.base_price}
-            onChange={(e) => setFormData(prev => ({ ...prev, base_price: Number(e.target.value) }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, base_price: Number(e.target.value) }))}
             required
           />
         </div>
@@ -70,7 +76,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
         <label className="text-sm font-medium mb-2 block">Description</label>
         <Textarea
           value={formData.description || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+          onChange={(e) => setFormData((prev: any) => ({ ...prev, description: e.target.value }))}
           rows={3}
         />
       </div>
@@ -78,9 +84,9 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-sm font-medium mb-2 block">Category</label>
-          <Select 
-            value={formData.category} 
-            onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+          <Select
+            value={formData.category}
+            onValueChange={(value) => setFormData((prev: any) => ({ ...prev, category: value }))}
           >
             <SelectTrigger>
               <SelectValue />
@@ -102,7 +108,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
           <Input
             type="number"
             value={formData.preparation_time}
-            onChange={(e) => setFormData(prev => ({ ...prev, preparation_time: Number(e.target.value) }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, preparation_time: Number(e.target.value) }))}
           />
         </div>
       </div>
@@ -111,7 +117,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
         <label className="text-sm font-medium mb-2 block">Image URL</label>
         <Input
           value={formData.image_url || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, image_url: e.target.value }))}
+          onChange={(e) => setFormData((prev: any) => ({ ...prev, image_url: e.target.value }))}
           placeholder="https://..."
         />
       </div>
@@ -119,7 +125,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
       <div>
         <label className="text-sm font-medium mb-2 block">Dietary Information</label>
         <div className="flex flex-wrap gap-2 mb-2">
-          {formData.dietary_info.map((info, index) => (
+          {formData.dietary_info.map((info: any, index: any) => (
             <Badge key={index} variant="secondary" className="gap-1">
               {info}
               <X 
@@ -148,7 +154,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
         <label className="text-sm font-medium">Available for Order</label>
         <Switch
           checked={formData.available}
-          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, available: checked }))}
+          onCheckedChange={(checked) => setFormData((prev: any) => ({ ...prev, available: checked }))}
         />
       </div>
 
@@ -156,7 +162,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
         <label className="text-sm font-medium">Mark as Popular</label>
         <Switch
           checked={formData.popular}
-          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, popular: checked }))}
+          onCheckedChange={(checked) => setFormData((prev: any) => ({ ...prev, popular: checked }))}
         />
       </div>
 

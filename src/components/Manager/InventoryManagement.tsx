@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
+import apiClient from '@/lib/api/client';
 
 interface InventoryItem {
   id: string;
@@ -80,67 +81,62 @@ export function InventoryManagement() {
   const loadInventoryData = async () => {
     setIsLoading(true);
     try {
-      // Fetch real inventory data from backend
       const [itemsResponse, suppliersResponse, purchaseOrdersResponse] = await Promise.all([
-        fetch('/api/v1/inventory/items'),
-        fetch('/api/v1/inventory/suppliers'),
-        fetch('/api/v1/inventory/purchase-orders')
+        apiClient.get('/inventory/items'),
+        apiClient.get('/inventory/suppliers'),
+        apiClient.get('/inventory/purchase-orders')
       ]);
 
-      if (!itemsResponse.ok || !suppliersResponse.ok || !purchaseOrdersResponse.ok) {
-        throw new Error('Failed to fetch inventory data');
-      }
-
-      const itemsData = await itemsResponse.json();
-      const suppliersData = await suppliersResponse.json();
-      const purchaseOrdersData = await purchaseOrdersResponse.json();
-
-      setItems(itemsData);
-      setSuppliers(suppliersData);
-      setPurchaseOrders(purchaseOrdersData);
-      } catch (error: any) {
+      setItems(itemsResponse.data);
+      setSuppliers(suppliersResponse.data);
+      setPurchaseOrders(purchaseOrdersResponse.data);
+    } catch (error: any) {
       console.error('Error loading inventory data:', error);
       toast.error('Failed to load inventory data');
-      
-      // Fallback to localStorage data if API is not available
-      const cachedItems = localStorage.getItem('inventory_management_items');
-      const cachedSuppliers = localStorage.getItem('inventory_management_suppliers');
-      const cachedPurchaseOrders = localStorage.getItem('inventory_management_purchase_orders');
-      
-      if (cachedItems && cachedSuppliers && cachedPurchaseOrders) {
-        try {
-          setItems(JSON.parse(cachedItems));
-          setSuppliers(JSON.parse(cachedSuppliers));
-          setPurchaseOrders(JSON.parse(cachedPurchaseOrders));
-          toast.success('Using cached inventory data');
-        } catch (parseError) {
-          console.error('Failed to parse cached inventory data:', parseError);
-          toast.error('Cached inventory data is corrupted');
-        }
-      } else {
-        toast.error('No cached inventory data available');
-      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAdjustStock = (itemId: string, adjustment: number) => {
-    setItems(prev => prev.map(item =>
-      item.id === itemId
-        ? { ...item, quantity: Math.max(0, item.quantity + adjustment) }
-        : item
-    ));
-    toast.success('Stock adjusted successfully');
+  const handleAdjustStock = async (itemId: string, adjustment: number) => {
+    try {
+      const movementType = adjustment > 0 ? 'in' : 'out';
+      await apiClient.post('/inventory/movements', {
+        item_id: itemId,
+        movement_type: movementType,
+        quantity: Math.abs(adjustment),
+        reference_type: 'manual_adjustment',
+        notes: `Manual stock ${movementType === 'in' ? 'addition' : 'deduction'}`
+      });
+      toast.success('Stock adjusted successfully');
+      loadInventoryData();
+    } catch (error: any) {
+      console.error('Failed to adjust stock:', error);
+      toast.error('Failed to adjust stock');
+    }
   };
 
-  const handleRestock = (itemId: string) => {
-    setItems(prev => prev.map(item =>
-      item.id === itemId
-        ? { ...item, quantity: item.min_quantity + 20, last_restocked_at: new Date().toISOString() }
-        : item
-    ));
-    toast.success('Item restocked successfully');
+  const handleRestock = async (itemId: string) => {
+    try {
+      const item = items.find(i => i.id === itemId);
+      const restockQty = item ? item.min_quantity + 20 - item.quantity : 20;
+      if (restockQty <= 0) {
+        toast.error('Item already has sufficient stock');
+        return;
+      }
+      await apiClient.post('/inventory/movements', {
+        item_id: itemId,
+        movement_type: 'in',
+        quantity: restockQty,
+        reference_type: 'restock',
+        notes: 'Manual restock'
+      });
+      toast.success('Item restocked successfully');
+      loadInventoryData();
+    } catch (error: any) {
+      console.error('Failed to restock:', error);
+      toast.error('Failed to restock item');
+    }
   };
 
   const filteredItems = items.filter(item => {

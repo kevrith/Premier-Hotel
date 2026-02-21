@@ -52,7 +52,7 @@ export function AdminDashboard() {
     }
   };
 
-  const getHealthColor = (health) => {
+  const getHealthColor = (health: string) => {
     switch (health) {
       case 'excellent': return 'bg-primary';
       case 'good': return 'bg-accent';

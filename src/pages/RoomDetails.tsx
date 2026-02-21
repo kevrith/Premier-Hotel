@@ -263,13 +263,24 @@ export default function RoomDetails() {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
   useEffect(() => {
-    // Fetch room details (mock)
-    const roomData = mockRoomsData[id];
-    if (roomData) {
-      setRoom(roomData);
-    } else {
-      // Room not found, redirect to rooms page
-      navigate('/rooms');
+    // Fetch room details from API
+    const fetchRoom = async () => {
+      try {
+        const response = await fetch(`http://localhost:8000/api/v1/rooms/${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setRoom(data);
+        } else {
+          navigate('/rooms');
+        }
+      } catch (error) {
+        console.error('Error fetching room:', error);
+        navigate('/rooms');
+      }
+    };
+    
+    if (id) {
+      fetchRoom();
     }
   }, [id, navigate]);
 
@@ -292,8 +303,8 @@ export default function RoomDetails() {
     setCurrentImageIndex((prev) => (prev - 1 + room.images.length) % room.images.length);
   };
 
-  const averageRating = room.rating;
-  const totalReviews = room.reviews.length;
+  const averageRating = room.rating || 0;
+  const totalReviews = room.reviews?.length || 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -372,7 +383,7 @@ export default function RoomDetails() {
 
           {/* Thumbnail strip */}
           <div className="flex gap-2 mt-4 overflow-x-auto">
-            {room.images.map((image, index) => (
+            {room.images?.map((image, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentImageIndex(index)}
@@ -440,7 +451,7 @@ export default function RoomDetails() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {room.amenities.map((amenity) => {
+                      {room.amenities?.map((amenity) => {
                         const detail = amenityDetails[amenity];
                         if (!detail) return null;
                         const Icon = detail.icon;
@@ -479,7 +490,7 @@ export default function RoomDetails() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {room.reviews.map((review) => (
+                    {room.reviews?.map((review) => (
                       <div key={review.id} className="border-b last:border-0 pb-4 last:pb-0">
                         <div className="flex items-start justify-between mb-2">
                           <div>

@@ -73,61 +73,61 @@ export function useOperationsData() {
 
   const fetchRoomStats = async (): Promise<RoomStats> => {
     try {
-      console.log('Fetching room stats...');
-      
-      // Fetch real room data from API
-      const response = await api.get('/admin/users/stats');
-      const statsData = response.data || response.data || {};
+      // Fetch real room status from housekeeping endpoint
+      const response = await api.get('/housekeeping/stats/room-status');
+      const data = response.data || {};
 
-      // Calculate room stats from user data
-      const totalUsers = statsData.total_users || 0;
-      const activeUsers = statsData.active_users || 0;
-      const inactiveUsers = statsData.inactive_users || 0;
-      const terminatedUsers = statsData.terminated_users || 0;
+      const total = data.total_rooms || 0;
+      const clean = data.clean_rooms || 0;
+      const dirty = data.dirty_rooms || 0;
+      const inProgress = data.in_progress_rooms || 0;
+      const maintenance = data.maintenance_required || 0;
 
-      // For now, use user stats as room stats since we don't have room data
-      const roomStats = { 
-        occupied: activeUsers, 
-        available: totalUsers - activeUsers, 
-        cleaning: inactiveUsers, 
-        maintenance: terminatedUsers 
+      // Map to dashboard stats: occupied = dirty (guests checked in), available = clean
+      const roomStats = {
+        occupied: dirty,
+        available: clean,
+        cleaning: inProgress,
+        maintenance: maintenance
       };
-      
-      console.log('Room stats calculated:', roomStats);
+
       return roomStats;
     } catch (error) {
       console.error('Room stats error:', error);
-      // Return default values if API fails
       return { occupied: 0, available: 0, cleaning: 0, maintenance: 0 };
     }
   };
 
   const fetchKitchenStats = async (): Promise<KitchenStats> => {
     try {
-      console.log('Fetching kitchen stats...');
-      
-      // Fetch real kitchen data from API
-      const response = await api.get('/orders/kitchen');
-      const kitchenData = response.data || response.data || [];
+      const today = new Date().toISOString().split('T')[0];
 
-      // Calculate stats from orders
-      const pendingOrders = kitchenData.filter((order: any) => order.status === 'pending').length;
-      const inProgress = kitchenData.filter((order: any) => order.status === 'confirmed').length;
-      const completedToday = 0; // We don't have completed orders data
-      const avgPrepTime = 15; // Default value
+      // Fetch manager order stats for today (has completed count and avg time)
+      const [kitchenResponse, statsResponse] = await Promise.all([
+        api.get('/orders/kitchen').catch(() => ({ data: [] })),
+        api.get(`/orders/manager/stats?start_date=${today}&end_date=${today}`).catch(() => ({ data: {} }))
+      ]);
 
-      const kitchenStats = {
+      const kitchenData = kitchenResponse.data || [];
+      const statsData = statsResponse.data || {};
+
+      const pendingOrders = kitchenData.filter((order: any) =>
+        order.status === 'pending' || order.status === 'confirmed'
+      ).length;
+      const inProgress = kitchenData.filter((order: any) =>
+        order.status === 'preparing' || order.status === 'in_progress'
+      ).length;
+      const completedToday = statsData.completed_orders || 0;
+      const avgPrepTime = statsData.avg_completion_time || 0;
+
+      return {
         pendingOrders,
         inProgress,
         completedToday,
         avgPrepTime
       };
-      
-      console.log('Kitchen stats calculated:', kitchenStats);
-      return kitchenStats;
     } catch (error) {
       console.error('Kitchen stats error:', error);
-      // Return default values if API fails
       return { pendingOrders: 0, inProgress: 0, completedToday: 0, avgPrepTime: 0 };
     }
   };

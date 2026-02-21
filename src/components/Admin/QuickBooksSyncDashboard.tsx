@@ -18,7 +18,6 @@ import { toast } from 'react-hot-toast';
 import quickbooksService from '@/lib/api/services/quickbooksService';
 import type {
   QBSyncStatus,
-  QBSyncLog,
   QBPaginatedSyncLogs,
   SyncStatus,
   SyncType

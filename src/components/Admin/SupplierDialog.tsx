@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Star } from 'lucide-react';
+import { Save, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -95,6 +95,7 @@ const SupplierDialog: React.FC<SupplierDialogProps> = ({ open, supplier, onClose
         // Update existing supplier
         const updateData: UpdateSupplierRequest = {
           ...formData,
+          status: formData.status as UpdateSupplierRequest['status'],
           credit_limit: formData.credit_limit || undefined,
           rating: formData.rating || undefined,
         };

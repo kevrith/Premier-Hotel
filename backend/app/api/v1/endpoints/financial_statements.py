@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 from decimal import Decimal
 from app.middleware.auth_secure import require_role
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_supabase_admin
 from supabase import Client
 
 router = APIRouter()
@@ -17,29 +17,41 @@ async def get_profit_loss_statement(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Profit & Loss Statement"""
     try:
+        # Parse and format dates properly
         if not end_date:
-            end_date = datetime.now().isoformat()
+            end_dt = datetime.now()
+        else:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', ''))
+        
         if not start_date:
-            start_date = (datetime.now().replace(day=1)).isoformat()
+            start_dt = datetime.now().replace(day=1)
+        else:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', ''))
+        
+        # Format for query with full day range
+        start_query = start_dt.strftime("%Y-%m-%dT00:00:00")
+        end_query = end_dt.strftime("%Y-%m-%dT23:59:59")
 
         # REVENUE
         # Room Revenue
         bookings = supabase.table("bookings").select("paid_amount, total_amount").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).execute()
+            "created_at", start_query
+        ).lte("created_at", end_query).execute()
         
         room_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings.data)
 
-        # F&B Revenue
-        orders = supabase.table("orders").select("total_amount").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).eq("payment_status", "paid").execute()
+        # F&B Revenue - count all completed orders
+        orders = supabase.table("orders").select("total_amount, status").gte(
+            "created_at", start_query
+        ).lte("created_at", end_query).execute()
         
-        fb_revenue = sum(float(o.get("total_amount") or 0) for o in orders.data)
+        # Filter completed orders in Python
+        completed_orders = [o for o in orders.data if o.get("status") in ["completed", "delivered", "served"]]
+        fb_revenue = sum(float(o.get("total_amount") or 0) for o in completed_orders)
 
         total_revenue = room_revenue + fb_revenue
 
@@ -47,8 +59,8 @@ async def get_profit_loss_statement(
         # Inventory usage
         try:
             stock_movements = supabase.table("stock_movements").select("total_cost").gte(
-                "created_at", start_date
-            ).lte("created_at", end_date).eq("movement_type", "out").execute()
+                "created_at", start_query
+            ).lte("created_at", end_query).eq("movement_type", "out").execute()
             cogs = sum(float(m.get("total_cost") or 0) for m in stock_movements.data)
         except Exception:
             cogs = 0
@@ -59,8 +71,8 @@ async def get_profit_loss_statement(
         # OPERATING EXPENSES
         try:
             expenses = supabase.table("expenses").select("amount, category").gte(
-                "date", start_date
-            ).lte("date", end_date).execute()
+                "date", start_query
+            ).lte("date", end_query).execute()
             expense_data = expenses.data
         except Exception:
             expense_data = []
@@ -81,8 +93,8 @@ async def get_profit_loss_statement(
 
         return {
             "period": {
-                "start": start_date,
-                "end": end_date
+                "start": start_dt.strftime("%Y-%m-%d"),
+                "end": end_dt.strftime("%Y-%m-%d")
             },
             "revenue": {
                 "room_revenue": round(room_revenue, 2),
@@ -118,7 +130,7 @@ async def get_cash_flow_report(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Cash Flow Report"""
     try:
@@ -127,18 +139,37 @@ async def get_cash_flow_report(
         if not start_date:
             start_date = (datetime.now().replace(day=1)).isoformat()
 
-        # CASH INFLOWS
-        payments = supabase.table("payments").select("amount, payment_method, created_at").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).eq("status", "completed").execute()
-
+        # CASH INFLOWS - grouped by payment method (mpesa, cash, card)
         cash_inflows = {"mpesa": 0, "cash": 0, "card": 0}
-        for payment in payments.data:
-            amount = float(payment.get("amount", 0))
-            method = (payment.get("payment_method") or "cash").lower()
-            if method in ["mpesa", "m-pesa"]:
+
+        # From completed orders (F&B revenue)
+        orders = supabase.table("orders").select("total_amount, payment_method, created_at").gte(
+            "created_at", start_date
+        ).lte("created_at", end_date).in_("status", ["completed", "delivered", "served"]).execute()
+
+        for order in orders.data:
+            amount = float(order.get("total_amount", 0))
+            method = (order.get("payment_method") or "cash").lower()
+            if "mpesa" in method or "m-pesa" in method:
                 cash_inflows["mpesa"] += amount
-            elif method == "card":
+            elif "card" in method:
+                cash_inflows["card"] += amount
+            else:
+                cash_inflows["cash"] += amount
+
+        # From bookings (room revenue)
+        bookings = supabase.table("bookings").select("paid_amount, payment_method, created_at").gte(
+            "created_at", start_date
+        ).lte("created_at", end_date).execute()
+
+        for booking in bookings.data:
+            amount = float(booking.get("paid_amount", 0))
+            if amount <= 0:
+                continue
+            method = (booking.get("payment_method") or "cash").lower()
+            if "mpesa" in method or "m-pesa" in method:
+                cash_inflows["mpesa"] += amount
+            elif "card" in method:
                 cash_inflows["card"] += amount
             else:
                 cash_inflows["cash"] += amount
@@ -146,13 +177,13 @@ async def get_cash_flow_report(
         total_inflows = sum(cash_inflows.values())
 
         # CASH OUTFLOWS
-        expenses = supabase.table("expenses").select("amount, category, payment_method").gte(
-            "date", start_date
-        ).lte("date", end_date).execute()
+        expenses = supabase.table("expenses").select("amount, description, payment_method").gte(
+            "expense_date", start_date
+        ).lte("expense_date", end_date).execute()
 
         cash_outflows = {}
         for exp in expenses.data:
-            category = exp.get("category", "Other")
+            category = exp.get("description", "Other")
             amount = float(exp.get("amount", 0))
             cash_outflows[category] = cash_outflows.get(category, 0) + amount
 
@@ -189,7 +220,7 @@ async def get_cash_flow_report(
 async def get_balance_sheet(
     as_of_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Balance Sheet"""
     try:
@@ -200,8 +231,13 @@ async def get_balance_sheet(
         # Cash (from completed payments)
         payments = supabase.table("payments").select("amount, payment_method").lte(
             "created_at", as_of_date
-        ).eq("status", "completed").execute()
-        
+        ).eq("payment_status", "completed").execute()
+
+        # Also include revenue from completed orders (bills paid)
+        paid_bills = supabase.table("bills").select("total_amount").lte(
+            "created_at", as_of_date
+        ).eq("payment_status", "paid").execute()
+
         cash_by_method = {"mpesa": 0, "cash": 0, "card": 0}
         for p in payments.data:
             amount = float(p.get("amount", 0))
@@ -213,20 +249,32 @@ async def get_balance_sheet(
             else:
                 cash_by_method["cash"] += amount
 
+        # Add revenue from completed orders
+        order_revenue = sum(float(o.get("total_amount", 0)) for o in (
+            supabase.table("orders").select("total_amount").lte(
+                "created_at", as_of_date
+            ).in_("status", ["completed", "delivered", "served"]).execute()
+        ).data)
+        cash_by_method["cash"] += order_revenue
+
+        # Add bill payments
+        bill_revenue = sum(float(b.get("total_amount", 0)) for b in paid_bills.data)
+        cash_by_method["cash"] += bill_revenue
+
         # Subtract expenses
         expenses = supabase.table("expenses").select("amount").lte(
-            "date", as_of_date
+            "expense_date", as_of_date
         ).execute()
         total_expenses = sum(float(e.get("amount", 0)) for e in expenses.data)
-        
+
         net_cash = sum(cash_by_method.values()) - total_expenses
 
-        # Inventory value
-        inventory = supabase.table("inventory_items").select("quantity, unit_cost").eq(
-            "is_active", True
+        # Inventory value (inventory_items has current_stock, no unit_cost so value is approximate)
+        inventory = supabase.table("inventory_items").select("current_stock").eq(
+            "status", "active"
         ).execute()
         inventory_value = sum(
-            float(i.get("quantity", 0)) * float(i.get("unit_cost", 0)) 
+            float(i.get("current_stock", 0))
             for i in inventory.data
         )
 
@@ -290,7 +338,7 @@ async def get_vat_report(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate VAT Report (16% Kenya VAT)"""
     try:
@@ -309,11 +357,11 @@ async def get_vat_report(
         
         room_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings.data)
 
-        # F&B revenue
+        # F&B revenue (from completed orders)
         orders = supabase.table("orders").select("total_amount").gte(
             "created_at", start_date
-        ).lte("created_at", end_date).eq("payment_status", "paid").execute()
-        
+        ).lte("created_at", end_date).in_("status", ["completed", "delivered", "served"]).execute()
+
         fb_revenue = sum(float(o.get("total_amount") or 0) for o in orders.data)
 
         total_sales = room_revenue + fb_revenue
@@ -322,8 +370,8 @@ async def get_vat_report(
 
         # INPUT VAT (Purchases)
         expenses = supabase.table("expenses").select("amount").gte(
-            "date", start_date
-        ).lte("date", end_date).execute()
+            "expense_date", start_date
+        ).lte("expense_date", end_date).execute()
         
         total_purchases = sum(float(e.get("amount", 0)) for e in expenses.data)
         purchases_excl_vat = total_purchases / (1 + VAT_RATE)
@@ -367,7 +415,7 @@ async def get_comparative_analysis(
     current_end: str = Query(...),
     compare_to: str = Query("previous_period", description="previous_period or previous_year"),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Comparative Analysis Report"""
     try:
@@ -391,9 +439,9 @@ async def get_comparative_analysis(
             "created_at", current_start
         ).lte("created_at", current_end).execute()
         
-        current_orders = supabase.table("orders").select("total_amount").gte(
+        current_orders = supabase.table("orders").select("total_amount, status").gte(
             "created_at", current_start
-        ).lte("created_at", current_end).eq("payment_status", "paid").execute()
+        ).lte("created_at", current_end).in_("status", ["completed", "delivered", "served"]).execute()
 
         current_revenue = (
             sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in current_bookings.data) +
@@ -405,9 +453,9 @@ async def get_comparative_analysis(
             "created_at", prev_start
         ).lte("created_at", prev_end).execute()
         
-        prev_orders = supabase.table("orders").select("total_amount").gte(
+        prev_orders = supabase.table("orders").select("total_amount, status").gte(
             "created_at", prev_start
-        ).lte("created_at", prev_end).eq("payment_status", "paid").execute()
+        ).lte("created_at", prev_end).in_("status", ["completed", "delivered", "served"]).execute()
 
         prev_revenue = (
             sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in prev_bookings.data) +
@@ -462,14 +510,14 @@ async def get_inventory_closing_stock(
     as_of_date: str = Query(..., description="Date to get closing stock (YYYY-MM-DD)"),
     category_id: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get Inventory Closing Stock Report for any date"""
     try:
         # Get all inventory items
         items_query = supabase.table("inventory_items").select(
-            "id, sku, name, category_id, unit, quantity, unit_cost, min_quantity, reorder_point"
-        ).eq("is_active", True)
+            "id, sku, name, category_id, current_stock, minimum_stock, status"
+        ).eq("status", "active")
         
         if category_id:
             items_query = items_query.eq("category_id", category_id)
@@ -502,7 +550,7 @@ async def get_inventory_closing_stock(
         out_of_stock_count = 0
 
         for item in items:
-            current_quantity = Decimal(str(item["quantity"]))
+            current_quantity = Decimal(str(item.get("current_stock", 0)))
             closing_quantity = current_quantity
 
             # Reverse all movements after the cutoff date
@@ -519,12 +567,12 @@ async def get_inventory_closing_stock(
 
             # Ensure non-negative
             closing_quantity = max(Decimal("0"), closing_quantity)
-            unit_cost = Decimal(str(item["unit_cost"]))
-            item_value = closing_quantity * unit_cost
+            # No unit_cost column - set value to 0
+            item_value = Decimal("0")
             total_value += float(item_value)
 
             # Check stock levels
-            min_qty = Decimal(str(item.get("min_quantity", 0)))
+            min_qty = Decimal(str(item.get("minimum_stock", 0)))
             if closing_quantity == 0:
                 out_of_stock_count += 1
                 stock_status = "Out of Stock"
@@ -536,17 +584,17 @@ async def get_inventory_closing_stock(
 
             closing_stock_items.append({
                 "item_id": item["id"],
-                "sku": item["sku"],
+                "sku": item.get("sku", ""),
                 "name": item["name"],
                 "category_id": item.get("category_id"),
-                "unit": item["unit"],
+                "unit": "unit",
                 "closing_quantity": float(closing_quantity),
                 "current_quantity": float(current_quantity),
                 "quantity_change": float(current_quantity - closing_quantity),
-                "unit_cost": float(unit_cost),
+                "unit_cost": 0,
                 "closing_value": float(item_value),
                 "min_quantity": float(min_qty),
-                "reorder_point": float(item.get("reorder_point", 0)),
+                "reorder_point": float(min_qty),
                 "stock_status": stock_status,
                 "movements_since": len(item_movements)
             })
@@ -588,7 +636,7 @@ async def get_occupancy_report(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Occupancy & Room Performance Report"""
     try:
@@ -597,14 +645,14 @@ async def get_occupancy_report(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        # Get all rooms
-        rooms = supabase.table("rooms").select("id, room_number, room_type, price_per_night").execute()
+        # Get all rooms (column is 'type' not 'room_type', 'base_price' not 'price_per_night')
+        rooms = supabase.table("rooms").select("id, room_number, type, base_price").execute()
         total_rooms = len(rooms.data)
-        
-        # Get bookings in period
+
+        # Get bookings in period (columns are check_in_date/check_out_date)
         bookings = supabase.table("bookings").select(
-            "room_id, check_in, check_out, total_amount, paid_amount, guests, status"
-        ).gte("check_in", start_date).lte("check_out", end_date).execute()
+            "room_id, check_in_date, check_out_date, total_amount, paid_amount, guests, status"
+        ).gte("check_in_date", start_date).lte("check_out_date", end_date).execute()
 
         # Calculate room nights
         start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -616,18 +664,18 @@ async def get_occupancy_report(
         occupied_nights = 0
         revenue_by_type = {}
         bookings_by_type = {}
-        
+
         for booking in bookings.data:
             if booking.get("status") in ["confirmed", "checked_in", "checked_out"]:
-                check_in = datetime.fromisoformat(booking["check_in"].replace('Z', '+00:00'))
-                check_out = datetime.fromisoformat(booking["check_out"].replace('Z', '+00:00'))
+                check_in = datetime.fromisoformat(booking["check_in_date"].replace('Z', '+00:00'))
+                check_out = datetime.fromisoformat(booking["check_out_date"].replace('Z', '+00:00'))
                 nights = (check_out - check_in).days
                 occupied_nights += nights
-                
-                # Get room type
+
+                # Get room type (column is 'type')
                 room = next((r for r in rooms.data if r["id"] == booking["room_id"]), None)
                 if room:
-                    room_type = room["room_type"]
+                    room_type = room["type"]
                     revenue = float(booking.get("paid_amount") or booking.get("total_amount") or 0)
                     revenue_by_type[room_type] = revenue_by_type.get(room_type, 0) + revenue
                     bookings_by_type[room_type] = bookings_by_type.get(room_type, 0) + 1
@@ -641,7 +689,7 @@ async def get_occupancy_report(
         # Room type performance
         room_performance = []
         for room_type, revenue in revenue_by_type.items():
-            type_rooms = len([r for r in rooms.data if r["room_type"] == room_type])
+            type_rooms = len([r for r in rooms.data if r["type"] == room_type])
             type_bookings = bookings_by_type.get(room_type, 0)
             room_performance.append({
                 "room_type": room_type,
@@ -678,7 +726,7 @@ async def get_menu_profitability(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Menu Item Profitability Report"""
     try:
@@ -687,62 +735,67 @@ async def get_menu_profitability(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        # Get paid orders
-        orders = supabase.table("orders").select("id").gte(
+        # Get completed/served orders (items stored as JSON in orders.items)
+        orders = supabase.table("orders").select("id, items, total_amount, status").gte(
             "created_at", start_date
-        ).lte("created_at", end_date).eq("payment_status", "paid").execute()
+        ).lte("created_at", end_date).in_("status", ["completed", "delivered", "served"]).execute()
 
         if not orders.data:
-            return {"period": {"start": start_date, "end": end_date}, "items": []}
+            return {"period": {"start": start_date, "end": end_date}, "summary": {"total_revenue": 0, "total_cost": 0, "total_profit": 0, "avg_profit_margin": 0}, "items": []}
 
-        order_ids = [o["id"] for o in orders.data]
-        
-        # Get order items
-        order_items = supabase.table("order_items").select(
-            "menu_item_id, quantity, price"
-        ).in_("order_id", order_ids).execute()
-
-        # Get menu items
+        # Get menu items for cost data
         menu_items = supabase.table("menu_items").select(
-            "id, name, category, price, cost"
+            "id, name, category, base_price"
         ).execute()
-        
+
         menu_map = {item["id"]: item for item in menu_items.data}
 
-        # Calculate profitability
+        # Calculate profitability by parsing items JSON from each order
+        import json as json_module
         item_stats = {}
-        for order_item in order_items.data:
-            menu_id = order_item["menu_item_id"]
-            if menu_id not in menu_map:
-                continue
-                
-            menu = menu_map[menu_id]
-            qty = order_item["quantity"]
-            revenue = float(order_item["price"]) * qty
-            cost = float(menu.get("cost", 0)) * qty
-            profit = revenue - cost
-            
-            if menu_id not in item_stats:
-                item_stats[menu_id] = {
-                    "name": menu["name"],
-                    "category": menu.get("category", "Uncategorized"),
-                    "quantity_sold": 0,
-                    "revenue": 0,
-                    "cost": 0,
-                    "profit": 0
-                }
-            
-            item_stats[menu_id]["quantity_sold"] += qty
-            item_stats[menu_id]["revenue"] += revenue
-            item_stats[menu_id]["cost"] += cost
-            item_stats[menu_id]["profit"] += profit
+        for order in orders.data:
+            items_data = order.get("items", [])
+            if isinstance(items_data, str):
+                try:
+                    items_data = json_module.loads(items_data)
+                except (json_module.JSONDecodeError, TypeError):
+                    items_data = []
+            if not isinstance(items_data, list):
+                items_data = []
+
+            for item in items_data:
+                item_name = item.get("name", "Unknown")
+                qty = int(item.get("quantity", 1))
+                price = float(item.get("price", 0))
+                revenue = price * qty
+                # Use menu item cost if available, otherwise estimate at 30%
+                menu_id = item.get("menu_item_id", item.get("id", ""))
+                menu = menu_map.get(menu_id, {})
+                cost_per_unit = float(menu.get("cost", price * 0.3))
+                cost = cost_per_unit * qty
+                profit = revenue - cost
+
+                if item_name not in item_stats:
+                    item_stats[item_name] = {
+                        "name": item_name,
+                        "category": menu.get("category", "Uncategorized"),
+                        "quantity_sold": 0,
+                        "revenue": 0,
+                        "cost": 0,
+                        "profit": 0
+                    }
+
+                item_stats[item_name]["quantity_sold"] += qty
+                item_stats[item_name]["revenue"] += revenue
+                item_stats[item_name]["cost"] += cost
+                item_stats[item_name]["profit"] += profit
 
         # Format results
         profitability_items = []
-        for item_id, stats in item_stats.items():
+        for item_key, stats in item_stats.items():
             profit_margin = (stats["profit"] / stats["revenue"] * 100) if stats["revenue"] > 0 else 0
             profitability_items.append({
-                "item_id": item_id,
+                "item_id": item_key,
                 "name": stats["name"],
                 "category": stats["category"],
                 "quantity_sold": stats["quantity_sold"],
@@ -782,42 +835,85 @@ async def get_menu_profitability(
 async def get_customer_lifetime_value(
     limit: int = Query(50, ge=1, le=200),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
-    """Generate Customer Lifetime Value Report"""
+    """Generate Customer Lifetime Value Report using bookings and orders data"""
     try:
-        # Get all completed payments
-        payments = supabase.table("payments").select(
-            "user_id, amount, created_at"
-        ).eq("status", "completed").execute()
+        # Get all bookings with customer_id
+        bookings = supabase.table("bookings").select(
+            "customer_id, total_amount, paid_amount, created_at"
+        ).execute()
 
-        # Aggregate by customer
+        # Get all completed/served orders with customer_id
+        orders = supabase.table("orders").select(
+            "customer_id, total_amount, created_at, status, customer_name, customer_phone"
+        ).in_("status", ["completed", "delivered", "served"]).execute()
+
+        # Aggregate by customer_id
         customer_stats = {}
-        for payment in payments.data:
-            user_id = payment["user_id"]
-            amount = float(payment["amount"])
-            created_at = datetime.fromisoformat(payment["created_at"].replace('Z', '+00:00'))
-            
-            if user_id not in customer_stats:
-                customer_stats[user_id] = {
+
+        # Process bookings
+        for booking in bookings.data:
+            customer_id = booking.get("customer_id")
+            if not customer_id:
+                continue
+            amount = float(booking.get("paid_amount") or booking.get("total_amount") or 0)
+            if amount <= 0:
+                continue
+            created_at = datetime.fromisoformat(booking["created_at"].replace('Z', '+00:00'))
+
+            if customer_id not in customer_stats:
+                customer_stats[customer_id] = {
                     "total_spent": 0,
                     "transaction_count": 0,
                     "first_purchase": created_at,
-                    "last_purchase": created_at
+                    "last_purchase": created_at,
+                    "name": None,
+                    "phone": None
                 }
-            
-            customer_stats[user_id]["total_spent"] += amount
-            customer_stats[user_id]["transaction_count"] += 1
-            
-            if created_at < customer_stats[user_id]["first_purchase"]:
-                customer_stats[user_id]["first_purchase"] = created_at
-            if created_at > customer_stats[user_id]["last_purchase"]:
-                customer_stats[user_id]["last_purchase"] = created_at
 
-        # Get user details
+            customer_stats[customer_id]["total_spent"] += amount
+            customer_stats[customer_id]["transaction_count"] += 1
+            if created_at < customer_stats[customer_id]["first_purchase"]:
+                customer_stats[customer_id]["first_purchase"] = created_at
+            if created_at > customer_stats[customer_id]["last_purchase"]:
+                customer_stats[customer_id]["last_purchase"] = created_at
+
+        # Process orders
+        for order in orders.data:
+            customer_id = order.get("customer_id")
+            if not customer_id:
+                continue
+            amount = float(order.get("total_amount") or 0)
+            if amount <= 0:
+                continue
+            created_at = datetime.fromisoformat(order["created_at"].replace('Z', '+00:00'))
+
+            if customer_id not in customer_stats:
+                customer_stats[customer_id] = {
+                    "total_spent": 0,
+                    "transaction_count": 0,
+                    "first_purchase": created_at,
+                    "last_purchase": created_at,
+                    "name": order.get("customer_name"),
+                    "phone": order.get("customer_phone")
+                }
+
+            customer_stats[customer_id]["total_spent"] += amount
+            customer_stats[customer_id]["transaction_count"] += 1
+            if not customer_stats[customer_id]["name"] and order.get("customer_name"):
+                customer_stats[customer_id]["name"] = order.get("customer_name")
+            if created_at < customer_stats[customer_id]["first_purchase"]:
+                customer_stats[customer_id]["first_purchase"] = created_at
+            if created_at > customer_stats[customer_id]["last_purchase"]:
+                customer_stats[customer_id]["last_purchase"] = created_at
+
+        # Get user details for those with user IDs
         user_ids = list(customer_stats.keys())
-        users = supabase.table("users").select("id, full_name, email").in_("id", user_ids).execute()
-        user_map = {u["id"]: u for u in users.data}
+        user_map = {}
+        if user_ids:
+            users = supabase.table("users").select("id, full_name, email").in_("id", user_ids).execute()
+            user_map = {u["id"]: u for u in users.data}
 
         # Format results
         clv_list = []
@@ -825,10 +921,10 @@ async def get_customer_lifetime_value(
             user = user_map.get(user_id, {})
             customer_lifetime_days = (stats["last_purchase"] - stats["first_purchase"]).days + 1
             avg_transaction = stats["total_spent"] / stats["transaction_count"]
-            
+
             clv_list.append({
                 "user_id": user_id,
-                "name": user.get("full_name", "Unknown"),
+                "name": user.get("full_name") or stats.get("name") or "Unknown",
                 "email": user.get("email", ""),
                 "lifetime_value": round(stats["total_spent"], 2),
                 "transaction_count": stats["transaction_count"],

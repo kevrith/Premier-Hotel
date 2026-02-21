@@ -1,20 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, Calendar, TrendingUp, Plus, Edit, Trash2 } from 'lucide-react';
+import { DollarSign, Calendar, TrendingUp, Plus, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
 export function PricingManager() {
   const [basePricing, setBasePricing] = useState([]);
-  const [seasonalRates, setSeasonalRates] = useState([]);
-  const [discounts, setDiscounts] = useState([]);
+  const [_seasonalRates, _setSeasonalRates] = useState([]);
+  const [_discounts, _setDiscounts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
@@ -26,7 +23,7 @@ export function PricingManager() {
     try {
       setIsLoading(true);
       // Fetch room types and their base pricing
-      const { data: rooms, error } = await supabase
+      const { data: rooms, error } = await (supabase as any)
         .from('hotel_rooms')
         .select('id, name, room_type, base_price_kes, price_per_night');
 
@@ -45,7 +42,7 @@ export function PricingManager() {
 
   const updateRoomPrice = async (roomId: string, newPrice: number) => {
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('hotel_rooms')
         .update({ price_per_night: newPrice })
         .eq('id', roomId);

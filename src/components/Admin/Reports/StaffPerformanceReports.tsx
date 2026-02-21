@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Users, Clock, TrendingUp, Download, Award, Loader2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import reportsService, { EmployeeSalesData, EmployeeSalesResponse } from '@/lib/api/reports';
+import reportsService, { EmployeeSalesData } from '@/lib/api/reports';
 
 interface StaffMember {
   id: string;

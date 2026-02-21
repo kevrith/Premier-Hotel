@@ -1,25 +1,33 @@
 import { create } from 'zustand';
 import { db } from '@/db/schema';
+import OfflineService from '@/services/offlineService';
+import apiClient from '@/lib/api/client';
 
 const useOfflineStore = create((set, get) => ({
   // State
   isOnline: typeof window !== 'undefined' ? navigator.onLine : true,
-  syncQueue: [],
-  pendingChanges: [],
+  syncQueue: [] as any[],
+  pendingChanges: [] as any[],
   isSyncing: false,
-  lastSyncTime: null,
+  lastSyncTime: null as string | null,
+  isOfflineMode: false,
+  syncStatus: 'idle' as 'idle' | 'syncing' | 'error' | 'success',
 
   // Actions
-  setOnlineStatus: (status) => {
+  setOnlineStatus: (status: boolean) => {
     set({ isOnline: status });
 
     // Automatically trigger sync when coming online
-    if (status && get().syncQueue.length > 0) {
+    if (status && !get().isOfflineMode && get().syncQueue.length > 0) {
       get().syncData();
     }
   },
 
-  addToQueue: async (action) => {
+  toggleOfflineMode: () => {
+    set((state: any) => ({ isOfflineMode: !state.isOfflineMode }));
+  },
+
+  addToQueue: async (action: any) => {
     const queueItem = {
       id: Date.now().toString(),
       ...action,
@@ -29,7 +37,7 @@ const useOfflineStore = create((set, get) => ({
     };
 
     // Add to in-memory queue
-    set((state) => ({
+    set((state: any) => ({
       syncQueue: [...state.syncQueue, queueItem],
       pendingChanges: [...state.pendingChanges, queueItem]
     }));
@@ -48,10 +56,10 @@ const useOfflineStore = create((set, get) => ({
     }
   },
 
-  removeFromQueue: async (id) => {
-    set((state) => ({
-      syncQueue: state.syncQueue.filter((item) => item.id !== id),
-      pendingChanges: state.pendingChanges.filter((item) => item.id !== id)
+  removeFromQueue: async (id: string) => {
+    set((state: any) => ({
+      syncQueue: state.syncQueue.filter((item: any) => item.id !== id),
+      pendingChanges: state.pendingChanges.filter((item: any) => item.id !== id)
     }));
 
     // Remove from IndexedDB
@@ -63,57 +71,35 @@ const useOfflineStore = create((set, get) => ({
   },
 
   syncData: async () => {
-    const { isOnline, syncQueue, isSyncing } = get();
+    const { isOnline, syncQueue, isSyncing, isOfflineMode } = get();
 
-    if (!isOnline || isSyncing || syncQueue.length === 0) {
+    if (!isOnline || isOfflineMode || isSyncing || syncQueue.length === 0) {
       return;
     }
 
-    set({ isSyncing: true });
+    set({ isSyncing: true, syncStatus: 'syncing' });
 
-    const failedItems = [];
+    try {
+      const result = await OfflineService.processSyncQueue(apiClient);
 
-    for (const item of syncQueue) {
-      try {
-        // Mock API call - replace with actual API implementation
-        console.log('Syncing item:', item);
+      // Reload the queue from IndexedDB (successfully synced items already removed)
+      await get().loadQueueFromStorage();
 
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      set({
+        isSyncing: false,
+        syncStatus: result.failed > 0 ? 'error' : 'success',
+        lastSyncTime: new Date().toISOString(),
+      });
 
-        // Remove successfully synced item
-        await get().removeFromQueue(item.id);
-      } catch (error) {
-        console.error('Sync failed for item:', item, error);
+      // Reset status back to idle after a delay
+      setTimeout(() => set({ syncStatus: 'idle' }), 3000);
+    } catch (error) {
+      console.error('Sync failed:', error);
+      set({ isSyncing: false, syncStatus: 'error' });
 
-        // Increment retry count
-        const updatedItem = {
-          ...item,
-          retryCount: item.retryCount + 1,
-          lastError: error.message
-        };
-
-        if (updatedItem.retryCount >= updatedItem.maxRetries) {
-          // Max retries reached, remove from queue
-          console.error('Max retries reached for item:', item);
-          await get().removeFromQueue(item.id);
-        } else {
-          failedItems.push(updatedItem);
-        }
-      }
+      // Reset error status after a delay
+      setTimeout(() => set({ syncStatus: 'idle' }), 5000);
     }
-
-    // Update queue with failed items
-    if (failedItems.length > 0) {
-      set((state) => ({
-        syncQueue: failedItems
-      }));
-    }
-
-    set({
-      isSyncing: false,
-      lastSyncTime: new Date().toISOString()
-    });
   },
 
   clearQueue: () => {
@@ -126,7 +112,7 @@ const useOfflineStore = create((set, get) => ({
     try {
       const items = await db.pendingSync.orderBy('priority').reverse().toArray();
       set({
-        syncQueue: items.map((item, index) => ({
+        syncQueue: items.map((item) => ({
           id: item.id,
           ...item,
           retryCount: 0,

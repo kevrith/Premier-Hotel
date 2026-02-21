@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Eye, Edit2, Check, Send, X, Package, DollarSign } from 'lucide-react';
+import { Plus, Search, Eye, Check, Send, X, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -144,11 +144,11 @@ const PurchaseOrderList: React.FC = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'success' | 'destructive' | 'outline'; label: string }> = {
+    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       draft: { variant: 'default', label: 'Draft' },
       approved: { variant: 'secondary', label: 'Approved' },
       sent: { variant: 'outline', label: 'Sent' },
-      received: { variant: 'success', label: 'Received' },
+      received: { variant: 'default', label: 'Received' },
       cancelled: { variant: 'destructive', label: 'Cancelled' },
     };
     const config = variants[status] || { variant: 'default', label: status };
@@ -156,10 +156,10 @@ const PurchaseOrderList: React.FC = () => {
   };
 
   const getPaymentStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'success'; label: string }> = {
+    const variants: Record<string, { variant: 'default' | 'secondary'; label: string }> = {
       pending: { variant: 'default', label: 'Pending' },
       partial: { variant: 'secondary', label: 'Partial' },
-      paid: { variant: 'success', label: 'Paid' },
+      paid: { variant: 'default', label: 'Paid' },
     };
     const config = variants[status] || { variant: 'default', label: status };
     return <Badge variant={config.variant}>{config.label}</Badge>;

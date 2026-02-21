@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Calendar, DollarSign, Package, Truck, FileText } from 'lucide-react';
+import { Calendar, DollarSign, Package, Truck, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -23,11 +23,11 @@ const PurchaseOrderViewDialog: React.FC<PurchaseOrderViewDialogProps> = ({
   onClose,
 }) => {
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'success' | 'destructive' | 'outline'; label: string }> = {
+    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       draft: { variant: 'default', label: 'Draft' },
       approved: { variant: 'secondary', label: 'Approved' },
       sent: { variant: 'outline', label: 'Sent' },
-      received: { variant: 'success', label: 'Received' },
+      received: { variant: 'default', label: 'Received' },
       cancelled: { variant: 'destructive', label: 'Cancelled' },
     };
     const config = variants[status] || { variant: 'default', label: status };
@@ -35,10 +35,10 @@ const PurchaseOrderViewDialog: React.FC<PurchaseOrderViewDialogProps> = ({
   };
 
   const getPaymentStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'success'; label: string }> = {
+    const variants: Record<string, { variant: 'default' | 'secondary'; label: string }> = {
       pending: { variant: 'default', label: 'Pending' },
       partial: { variant: 'secondary', label: 'Partial' },
-      paid: { variant: 'success', label: 'Paid' },
+      paid: { variant: 'default', label: 'Paid' },
     };
     const config = variants[status] || { variant: 'default', label: status };
     return <Badge variant={config.variant}>{config.label}</Badge>;
@@ -184,22 +184,22 @@ const PurchaseOrderViewDialog: React.FC<PurchaseOrderViewDialogProps> = ({
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="font-medium">KES {purchaseOrder.subtotal.toLocaleString()}</span>
               </div>
-              {purchaseOrder.tax_amount > 0 && (
+              {(purchaseOrder.tax_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Tax:</span>
-                  <span className="font-medium">KES {purchaseOrder.tax_amount.toLocaleString()}</span>
+                  <span className="font-medium">KES {(purchaseOrder.tax_amount ?? 0).toLocaleString()}</span>
                 </div>
               )}
-              {purchaseOrder.shipping_cost > 0 && (
+              {(purchaseOrder.shipping_cost ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Shipping:</span>
-                  <span className="font-medium">KES {purchaseOrder.shipping_cost.toLocaleString()}</span>
+                  <span className="font-medium">KES {(purchaseOrder.shipping_cost ?? 0).toLocaleString()}</span>
                 </div>
               )}
-              {purchaseOrder.discount_amount > 0 && (
+              {(purchaseOrder.discount_amount ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Discount:</span>
-                  <span className="font-medium text-red-600">-KES {purchaseOrder.discount_amount.toLocaleString()}</span>
+                  <span className="font-medium text-red-600">-KES {(purchaseOrder.discount_amount ?? 0).toLocaleString()}</span>
                 </div>
               )}
               <div className="border-t pt-2 flex justify-between">

@@ -41,7 +41,7 @@ export function UserDeleteDialog({
   const [confirmationText, setConfirmationText] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
-  const [obligations, setObligations] = useState<{
+  const [_obligations, setObligations] = useState<{
     has_obligations: boolean;
     unpaid_bills?: number;
     pending_orders?: number;

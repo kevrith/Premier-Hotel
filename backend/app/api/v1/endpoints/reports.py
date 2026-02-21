@@ -17,7 +17,7 @@ async def get_reports_overview(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get overall reports overview with key metrics
@@ -42,8 +42,8 @@ async def get_reports_overview(
             "created_at", start_date
         ).lte("created_at", end_date).execute()
 
-        # Sum revenue from paid orders
-        order_revenue = sum(float(o.get("total_amount") or o.get("total") or 0) for o in orders.data if o.get("payment_status") in ["paid", "completed"])
+        # Sum revenue from paid/served orders
+        order_revenue = sum(float(o.get("total_amount") or 0) for o in orders.data if o.get("payment_status") in ["paid", "completed"] or o.get("status") in ["completed", "delivered", "served"])
 
         total_revenue = booking_revenue + order_revenue
 
@@ -98,7 +98,7 @@ async def get_revenue_analytics(
     end_date: Optional[str] = Query(None),
     group_by: str = Query("day", description="Group by: day, week, month"),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get revenue analytics grouped by time period
@@ -115,12 +115,12 @@ async def get_revenue_analytics(
         ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
 
         orders = supabase.table("orders").select(
-            "total_amount, total, payment_method, payment_status, created_at"
+            "total_amount, payment_method, payment_status, status, created_at"
         ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
         
-        # Get bills (waiter bills system)
+        # Get bills (waiter bills system) - bills table has no payment_method column
         bills = supabase.table("bills").select(
-            "total_amount, payment_method, payment_status, created_at"
+            "total_amount, payment_status, created_at"
         ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
 
         # Group revenue by date
@@ -168,7 +168,7 @@ async def get_revenue_analytics(
         for order in orders.data:
             # Count paid orders OR cash orders that are delivered/completed
             is_paid = order.get("payment_status") in ["paid", "completed"]
-            is_cash_completed = (order.get("payment_method", "").lower() == "cash" and 
+            is_cash_completed = ((order.get("payment_method") or "").lower() == "cash" and
                                 order.get("status") in ["delivered", "completed", "served"])
             
             if not (is_paid or is_cash_completed):
@@ -195,7 +195,7 @@ async def get_revenue_analytics(
                     "count": 0
                 }
 
-            amount = float(order.get("total_amount") or order.get("total") or 0)
+            amount = float(order.get("total_amount") or 0)
             if amount > 0:
                 revenue_by_date[date_key]["total"] += amount
                 revenue_by_date[date_key]["orders"] += amount
@@ -282,7 +282,7 @@ async def get_bookings_statistics(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get booking statistics and trends
@@ -298,6 +298,10 @@ async def get_bookings_statistics(
             "created_at", start_date
         ).lte("created_at", end_date).execute()
 
+        # Get rooms to map room_id -> room type
+        rooms = supabase.table("rooms").select("id, type").execute()
+        room_type_map = {r["id"]: r.get("type", "unknown") for r in rooms.data}
+
         # Calculate statistics
         total_bookings = len(bookings.data)
         status_counts = {}
@@ -309,20 +313,20 @@ async def get_bookings_statistics(
             booking_status = booking.get("status", "unknown")
             status_counts[booking_status] = status_counts.get(booking_status, 0) + 1
 
-            # Count by room type
-            room_type = booking.get("room_type", "unknown")
+            # Count by room type (lookup from rooms table)
+            room_type = room_type_map.get(booking.get("room_id"), "unknown")
             room_type_counts[room_type] = room_type_counts.get(room_type, 0) + 1
 
             # Calculate revenue
             if booking.get("total_amount"):
                 total_revenue += float(booking["total_amount"])
 
-        # Calculate average stay duration
+        # Calculate average stay duration (columns are check_in_date/check_out_date)
         durations = []
         for booking in bookings.data:
-            if booking.get("check_in") and booking.get("check_out"):
-                check_in = datetime.fromisoformat(booking["check_in"].replace('Z', '+00:00'))
-                check_out = datetime.fromisoformat(booking["check_out"].replace('Z', '+00:00'))
+            if booking.get("check_in_date") and booking.get("check_out_date"):
+                check_in = datetime.fromisoformat(booking["check_in_date"].replace('Z', '+00:00'))
+                check_out = datetime.fromisoformat(booking["check_out_date"].replace('Z', '+00:00'))
                 durations.append((check_out - check_in).days)
 
         avg_duration = sum(durations) / len(durations) if durations else 0
@@ -354,7 +358,7 @@ async def get_orders_statistics(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get order statistics and trends
@@ -389,17 +393,15 @@ async def get_orders_statistics(
             location = order.get("delivery_location", "unknown")
             delivery_location_counts[location] = delivery_location_counts.get(location, 0) + 1
 
-        # Get order items to find popular items
-        order_items = supabase.table("order_items").select(
-            "menu_item_id, quantity"
-        ).in_("order_id", [o["id"] for o in orders.data]).execute()
-
-        # Count items
+        # Get order items from the JSON items field in each order
         item_quantities = {}
-        for item in order_items.data:
-            menu_item_id = item["menu_item_id"]
-            quantity = item["quantity"]
-            item_quantities[menu_item_id] = item_quantities.get(menu_item_id, 0) + quantity
+        for order in orders.data:
+            order_items_list = order.get("items") or []
+            if isinstance(order_items_list, list):
+                for item in order_items_list:
+                    menu_item_id = item.get("menu_item_id") or item.get("name", "unknown")
+                    quantity = item.get("quantity", 0)
+                    item_quantities[menu_item_id] = item_quantities.get(menu_item_id, 0) + quantity
 
         # Get top 5 items
         top_items = sorted(item_quantities.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -433,7 +435,7 @@ async def get_top_customers(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get top customers by spending
@@ -502,7 +504,7 @@ async def get_employee_sales_report(
     department: Optional[str] = Query(None, description="Filter by department"),
     role: Optional[str] = Query(None, description="Filter by role"),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get detailed employee sales performance report.
@@ -515,8 +517,8 @@ async def get_employee_sales_report(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        # Get all staff users (waiter, chef, etc.)
-        users_query = supabase.table("profiles").select("id, full_name, email, role")
+        # Get all staff users (waiter, chef, etc.) from users table
+        users_query = supabase.table("users").select("id, full_name, email, role")
 
         # Apply role filter
         if role:
@@ -537,33 +539,50 @@ async def get_employee_sales_report(
 
         for employee in employees:
             emp_id = employee["id"]
+            emp_role = employee.get("role", "staff")
 
-            # Get orders assigned to this employee (waiter or chef)
-            waiter_orders = supabase.table("orders").select(
-                "id, customer_id, total, status, created_at, location"
-            ).eq("assigned_waiter_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
-            
-            chef_orders = supabase.table("orders").select(
-                "id, customer_id, total, status, created_at, location"
-            ).eq("assigned_chef_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
-            
-            # Combine and deduplicate orders
-            emp_orders_dict = {o["id"]: o for o in waiter_orders.data}
-            emp_orders_dict.update({o["id"]: o for o in chef_orders.data})
-            emp_orders = list(emp_orders_dict.values())
+            # Sales are attributed to waiters/creators only (not chefs) to avoid double counting.
+            # Chefs get "orders_prepared" count instead.
+            if emp_role == "chef":
+                # Chef: only get orders they prepared (no sales credit)
+                chef_orders = supabase.table("orders").select(
+                    "id, customer_id, total_amount, status, created_at, location, items"
+                ).eq("assigned_chef_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
 
-            # Get order items for this employee's orders
-            emp_order_ids = [o["id"] for o in emp_orders]
+                emp_orders = chef_orders.data
+                # Chefs don't get sales credit - sales belong to the waiter who took the order
+                total_sales = 0
+            else:
+                # Waiter/manager/staff: get sales from orders they created or were assigned to
+                waiter_orders = supabase.table("orders").select(
+                    "id, customer_id, total_amount, status, created_at, location, items"
+                ).eq("assigned_waiter_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
+
+                created_orders = supabase.table("orders").select(
+                    "id, customer_id, total_amount, status, created_at, location, items"
+                ).eq("created_by_staff_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
+
+                # Combine and deduplicate (waiter + creator, no chef)
+                emp_orders_dict = {o["id"]: o for o in waiter_orders.data}
+                emp_orders_dict.update({o["id"]: o for o in created_orders.data})
+                emp_orders = list(emp_orders_dict.values())
+                total_sales = sum(float(o.get("total_amount", 0)) for o in emp_orders)
+
+            # Extract order items from the JSON items array in each order
             emp_order_items = []
-            if emp_order_ids:
-                emp_order_items_result = supabase.table("order_items").select(
-                    "order_id, menu_item_id, quantity, price"
-                ).in_("order_id", emp_order_ids).execute()
-                emp_order_items = emp_order_items_result.data
+            for order in emp_orders:
+                order_items = order.get("items") or []
+                if isinstance(order_items, list):
+                    for item in order_items:
+                        emp_order_items.append({
+                            "menu_item_id": item.get("menu_item_id"),
+                            "quantity": item.get("quantity", 0),
+                            "price": item.get("price", 0),
+                            "name": item.get("name", "Unknown")
+                        })
 
-            total_sales = sum(float(o.get("total", 0)) for o in emp_orders)
             total_orders = len(emp_orders)
-            completed_orders = len([o for o in emp_orders if o.get("status") in ["delivered", "completed"]])
+            completed_orders = len([o for o in emp_orders if o.get("status") in ["delivered", "completed", "served"]])
 
             total_items_sold = sum(oi.get("quantity", 0) for oi in emp_order_items)
 
@@ -579,20 +598,18 @@ async def get_employee_sales_report(
             orders_this_week = len([o for o in emp_orders if datetime.fromisoformat(o["created_at"].replace('Z', '+00:00')).date() >= this_week_start])
             orders_this_month = len([o for o in emp_orders if datetime.fromisoformat(o["created_at"].replace('Z', '+00:00')).date() >= this_month_start])
 
-            # Find most popular item
+            # Find most popular item (using name from JSON items)
             item_counts = {}
+            item_names = {}
             for oi in emp_order_items:
-                item_id = oi.get("menu_item_id")
+                item_name = oi.get("name", "Unknown")
+                item_id = oi.get("menu_item_id") or item_name
                 if item_id:
                     item_counts[item_id] = item_counts.get(item_id, 0) + oi.get("quantity", 0)
+                    item_names[item_id] = item_name
 
             top_item_id = max(item_counts.items(), key=lambda x: x[1])[0] if item_counts else None
-            top_selling_item = "N/A"
-
-            if top_item_id:
-                menu_item_result = supabase.table("menu_items").select("name").eq("id", top_item_id).execute()
-                if menu_item_result.data:
-                    top_selling_item = menu_item_result.data[0].get("name", "N/A")
+            top_selling_item = item_names.get(top_item_id, "N/A") if top_item_id else "N/A"
 
             # Get first and last sale times
             first_sale_time = "N/A"
@@ -625,14 +642,17 @@ async def get_employee_sales_report(
         # Sort by total sales descending
         employee_sales_list.sort(key=lambda x: x["total_sales"], reverse=True)
 
+        # Summary totals exclude chefs to avoid double counting
+        # (chef orders are the same orders waiters posted)
+        non_chef = [e for e in employee_sales_list if e["role"] != "chef"]
         return {
             "period": {
                 "start": start_date,
                 "end": end_date
             },
             "total_employees": len(employee_sales_list),
-            "total_sales": sum(e["total_sales"] for e in employee_sales_list),
-            "total_orders": sum(e["total_orders"] for e in employee_sales_list),
+            "total_sales": sum(e["total_sales"] for e in non_chef),
+            "total_orders": sum(e["total_orders"] for e in non_chef),
             "employees": employee_sales_list
         }
 
@@ -786,7 +806,7 @@ async def process_housekeeping_report(
 async def get_daily_sales_report(
     date: str,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get detailed daily sales report for a specific date.
@@ -813,16 +833,16 @@ async def get_daily_sales_report(
 
         bookings = bookings_result.data
 
-        # Get orders for the day
+        # Get orders for the day (include items JSON field for category breakdown)
         orders_result = supabase.table("orders").select(
-            "id, status, created_at, total_amount, payment_method, payment_status"
+            "id, status, created_at, total_amount, payment_method, payment_status, items"
         ).gte("created_at", start_of_day).lte("created_at", end_of_day).execute()
 
         orders = orders_result.data
 
         # Calculate total revenue
         booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings)
-        order_revenue = sum(float(o.get("total_amount") or 0) for o in orders if o.get("payment_status") in ["paid", "completed"])
+        order_revenue = sum(float(o.get("total_amount") or 0) for o in orders if o.get("payment_status") in ["paid", "completed"] or o.get("status") in ["completed", "delivered", "served"])
         total_revenue = booking_revenue + order_revenue
 
         # Calculate total orders
@@ -871,39 +891,46 @@ async def get_daily_sales_report(
         # Menu categories breakdown (from orders)
         menu_categories = {}
         
-        # Get order items for the day
+        # Get order items from the JSON items field in each order
         if orders:
-            order_ids = [o["id"] for o in orders]
-            order_items_result = supabase.table("order_items").select(
-                "menu_item_id, quantity, price"
-            ).in_("order_id", order_ids).execute()
-
-            order_items = order_items_result.data
+            import json as json_lib
+            all_order_items = []
+            for order in orders:
+                items_list = order.get("items") or []
+                if isinstance(items_list, str):
+                    try:
+                        items_list = json_lib.loads(items_list)
+                    except (json_lib.JSONDecodeError, TypeError):
+                        items_list = []
+                if isinstance(items_list, list):
+                    all_order_items.extend(items_list)
 
             # Get menu items to determine categories
-            if order_items:
-                menu_item_ids = [item["menu_item_id"] for item in order_items]
-                menu_items_result = supabase.table("menu_items").select(
-                    "id, name, category"
-                ).in_("id", menu_item_ids).execute()
-
-                menu_items = menu_items_result.data
-                menu_item_map = {item["id"]: item for item in menu_items}
+            if all_order_items:
+                menu_item_ids = [item.get("menu_item_id") for item in all_order_items if item.get("menu_item_id")]
+                menu_item_map = {}
+                if menu_item_ids:
+                    menu_items_result = supabase.table("menu_items").select(
+                        "id, name, category"
+                    ).in_("id", list(set(menu_item_ids))).execute()
+                    menu_item_map = {item["id"]: item for item in menu_items_result.data}
 
                 # Aggregate by category
-                for item in order_items:
-                    menu_item = menu_item_map.get(item["menu_item_id"])
+                for item in all_order_items:
+                    menu_item = menu_item_map.get(item.get("menu_item_id"))
+                    category = "Uncategorized"
                     if menu_item:
                         category = menu_item.get("category", "Uncategorized")
-                        if category not in menu_categories:
-                            menu_categories[category] = {
-                                "category": category,
-                                "revenue": 0,
-                                "items_sold": 0
-                            }
-                        
-                        menu_categories[category]["revenue"] += float(item.get("price", 0)) * item.get("quantity", 0)
-                        menu_categories[category]["items_sold"] += item.get("quantity", 0)
+
+                    if category not in menu_categories:
+                        menu_categories[category] = {
+                            "category": category,
+                            "revenue": 0,
+                            "items_sold": 0
+                        }
+
+                    menu_categories[category]["revenue"] += float(item.get("price", 0)) * item.get("quantity", 0)
+                    menu_categories[category]["items_sold"] += item.get("quantity", 0)
 
         # Convert menu_categories to list
         menu_categories_list = list(menu_categories.values())
@@ -932,7 +959,7 @@ async def get_category_breakdown(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get sales breakdown by menu category"""
     try:
@@ -941,29 +968,35 @@ async def get_category_breakdown(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        orders = supabase.table("orders").select("id, created_at").gte(
+        orders = supabase.table("orders").select("id, created_at, items, status").gte(
             "created_at", start_date
-        ).lte("created_at", end_date).eq("payment_status", "paid").execute()
+        ).lte("created_at", end_date).in_("status", ["completed", "delivered", "served"]).execute()
 
         if not orders.data:
             return []
 
-        order_ids = [o["id"] for o in orders.data]
-        order_items = supabase.table("order_items").select(
-            "menu_item_id, quantity, price"
-        ).in_("order_id", order_ids).execute()
+        # Extract items from JSON field
+        all_items = []
+        for order in orders.data:
+            items_list = order.get("items") or []
+            if isinstance(items_list, list):
+                all_items.extend(items_list)
 
-        menu_item_ids = list(set(item["menu_item_id"] for item in order_items.data))
-        menu_items = supabase.table("menu_items").select(
-            "id, category"
-        ).in_("id", menu_item_ids).execute()
+        if not all_items:
+            return []
 
-        menu_map = {item["id"]: item["category"] for item in menu_items.data}
+        menu_item_ids = list(set(item.get("menu_item_id") for item in all_items if item.get("menu_item_id")))
+        menu_map = {}
+        if menu_item_ids:
+            menu_items = supabase.table("menu_items").select(
+                "id, category"
+            ).in_("id", menu_item_ids).execute()
+            menu_map = {item["id"]: item["category"] for item in menu_items.data}
+
         category_data = {}
-
-        for item in order_items.data:
-            category = menu_map.get(item["menu_item_id"], "Other")
-            value = float(item["price"]) * item["quantity"]
+        for item in all_items:
+            category = menu_map.get(item.get("menu_item_id"), "Other")
+            value = float(item.get("price", 0)) * item.get("quantity", 0)
             category_data[category] = category_data.get(category, 0) + value
 
         return [{"name": k, "value": round(v, 2)} for k, v in category_data.items()]
@@ -1021,13 +1054,24 @@ async def get_employee_details(
             all_tasks = tasks_result.data
         else:
             # Get all orders for this employee (sales-based roles)
-            orders_result = supabase.table("orders").select(
-                "*"
-            ).eq("created_by_staff_id", employee_id).gte(
-                "created_at", start_date
-            ).lte("created_at", end_date).execute()
+            # Check all three assignment fields
+            created_result = supabase.table("orders").select("*").eq(
+                "created_by_staff_id", employee_id
+            ).gte("created_at", start_date).lte("created_at", end_date).execute()
 
-            all_orders = orders_result.data
+            waiter_result = supabase.table("orders").select("*").eq(
+                "assigned_waiter_id", employee_id
+            ).gte("created_at", start_date).lte("created_at", end_date).execute()
+
+            chef_result = supabase.table("orders").select("*").eq(
+                "assigned_chef_id", employee_id
+            ).gte("created_at", start_date).lte("created_at", end_date).execute()
+
+            # Combine and deduplicate
+            orders_dict = {o["id"]: o for o in created_result.data}
+            orders_dict.update({o["id"]: o for o in waiter_result.data})
+            orders_dict.update({o["id"]: o for o in chef_result.data})
+            all_orders = list(orders_dict.values())
 
         # Process data based on role type
         if is_housekeeping:
@@ -1037,20 +1081,10 @@ async def get_employee_details(
             )
 
         # Continue with sales-based processing for other roles
-        # Get all order items for these orders
+        # Extract order items from the JSON items field in each order
         if all_orders:
-            order_ids = [order["id"] for order in all_orders]
-            order_items_result = supabase.table("order_items").select("*").in_("order_id", order_ids).execute()
-            order_items_by_order = {}
-            for item in order_items_result.data:
-                order_id = item["order_id"]
-                if order_id not in order_items_by_order:
-                    order_items_by_order[order_id] = []
-                order_items_by_order[order_id].append(item)
-
-            # Attach order items to their orders
             for order in all_orders:
-                order["order_items"] = order_items_by_order.get(order["id"], [])
+                order["order_items"] = order.get("items") or []
 
         # Build transaction history
         transactions = []
@@ -1063,7 +1097,7 @@ async def get_employee_details(
         daily_sales = {}
 
         for order in all_orders:
-            order_total = float(order.get("total", 0))
+            order_total = float(order.get("total_amount", 0))
             order_date = order["created_at"]
             payment_method = order.get("payment_method", "Unknown")
             order_status = order.get("status", "pending")
@@ -1079,14 +1113,15 @@ async def get_employee_details(
                 "items": []
             }
 
-            # Count items
+            # Count items from JSON items array
             if order.get("order_items"):
                 for item in order["order_items"]:
-                    menu_item_id = item.get("menu_item_id")
+                    item_name = item.get("name", "Unknown")
+                    menu_item_id = item.get("menu_item_id") or item_name
                     quantity = item.get("quantity", 1)
 
                     transaction["items"].append({
-                        "name": item.get("menu_item_name", "Unknown"),
+                        "name": item_name,
                         "quantity": quantity,
                         "price": float(item.get("price", 0))
                     })
@@ -1097,7 +1132,7 @@ async def get_employee_details(
                             items_sold_count[menu_item_id]["quantity"] += quantity
                         else:
                             items_sold_count[menu_item_id] = {
-                                "name": item.get("menu_item_name", "Unknown"),
+                                "name": item_name,
                                 "quantity": quantity,
                                 "revenue": 0
                             }
@@ -1106,7 +1141,7 @@ async def get_employee_details(
             transactions.append(transaction)
 
             # Aggregate stats
-            if order_status == "completed":
+            if order_status in ["completed", "delivered", "served"]:
                 completed_orders += 1
                 total_sales += order_total
 
@@ -1161,13 +1196,26 @@ async def get_employee_details(
         # Calculate rank among peers (same role only)
         peer_sales = []
         for emp in all_employees_result.data:
-            emp_orders = supabase.table("orders").select("total").eq(
+            # Query all assignment fields
+            created_ord = supabase.table("orders").select("id, total_amount").eq(
                 "created_by_staff_id", emp["id"]
-            ).eq("status", "completed").gte(
-                "created_at", start_date
-            ).lte("created_at", end_date).execute()
+            ).in_("status", ["completed", "delivered", "served"]).gte(
+                "created_at", start_date).lte("created_at", end_date).execute()
+            waiter_ord = supabase.table("orders").select("id, total_amount").eq(
+                "assigned_waiter_id", emp["id"]
+            ).in_("status", ["completed", "delivered", "served"]).gte(
+                "created_at", start_date).lte("created_at", end_date).execute()
+            chef_ord = supabase.table("orders").select("id, total_amount").eq(
+                "assigned_chef_id", emp["id"]
+            ).in_("status", ["completed", "delivered", "served"]).gte(
+                "created_at", start_date).lte("created_at", end_date).execute()
 
-            emp_total = sum(float(o.get("total", 0)) for o in emp_orders.data)
+            # Deduplicate
+            peer_orders_dict = {o["id"]: o for o in created_ord.data}
+            peer_orders_dict.update({o["id"]: o for o in waiter_ord.data})
+            peer_orders_dict.update({o["id"]: o for o in chef_ord.data})
+
+            emp_total = sum(float(o.get("total_amount", 0)) for o in peer_orders_dict.values())
             peer_sales.append({"id": emp["id"], "name": emp.get("full_name"), "sales": emp_total, "role": emp.get("role")})
 
         peer_sales.sort(key=lambda x: x["sales"], reverse=True)

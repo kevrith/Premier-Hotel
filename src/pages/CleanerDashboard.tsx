@@ -7,10 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Sparkles,
@@ -20,87 +17,22 @@ import {
   BedDouble,
   TrendingUp,
   ClipboardCheck,
-  Wrench,
   Package,
-  MessageSquare,
-  Send,
-  WifiOff,
   PlayCircle,
-  StopCircle,
-  ListChecks
+  ListChecks,
+  WifiOff,
+  Loader2,
+  Calendar,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-
-const mockRooms = [
-  {
-    id: 'R-101',
-    number: '101',
-    floor: '1',
-    type: 'Standard Room',
-    status: 'pending',
-    priority: 'urgent',
-    lastCleaned: null,
-    checkoutTime: new Date(Date.now() - 30 * 60 * 1000),
-    nextCheckin: new Date(Date.now() + 2 * 60 * 60 * 1000),
-    notes: 'Guest checked out 30 mins ago. New guest arriving in 2 hours.',
-    availability: 'available'
-  },
-  {
-    id: 'R-205',
-    number: '205',
-    floor: '2',
-    type: 'Deluxe Suite',
-    status: 'in-progress',
-    priority: 'high',
-    lastCleaned: null,
-    assignedTo: 'Sarah',
-    startedAt: new Date(Date.now() - 15 * 60 * 1000),
-    notes: 'Deep cleaning required',
-    availability: 'available'
-  },
-  {
-    id: 'R-301',
-    number: '301',
-    floor: '3',
-    type: 'Executive Suite',
-    status: 'pending',
-    priority: 'medium',
-    lastCleaned: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    notes: 'Daily turnover - guest staying',
-    availability: 'available'
-  },
-  {
-    id: 'R-102',
-    number: '102',
-    floor: '1',
-    type: 'Standard Room',
-    status: 'completed',
-    priority: 'low',
-    lastCleaned: new Date(Date.now() - 45 * 60 * 1000),
-    cleanedBy: 'Sarah',
-    notes: null,
-    availability: 'available'
-  }
-];
-
-const mockMaintenanceIssues = [
-  {
-    id: 'M-001',
-    room: '203',
-    issue: 'Leaking faucet in bathroom',
-    priority: 'high',
-    reportedAt: new Date(Date.now() - 60 * 60 * 1000),
-    status: 'pending'
-  },
-  {
-    id: 'M-002',
-    room: '305',
-    issue: 'Air conditioning not cooling properly',
-    priority: 'medium',
-    reportedAt: new Date(Date.now() - 120 * 60 * 1000),
-    status: 'in-progress'
-  }
-];
+import housekeepingService, {
+  HousekeepingTask,
+  HousekeepingStats,
+  RoomStatusSummary,
+  HousekeepingSupply
+} from '@/lib/api/housekeeping';
+import { roomsAPI, Room } from '@/lib/api/rooms';
 
 // Inspection checklist items
 const INSPECTION_ITEMS = [
@@ -116,22 +48,17 @@ const INSPECTION_ITEMS = [
   'Check all appliances working'
 ];
 
-// Inventory items for tracking
-const initialInventory = [
-  { id: 'S-001', name: 'Bed Linens', quantity: 45, unit: 'sets', minStock: 20 },
-  { id: 'S-002', name: 'Bath Towels', quantity: 80, unit: 'pcs', minStock: 30 },
-  { id: 'S-003', name: 'Hand Towels', quantity: 60, unit: 'pcs', minStock: 25 },
-  { id: 'S-004', name: 'Toilet Paper', quantity: 120, unit: 'rolls', minStock: 50 },
-  { id: 'S-005', name: 'Shampoo Bottles', quantity: 35, unit: 'pcs', minStock: 20 },
-  { id: 'S-006', name: 'Soap Bars', quantity: 40, unit: 'pcs', minStock: 25 },
-  { id: 'S-007', name: 'Cleaning Spray', quantity: 8, unit: 'bottles', minStock: 10 },
-  { id: 'S-008', name: 'Trash Bags', quantity: 90, unit: 'pcs', minStock: 40 }
-];
-
 export default function CleanerDashboard() {
   const navigate = useNavigate();
   const { user, isAuthenticated, role } = useAuth();
-  const [rooms, setRooms] = useState(mockRooms);
+
+  // Data state
+  const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
+  const [, setStats] = useState<HousekeepingStats | null>(null);
+  const [, setRoomStatus] = useState<RoomStatusSummary | null>(null);
+  const [supplies, setSupplies] = useState<HousekeepingSupply[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('assigned');
 
   // Offline functionality
@@ -140,22 +67,12 @@ export default function CleanerDashboard() {
 
   // Inspection checklist
   const [showInspectionDialog, setShowInspectionDialog] = useState(false);
-  const [selectedRoomForInspection, setSelectedRoomForInspection] = useState<any>(null);
+  const [selectedTaskForInspection, setSelectedTaskForInspection] = useState<HousekeepingTask | null>(null);
   const [checklistItems, setChecklistItems] = useState<Record<string, boolean>>({});
 
   // Time tracking
   const [roomTimers, setRoomTimers] = useState<Record<string, { startTime: Date; elapsed: number }>>({});
   const timerIntervalRef = useRef<any>(null);
-
-  // Inventory management
-  const [inventory, setInventory] = useState(initialInventory);
-  const [showInventoryDialog, setShowInventoryDialog] = useState(false);
-  const [restockRequests, setRestockRequests] = useState<any[]>([]);
-
-  // Communication
-  const [messages, setMessages] = useState<any[]>([]);
-  const [showMessageDialog, setShowMessageDialog] = useState(false);
-  const [newMessage, setNewMessage] = useState('');
 
   // Load offline queue and timers from localStorage on mount
   useEffect(() => {
@@ -163,16 +80,17 @@ export default function CleanerDashboard() {
     const savedTimers = localStorage.getItem('roomTimers');
 
     if (savedQueue) {
-      setOfflineQueue(JSON.parse(savedQueue));
+      try { setOfflineQueue(JSON.parse(savedQueue)); } catch { /* ignore */ }
     }
 
     if (savedTimers) {
-      const parsedTimers = JSON.parse(savedTimers);
-      // Reconstruct Date objects
-      Object.keys(parsedTimers).forEach(key => {
-        parsedTimers[key].startTime = new Date(parsedTimers[key].startTime);
-      });
-      setRoomTimers(parsedTimers);
+      try {
+        const parsedTimers = JSON.parse(savedTimers);
+        Object.keys(parsedTimers).forEach(key => {
+          parsedTimers[key].startTime = new Date(parsedTimers[key].startTime);
+        });
+        setRoomTimers(parsedTimers);
+      } catch { /* ignore */ }
     }
   }, []);
 
@@ -183,7 +101,6 @@ export default function CleanerDashboard() {
       toast.success('Connection restored');
       processOfflineQueue();
     };
-
     const handleOffline = () => {
       setIsOnline(false);
       toast.error('No internet connection. Working offline.');
@@ -191,7 +108,6 @@ export default function CleanerDashboard() {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -203,47 +119,78 @@ export default function CleanerDashboard() {
     timerIntervalRef.current = setInterval(() => {
       setRoomTimers(prev => {
         const updated = { ...prev };
-        Object.keys(updated).forEach(roomId => {
-          const elapsed = Math.floor((Date.now() - updated[roomId].startTime.getTime()) / 1000);
-          updated[roomId].elapsed = elapsed;
+        Object.keys(updated).forEach(taskId => {
+          const elapsed = Math.floor((Date.now() - updated[taskId].startTime.getTime()) / 1000);
+          updated[taskId].elapsed = elapsed;
         });
         return updated;
       });
     }, 1000);
 
     return () => {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-      }
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
   }, []);
 
-  // Save timers to localStorage whenever they change
+  // Save timers to localStorage
   useEffect(() => {
     localStorage.setItem('roomTimers', JSON.stringify(roomTimers));
   }, [roomTimers]);
 
+  // Auth check
   useEffect(() => {
-    if (!isAuthenticated || (role !== 'cleaner' && role !== 'admin')) {
+    if (!isAuthenticated || !['cleaner', 'housekeeping', 'admin'].includes(role || '')) {
       toast.error('Access denied. Cleaner privileges required.');
       navigate('/unauthorized');
     }
   }, [isAuthenticated, role, navigate]);
 
-  if (!isAuthenticated || (role !== 'cleaner' && role !== 'admin')) {
+  // Load data on mount
+  useEffect(() => {
+    if (isAuthenticated && ['cleaner', 'housekeeping', 'admin'].includes(role || '')) {
+      loadData();
+    }
+  }, [isAuthenticated, role]);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [tasksData, statsData, roomStatusData, roomsData] = await Promise.all([
+        housekeepingService.getMyTasks(),
+        housekeepingService.getStats().catch(() => null),
+        housekeepingService.getRoomStatus().catch(() => null),
+        roomsAPI.listRooms().catch(() => []),
+      ]);
+      setTasks(tasksData);
+      setStats(statsData);
+      setRoomStatus(roomStatusData);
+      setRooms(roomsData);
+
+      // Load supplies
+      try {
+        const suppliesData = await housekeepingService.getSupplies();
+        setSupplies(suppliesData);
+      } catch {
+        // Supplies might be empty/fail
+      }
+    } catch (error: any) {
+      console.error('Error loading dashboard data:', error);
+      toast.error('Failed to load dashboard data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isAuthenticated || !['cleaner', 'housekeeping', 'admin'].includes(role || '')) {
     return null;
   }
 
   const processOfflineQueue = () => {
     if (offlineQueue.length === 0) return;
-
     toast.success(`Processing ${offlineQueue.length} offline actions...`);
-    // Process each queued action
     offlineQueue.forEach(action => {
-      // Process action (would normally be API calls)
       console.log('Processing offline action:', action);
     });
-
     setOfflineQueue([]);
     localStorage.removeItem('cleanerOfflineQueue');
   };
@@ -254,128 +201,96 @@ export default function CleanerDashboard() {
     localStorage.setItem('cleanerOfflineQueue', JSON.stringify(newQueue));
   };
 
-  const handleStartCleaning = (roomId: string) => {
+  const getRoomNumber = (roomId: string) => {
     const room = rooms.find(r => r.id === roomId);
-    if (!room) return;
-
-    if (!isOnline) {
-      queueOfflineAction({ type: 'start', roomId, user: user?.firstName });
-    }
-
-    // Start timer
-    setRoomTimers(prev => ({
-      ...prev,
-      [roomId]: { startTime: new Date(), elapsed: 0 }
-    }));
-
-    setRooms(rooms.map(r =>
-      r.id === roomId
-        ? { ...r, status: 'in-progress', assignedTo: user?.firstName, startedAt: new Date() }
-        : r
-    ));
-    toast.success(`Started cleaning room ${room.number}`);
+    return room ? room.room_number : roomId.substring(0, 8);
   };
 
-  const handleCompleteCleaning = (roomId: string) => {
+  const getRoomType = (roomId: string) => {
     const room = rooms.find(r => r.id === roomId);
-    if (!room) return;
+    return room ? room.type : '';
+  };
 
-    // Open inspection checklist
-    setSelectedRoomForInspection(room);
+  const handleStartCleaning = async (taskId: string) => {
+    if (!isOnline) {
+      queueOfflineAction({ type: 'start', taskId, user: user?.full_name });
+      setRoomTimers(prev => ({
+        ...prev,
+        [taskId]: { startTime: new Date(), elapsed: 0 }
+      }));
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, status: 'in_progress' as const } : t));
+      toast.success('Task started (offline - will sync when online)');
+      return;
+    }
+
+    try {
+      await housekeepingService.startTask(taskId);
+      setRoomTimers(prev => ({
+        ...prev,
+        [taskId]: { startTime: new Date(), elapsed: 0 }
+      }));
+      toast.success('Task started');
+      loadData();
+    } catch (error: any) {
+      toast.error('Failed to start task');
+    }
+  };
+
+  const handleCompleteCleaning = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    setSelectedTaskForInspection(task);
     setChecklistItems({});
     setShowInspectionDialog(true);
   };
 
-  const handleInspectionComplete = () => {
-    if (!selectedRoomForInspection) return;
+  const handleInspectionComplete = async () => {
+    if (!selectedTaskForInspection) return;
 
     const allChecked = INSPECTION_ITEMS.every((_, idx) => checklistItems[idx.toString()]);
-
     if (!allChecked) {
       toast.error('Please complete all checklist items before finishing');
       return;
     }
 
-    const roomId = selectedRoomForInspection.id;
-    const timer = roomTimers[roomId];
+    const taskId = selectedTaskForInspection.id;
+    const timer = roomTimers[taskId];
     const timeSpent = timer ? Math.floor(timer.elapsed / 60) : 0;
 
     if (!isOnline) {
-      queueOfflineAction({
-        type: 'complete',
-        roomId,
-        user: user?.firstName,
-        timeSpent
+      queueOfflineAction({ type: 'complete', taskId, user: user?.full_name, timeSpent });
+      setRoomTimers(prev => {
+        const updated = { ...prev };
+        delete updated[taskId];
+        return updated;
       });
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, status: 'completed' as const } : t));
+      toast.success(`Room cleaned! Time: ${timeSpent} min (will sync when online)`);
+      setShowInspectionDialog(false);
+      setSelectedTaskForInspection(null);
+      return;
     }
 
-    // Stop timer
-    setRoomTimers(prev => {
-      const updated = { ...prev };
-      delete updated[roomId];
-      return updated;
-    });
+    try {
+      await housekeepingService.completeTask(taskId, {
+        completed_at: new Date().toISOString(),
+        actual_duration: timeSpent,
+        notes: `Inspection completed. Time: ${timeSpent} minutes.`
+      });
 
-    setRooms(rooms.map(r =>
-      r.id === roomId
-        ? { ...r, status: 'completed', lastCleaned: new Date(), cleanedBy: user?.firstName, timeSpent }
-        : r
-    ));
+      setRoomTimers(prev => {
+        const updated = { ...prev };
+        delete updated[taskId];
+        return updated;
+      });
 
-    toast.success(`Room ${selectedRoomForInspection.number} marked as clean! Time: ${timeSpent} min`);
-    setShowInspectionDialog(false);
-    setSelectedRoomForInspection(null);
-  };
-
-  const handleUpdateRoomAvailability = (roomId: string, availability: string) => {
-    if (!isOnline) {
-      queueOfflineAction({ type: 'availability', roomId, availability });
+      toast.success(`Room cleaned! Time: ${timeSpent} min`);
+      setShowInspectionDialog(false);
+      setSelectedTaskForInspection(null);
+      loadData();
+    } catch (error: any) {
+      toast.error('Failed to complete task');
     }
-
-    setRooms(rooms.map(r =>
-      r.id === roomId ? { ...r, availability } : r
-    ));
-    toast.success(`Room availability updated to: ${availability}`);
-  };
-
-  const handleRequestRestock = (item: any) => {
-    const request = {
-      id: `REQ-${Date.now()}`,
-      itemId: item.id,
-      itemName: item.name,
-      requestedQuantity: item.minStock * 2,
-      requestedBy: user?.firstName,
-      requestedAt: new Date(),
-      status: 'pending'
-    };
-
-    if (!isOnline) {
-      queueOfflineAction({ type: 'restock', request });
-    }
-
-    setRestockRequests([...restockRequests, request]);
-    toast.success(`Restock request submitted for ${item.name}`);
-  };
-
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
-
-    const message = {
-      id: `MSG-${Date.now()}`,
-      from: user?.firstName,
-      to: 'Front Desk',
-      content: newMessage,
-      timestamp: new Date(),
-      status: isOnline ? 'sent' : 'queued'
-    };
-
-    if (!isOnline) {
-      queueOfflineAction({ type: 'message', message });
-    }
-
-    setMessages([...messages, message]);
-    setNewMessage('');
-    toast.success(isOnline ? 'Message sent' : 'Message queued for sending');
   };
 
   const formatTime = (seconds: number) => {
@@ -384,53 +299,35 @@ export default function CleanerDashboard() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getTimeSince = (date: Date | null) => {
-    if (!date) return 'Never';
-    const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
-    if (minutes < 60) return `${minutes} min ago`;
-    const hours = Math.floor(minutes / 60);
-    return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-  };
+  const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'assigned');
+  const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
+  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const lowStockItems = supplies.filter(item => item.current_stock < item.minimum_stock);
 
-  const getTimeUntil = (date: Date | null) => {
-    if (!date) return '';
-    const minutes = Math.floor((date.getTime() - Date.now()) / 60000);
-    if (minutes < 0) return 'Overdue';
-    if (minutes < 60) return `in ${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    return `in ${hours} hour${hours !== 1 ? 's' : ''}`;
-  };
-
-  const pendingRooms = rooms.filter(r => r.status === 'pending');
-  const inProgressRooms = rooms.filter(r => r.status === 'in-progress');
-  const completedRooms = rooms.filter(r => r.status === 'completed');
-  const lowStockItems = inventory.filter(item => item.quantity < item.minStock);
-
-  const RoomCard = ({ room }: { room: any }) => {
-    const timer = roomTimers[room.id];
+  const TaskCard = ({ task }: { task: HousekeepingTask }) => {
+    const timer = roomTimers[task.id];
+    const isUrgent = task.priority === 'urgent';
 
     return (
-      <Card className={`${room.priority === 'urgent' ? 'border-red-500 border-2' : ''}`}>
+      <Card className={isUrgent ? 'border-red-500 border-2' : ''}>
         <CardHeader>
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <CardTitle className="flex items-center gap-2 text-xl">
                 <BedDouble className="h-5 w-5" />
-                Room {room.number}
-                {room.priority === 'urgent' && (
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                )}
+                Room {getRoomNumber(task.room_id)}
+                {isUrgent && <AlertTriangle className="h-4 w-4 text-red-500" />}
               </CardTitle>
               <CardDescription className="mt-1">
-                {room.type} • Floor {room.floor}
+                {getRoomType(task.room_id)} {task.task_type !== 'cleaning' && `• ${task.task_type.replace('_', ' ')}`}
               </CardDescription>
             </div>
             <Badge variant={
-              room.priority === 'urgent' ? 'destructive' :
-              room.priority === 'high' ? 'default' :
+              task.priority === 'urgent' ? 'destructive' :
+              task.priority === 'high' ? 'default' :
               'secondary'
             }>
-              {room.priority}
+              {task.priority}
             </Badge>
           </div>
         </CardHeader>
@@ -449,47 +346,31 @@ export default function CleanerDashboard() {
 
           {/* Status Info */}
           <div className="space-y-2 text-sm">
-            {room.checkoutTime && (
+            {task.scheduled_time && (
               <p className="text-muted-foreground">
-                <Clock className="inline h-3 w-3 mr-1" />
-                Checkout: {getTimeSince(room.checkoutTime)}
+                <Calendar className="inline h-3 w-3 mr-1" />
+                Scheduled: {new Date(task.scheduled_time).toLocaleString()}
               </p>
             )}
-            {room.nextCheckin && (
+            {task.started_at && (
               <p className="text-muted-foreground">
                 <Clock className="inline h-3 w-3 mr-1" />
-                Next check-in: {getTimeUntil(room.nextCheckin)}
+                Started: {new Date(task.started_at).toLocaleString()}
               </p>
             )}
-            {room.lastCleaned && (
+            {task.actual_duration && (
               <p className="text-muted-foreground">
                 <Sparkles className="inline h-3 w-3 mr-1" />
-                Last cleaned: {getTimeSince(room.lastCleaned)}
-              </p>
-            )}
-            {room.startedAt && (
-              <p className="text-muted-foreground">
-                <Clock className="inline h-3 w-3 mr-1" />
-                Started: {getTimeSince(room.startedAt)}
-              </p>
-            )}
-            {room.assignedTo && (
-              <p className="text-muted-foreground">
-                Assigned to: {room.assignedTo}
-              </p>
-            )}
-            {room.timeSpent && (
-              <p className="text-muted-foreground">
-                Cleaning time: {room.timeSpent} minutes
+                Duration: {task.actual_duration} minutes
               </p>
             )}
           </div>
 
-          {room.notes && (
+          {task.notes && (
             <>
               <Separator />
               <div className="p-3 bg-muted rounded-md">
-                <p className="text-sm">{room.notes}</p>
+                <p className="text-sm">{task.notes}</p>
               </div>
             </>
           )}
@@ -499,25 +380,25 @@ export default function CleanerDashboard() {
           {/* Actions */}
           <div className="space-y-2">
             <div className="flex gap-2">
-              {room.status === 'pending' && (
+              {(task.status === 'pending' || task.status === 'assigned') && (
                 <Button
                   className="flex-1 h-12 text-base font-semibold"
-                  onClick={() => handleStartCleaning(room.id)}
+                  onClick={() => handleStartCleaning(task.id)}
                 >
                   <PlayCircle className="h-5 w-5 mr-2" />
                   Start Cleaning
                 </Button>
               )}
-              {room.status === 'in-progress' && (
+              {task.status === 'in_progress' && (
                 <Button
                   className="flex-1 h-12 text-base font-semibold"
-                  onClick={() => handleCompleteCleaning(room.id)}
+                  onClick={() => handleCompleteCleaning(task.id)}
                 >
                   <ListChecks className="h-5 w-5 mr-2" />
                   Complete & Inspect
                 </Button>
               )}
-              {room.status === 'completed' && (
+              {task.status === 'completed' && (
                 <Button
                   className="flex-1 h-12 text-base font-semibold"
                   variant="secondary"
@@ -528,33 +409,23 @@ export default function CleanerDashboard() {
                 </Button>
               )}
             </div>
-
-            {/* Availability Toggle */}
-            {room.status === 'completed' && (
-              <div className="flex gap-2">
-                <Button
-                  variant={room.availability === 'available' ? 'default' : 'outline'}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleUpdateRoomAvailability(room.id, 'available')}
-                >
-                  Available
-                </Button>
-                <Button
-                  variant={room.availability === 'unavailable' ? 'destructive' : 'outline'}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleUpdateRoomAvailability(room.id, 'unavailable')}
-                >
-                  Unavailable
-                </Button>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
     );
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex items-center justify-center py-32">
+          <Loader2 className="h-8 w-8 animate-spin mr-3" />
+          <span className="text-muted-foreground">Loading your tasks...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -569,21 +440,25 @@ export default function CleanerDashboard() {
                 <Sparkles className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <h1 className="text-3xl md:text-4xl font-bold">Cleaner Dashboard</h1>
-                <p className="text-muted-foreground">Welcome, {user?.firstName}!</p>
+                <h1 className="text-3xl md:text-4xl font-bold">Housekeeping Dashboard</h1>
+                <p className="text-muted-foreground">Welcome, {user?.full_name}!</p>
               </div>
             </div>
 
             <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={loadData}>
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Refresh
+              </Button>
               {!isOnline && (
                 <Badge variant="destructive" className="h-10 px-4 text-base">
                   <WifiOff className="h-4 w-4 mr-2" />
-                  Offline Mode
+                  Offline
                 </Badge>
               )}
               {offlineQueue.length > 0 && (
                 <Badge variant="secondary" className="h-10 px-4 text-base">
-                  {offlineQueue.length} queued actions
+                  {offlineQueue.length} queued
                 </Badge>
               )}
             </div>
@@ -598,8 +473,8 @@ export default function CleanerDashboard() {
               <AlertTriangle className="h-4 w-4 text-orange-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{pendingRooms.length}</div>
-              <p className="text-xs text-muted-foreground">Rooms to clean</p>
+              <div className="text-2xl font-bold">{pendingTasks.length}</div>
+              <p className="text-xs text-muted-foreground">Tasks to do</p>
             </CardContent>
           </Card>
 
@@ -609,7 +484,7 @@ export default function CleanerDashboard() {
               <Clock className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{inProgressRooms.length}</div>
+              <div className="text-2xl font-bold">{inProgressTasks.length}</div>
               <p className="text-xs text-muted-foreground">Currently cleaning</p>
             </CardContent>
           </Card>
@@ -620,8 +495,8 @@ export default function CleanerDashboard() {
               <TrendingUp className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{completedRooms.length}</div>
-              <p className="text-xs text-muted-foreground">Rooms cleaned</p>
+              <div className="text-2xl font-bold">{completedTasks.length}</div>
+              <p className="text-xs text-muted-foreground">Tasks done</p>
             </CardContent>
           </Card>
 
@@ -639,73 +514,70 @@ export default function CleanerDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 h-14 text-base">
+          <TabsList className="grid w-full grid-cols-3 h-14 text-base">
             <TabsTrigger value="assigned" className="h-12">
-              Assigned ({pendingRooms.length + inProgressRooms.length})
+              Assigned ({pendingTasks.length + inProgressTasks.length})
             </TabsTrigger>
             <TabsTrigger value="completed" className="h-12">
-              Completed ({completedRooms.length})
+              Completed ({completedTasks.length})
             </TabsTrigger>
             <TabsTrigger value="inventory" className="h-12">
-              Inventory
-            </TabsTrigger>
-            <TabsTrigger value="messages" className="h-12">
-              Messages ({messages.length})
-            </TabsTrigger>
-            <TabsTrigger value="maintenance" className="h-12">
-              Maintenance
+              Inventory ({supplies.length})
             </TabsTrigger>
           </TabsList>
 
           {/* Assigned Tab */}
           <TabsContent value="assigned" className="space-y-6">
-            {pendingRooms.length === 0 && inProgressRooms.length === 0 ? (
+            {pendingTasks.length === 0 && inProgressTasks.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-12">
                   <CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
                   <h3 className="text-lg font-semibold mb-2">All Caught Up!</h3>
-                  <p className="text-muted-foreground">No rooms need cleaning right now</p>
+                  <p className="text-muted-foreground">No tasks assigned to you right now</p>
                 </CardContent>
               </Card>
             ) : (
               <>
-                {pendingRooms.filter(r => r.priority === 'urgent').length > 0 && (
+                {/* Urgent tasks */}
+                {pendingTasks.filter(t => t.priority === 'urgent').length > 0 && (
                   <div>
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                       <AlertTriangle className="h-5 w-5 text-red-500" />
-                      Urgent ({pendingRooms.filter(r => r.priority === 'urgent').length})
+                      Urgent ({pendingTasks.filter(t => t.priority === 'urgent').length})
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {pendingRooms.filter(r => r.priority === 'urgent').map(room => (
-                        <RoomCard key={room.id} room={room} />
+                      {pendingTasks.filter(t => t.priority === 'urgent').map(task => (
+                        <TaskCard key={task.id} task={task} />
                       ))}
                     </div>
                   </div>
                 )}
 
-                {inProgressRooms.length > 0 && (
+                {/* In progress tasks */}
+                {inProgressTasks.length > 0 && (
                   <div>
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                       <Clock className="h-5 w-5 text-blue-500" />
-                      In Progress ({inProgressRooms.length})
+                      In Progress ({inProgressTasks.length})
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {inProgressRooms.map(room => (
-                        <RoomCard key={room.id} room={room} />
+                      {inProgressTasks.map(task => (
+                        <TaskCard key={task.id} task={task} />
                       ))}
                     </div>
                   </div>
                 )}
 
-                {pendingRooms.filter(r => r.priority !== 'urgent').length > 0 && (
+                {/* Regular pending tasks */}
+                {pendingTasks.filter(t => t.priority !== 'urgent').length > 0 && (
                   <div>
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                       <BedDouble className="h-5 w-5" />
-                      Pending ({pendingRooms.filter(r => r.priority !== 'urgent').length})
+                      Pending ({pendingTasks.filter(t => t.priority !== 'urgent').length})
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {pendingRooms.filter(r => r.priority !== 'urgent').map(room => (
-                        <RoomCard key={room.id} room={room} />
+                      {pendingTasks.filter(t => t.priority !== 'urgent').map(task => (
+                        <TaskCard key={task.id} task={task} />
                       ))}
                     </div>
                   </div>
@@ -716,18 +588,18 @@ export default function CleanerDashboard() {
 
           {/* Completed Tab */}
           <TabsContent value="completed" className="space-y-6">
-            {completedRooms.length === 0 ? (
+            {completedTasks.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-12">
                   <ClipboardCheck className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <h3 className="text-lg font-semibold mb-2">No Completed Rooms Yet</h3>
-                  <p className="text-muted-foreground">Completed rooms will appear here</p>
+                  <h3 className="text-lg font-semibold mb-2">No Completed Tasks Yet</h3>
+                  <p className="text-muted-foreground">Completed tasks will appear here</p>
                 </CardContent>
               </Card>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {completedRooms.map(room => (
-                  <RoomCard key={room.id} room={room} />
+                {completedTasks.map(task => (
+                  <TaskCard key={task.id} task={task} />
                 ))}
               </div>
             )}
@@ -753,16 +625,10 @@ export default function CleanerDashboard() {
                         <div>
                           <span className="font-medium">{item.name}</span>
                           <p className="text-sm text-muted-foreground">
-                            Current: {item.quantity} {item.unit} (min: {item.minStock})
+                            Current: {item.current_stock} {item.unit} (min: {item.minimum_stock})
                           </p>
                         </div>
-                        <Button
-                          size="sm"
-                          onClick={() => handleRequestRestock(item)}
-                          disabled={!isOnline}
-                        >
-                          Request Restock
-                        </Button>
+                        <Badge variant="destructive">Low</Badge>
                       </div>
                     ))}
                   </div>
@@ -776,168 +642,37 @@ export default function CleanerDashboard() {
                 <CardDescription>Current stock levels of cleaning supplies</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {inventory.map(item => (
-                    <div
-                      key={item.id}
-                      className={`p-4 rounded-lg border ${
-                        item.quantity < item.minStock ? 'bg-orange-50 border-orange-200' : 'bg-muted'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">{item.name}</h4>
-                        {item.quantity < item.minStock && (
-                          <AlertTriangle className="h-4 w-4 text-orange-500" />
-                        )}
-                      </div>
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="text-3xl font-bold">{item.quantity}</span>
-                        <span className="text-muted-foreground">{item.unit}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Min stock: {item.minStock} {item.unit}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {restockRequests.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Restock Requests</CardTitle>
-                  <CardDescription>Your submitted restock requests</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {restockRequests.map(req => (
-                      <div key={req.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <p className="font-medium">{req.itemName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Requested: {req.requestedQuantity} units • {getTimeSince(req.requestedAt)}
-                          </p>
-                        </div>
-                        <Badge>{req.status}</Badge>
-                      </div>
-                    ))}
+                {supplies.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                    <p className="text-muted-foreground">No supplies tracked yet</p>
                   </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* Messages Tab */}
-          <TabsContent value="messages" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  Send Message to Front Desk
-                </CardTitle>
-                <CardDescription>Communicate with the front desk team</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Textarea
-                  placeholder="Type your message..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  className="min-h-[100px]"
-                />
-                <Button onClick={handleSendMessage} className="w-full h-12 text-base font-semibold">
-                  <Send className="h-5 w-5 mr-2" />
-                  Send Message
-                </Button>
-              </CardContent>
-            </Card>
-
-            {messages.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Message History</CardTitle>
-                  <CardDescription>Your recent communications</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {messages.map(msg => (
-                      <div key={msg.id} className="p-4 border rounded-lg">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary">{msg.from} → {msg.to}</Badge>
-                            <Badge variant={msg.status === 'sent' ? 'default' : 'outline'}>
-                              {msg.status}
-                            </Badge>
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {getTimeSince(msg.timestamp)}
-                          </span>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {supplies.map(item => (
+                      <div
+                        key={item.id}
+                        className={`p-4 rounded-lg border ${
+                          item.current_stock < item.minimum_stock ? 'bg-orange-50 border-orange-200' : 'bg-muted'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold">{item.name}</h4>
+                          {item.current_stock < item.minimum_stock && (
+                            <AlertTriangle className="h-4 w-4 text-orange-500" />
+                          )}
                         </div>
-                        <p className="text-sm">{msg.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* Maintenance Tab */}
-          <TabsContent value="maintenance" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Report Maintenance Issue</CardTitle>
-                <CardDescription>Found a problem? Report it to maintenance team</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Room Number</Label>
-                  <Input
-                    type="text"
-                    placeholder="e.g., 305"
-                    className="h-12 text-base"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Issue Description</Label>
-                  <Textarea
-                    placeholder="Describe the maintenance issue..."
-                    className="min-h-[100px]"
-                  />
-                </div>
-                <Button className="w-full h-12 text-base font-semibold">
-                  <Wrench className="h-5 w-5 mr-2" />
-                  Report Issue
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Reported Issues</CardTitle>
-                <CardDescription>Track maintenance requests you've reported</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {mockMaintenanceIssues.map(issue => (
-                    <div key={issue.id} className="flex items-start justify-between p-4 border rounded-lg">
-                      <div className="space-y-1">
-                        <p className="font-semibold">Room {issue.room}</p>
-                        <p className="text-sm text-muted-foreground">{issue.issue}</p>
+                        <div className="flex items-baseline gap-2 mb-1">
+                          <span className="text-3xl font-bold">{item.current_stock}</span>
+                          <span className="text-muted-foreground">{item.unit}</span>
+                        </div>
                         <p className="text-xs text-muted-foreground">
-                          Reported {getTimeSince(issue.reportedAt)}
+                          Min stock: {item.minimum_stock} {item.unit}
                         </p>
                       </div>
-                      <Badge variant={
-                        issue.status === 'pending' ? 'default' :
-                        issue.status === 'in-progress' ? 'secondary' :
-                        'outline'
-                      }>
-                        {issue.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -949,10 +684,10 @@ export default function CleanerDashboard() {
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl">
-              Room {selectedRoomForInspection?.number} Inspection Checklist
+              Room {selectedTaskForInspection ? getRoomNumber(selectedTaskForInspection.room_id) : ''} Inspection
             </DialogTitle>
             <DialogDescription>
-              Complete all items before marking room as clean
+              Complete all items before marking task as done
             </DialogDescription>
           </DialogHeader>
 

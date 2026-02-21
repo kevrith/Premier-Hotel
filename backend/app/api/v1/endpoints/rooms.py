@@ -110,14 +110,14 @@ async def get_available_rooms(
 
 
 @router.get("/{room_id}", response_model=RoomResponse)
-async def get_room(room_id: str, supabase: Client = Depends(get_supabase)):
+async def get_room(room_id: str, supabase: Client = Depends(get_supabase), supabase_admin: Client = Depends(get_supabase_admin)):
     """
     Get room by ID
 
     - Returns detailed information about a specific room
     """
     try:
-        response = supabase.table("rooms").select("*").eq("id", room_id).execute()
+        response = supabase_admin.table("rooms").select("*").eq("id", room_id).execute()
 
         if not response.data:
             raise HTTPException(

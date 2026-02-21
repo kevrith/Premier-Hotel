@@ -42,7 +42,7 @@ export function RecentActivityFeed() {
         ...orders.data.slice(0, 5).map((o: any) => ({
           id: o.id,
           type: 'order' as const,
-          action: `Order #${o.id.slice(0, 8)}`,
+          action: `Order #${o.order_number || o.id.slice(0, 8)}`,
           user: o.customer_name || 'Guest',
           timestamp: o.created_at,
           status: (o.status === 'delivered' || o.status === 'completed') ? 'success' as const : 'pending' as const

@@ -8,8 +8,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Download, Printer, FileText, Calendar, DollarSign, TrendingUp,
-  Users, ShoppingCart, Clock, Filter, Settings, Mail, FileSpreadsheet
+  Download, Printer, DollarSign, TrendingUp,
+  Users, ShoppingCart, Settings, FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { reportsService, EmployeeSalesData as APIEmployeeSalesData } from '@/lib/api/reports';
@@ -135,48 +135,6 @@ export function EmployeeSalesReport() {
     }
   };
 
-  // Generate sample data (replace with actual API call)
-  const generateSampleEmployeeSalesData = async (): Promise<EmployeeSalesData[]> => {
-    const employees = [
-      { name: 'John Mwangi', role: 'Senior Waiter', dept: 'Restaurant' },
-      { name: 'Jane Akinyi', role: 'Waiter', dept: 'Restaurant' },
-      { name: 'Peter Kamau', role: 'Bartender', dept: 'Bar' },
-      { name: 'Mary Wanjiru', role: 'Room Service', dept: 'Room Service' },
-      { name: 'David Omondi', role: 'Waiter', dept: 'Restaurant' },
-      { name: 'Sarah Njeri', role: 'Senior Waiter', dept: 'Restaurant' },
-      { name: 'James Kipchoge', role: 'Bartender', dept: 'Bar' },
-      { name: 'Grace Auma', role: 'Room Service', dept: 'Room Service' },
-    ];
-
-    return employees.map((emp, idx) => ({
-      employee_id: `EMP${(idx + 1).toString().padStart(4, '0')}`,
-      employee_name: emp.name,
-      role: emp.role,
-      department: emp.dept,
-      total_sales: Math.floor(Math.random() * 500000) + 100000,
-      total_orders: Math.floor(Math.random() * 200) + 50,
-      avg_order_value: Math.floor(Math.random() * 3000) + 500,
-      total_items_sold: Math.floor(Math.random() * 500) + 100,
-      commission_earned: Math.floor(Math.random() * 25000) + 5000,
-      tips_received: Math.floor(Math.random() * 15000) + 2000,
-      refunds_processed: Math.floor(Math.random() * 5000),
-      hours_worked: Math.floor(Math.random() * 160) + 140,
-      sales_per_hour: Math.floor(Math.random() * 2000) + 500,
-      top_selling_item: ['Grilled Chicken', 'Beef Stew', 'Fish Fillet', 'Pasta Carbonara'][Math.floor(Math.random() * 4)],
-      customer_satisfaction: Math.floor(Math.random() * 20) + 80,
-      orders_today: Math.floor(Math.random() * 15) + 5,
-      orders_this_week: Math.floor(Math.random() * 50) + 20,
-      orders_this_month: Math.floor(Math.random() * 150) + 50,
-      first_sale_time: '08:30 AM',
-      last_sale_time: '10:45 PM',
-      peak_hour: ['12:00 PM', '1:00 PM', '7:00 PM', '8:00 PM'][Math.floor(Math.random() * 4)],
-      payment_methods_used: ['M-Pesa', 'Cash', 'Card'],
-      avg_service_time: Math.floor(Math.random() * 10) + 5,
-      upsell_rate: Math.floor(Math.random() * 30) + 10,
-      return_customer_rate: Math.floor(Math.random() * 40) + 30,
-    }));
-  };
-
   useEffect(() => {
     fetchEmployeeSalesData();
   }, [filters.startDate, filters.endDate]);
@@ -206,7 +164,7 @@ export function EmployeeSalesReport() {
 
     // Apply minimum sales filter
     if (filters.minSales) {
-      filtered = filtered.filter(emp => emp.total_sales >= filters.minSales);
+      filtered = filtered.filter(emp => emp.total_sales >= (filters.minSales ?? 0));
     }
 
     // Apply sorting

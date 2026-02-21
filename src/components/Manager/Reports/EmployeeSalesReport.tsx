@@ -26,7 +26,7 @@ export function EmployeeSalesReport() {
   const [selectedRole, setSelectedRole] = useState('all');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
   const [period, setPeriod] = useState('custom');
-  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [isLoading, setIsLoading] = useState(false);
   const [staffPerformance, setStaffPerformance] = useState<EmployeeSalesData[]>([]);

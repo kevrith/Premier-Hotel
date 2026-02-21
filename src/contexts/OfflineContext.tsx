@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect } from 'react';
 import useOfflineStore from '@/stores/offlineStore';
+import useAuthStore from '@/stores/authStore.secure';
 import { toast } from 'react-hot-toast';
 
 const OfflineContext = createContext(undefined);
@@ -11,10 +12,13 @@ export function OfflineProvider({ children }) {
     pendingChanges,
     isSyncing,
     lastSyncTime,
+    isOfflineMode,
+    syncStatus,
     setOnlineStatus,
     addToQueue,
     syncData,
     clearQueue,
+    toggleOfflineMode,
     loadQueueFromStorage
   } = useOfflineStore();
 
@@ -27,6 +31,16 @@ export function OfflineProvider({ children }) {
       setOnlineStatus(true);
       toast.success('Connection restored. Syncing data...');
       syncData();
+
+      // Re-validate auth session after coming back online
+      const { isOfflineSession, checkAuth } = useAuthStore.getState();
+      if (isOfflineSession) {
+        checkAuth().then((valid) => {
+          if (!valid) {
+            toast.error('Your session has expired. Please log in again.');
+          }
+        });
+      }
     };
 
     const handleOffline = () => {
@@ -48,7 +62,7 @@ export function OfflineProvider({ children }) {
 
   // Auto-sync periodically when online
   useEffect(() => {
-    if (!isOnline || syncQueue.length === 0) return;
+    if (!isOnline || isOfflineMode || syncQueue.length === 0) return;
 
     const syncInterval = setInterval(
       () => {
@@ -60,7 +74,7 @@ export function OfflineProvider({ children }) {
     );
 
     return () => clearInterval(syncInterval);
-  }, [isOnline, syncQueue.length]);
+  }, [isOnline, isOfflineMode, syncQueue.length]);
 
   const value = {
     isOnline,
@@ -71,7 +85,12 @@ export function OfflineProvider({ children }) {
     hasPendingChanges: syncQueue.length > 0,
     addToQueue,
     syncData,
-    clearQueue
+    clearQueue,
+    isOfflineMode,
+    syncStatus,
+    pendingSyncCount: syncQueue.length,
+    syncOfflineData: syncData,
+    toggleOfflineMode,
   };
 
   return (

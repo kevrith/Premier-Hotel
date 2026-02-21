@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 
 interface StaffPerformance {
@@ -25,85 +25,86 @@ export function useStaffPerformance() {
   const fetchStaffPerformance = async () => {
     try {
       setIsLoading(true);
-      
-      // Get all staff users
-      const { data: staffUsers } = await supabase
-        .from('users')
-        .select('id, full_name, role, status')
-        .in('role', ['waiter', 'chef', 'cleaner'])
-        .eq('status', 'active');
 
-      if (!staffUsers || staffUsers.length === 0) {
-        setPerformance([]);
-        return;
+      const today = new Date().toISOString().split('T')[0];
+      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      // Fetch team performance from analytics (covers waiters, chefs, staff)
+      // and admin users list for status info + cleaners
+      const [teamResponse, usersResponse] = await Promise.all([
+        api.get(`/analytics/employees/team?start_date=${monthAgo}&end_date=${today}`).catch(() => ({ data: [] })),
+        api.get('/admin/users?limit=100').catch(() => ({ data: [] }))
+      ]);
+
+      const teamData: any[] = teamResponse.data || [];
+      const allUsers: any[] = usersResponse.data || [];
+
+      // Build a map of user statuses from admin users
+      const userStatusMap: Record<string, string> = {};
+      for (const u of allUsers) {
+        userStatusMap[u.id] = u.status || 'active';
       }
 
-      // Get latest performance evaluations for each staff member
       const performanceData: StaffPerformance[] = [];
 
-      for (const staff of staffUsers) {
-        // Get latest performance evaluation
-        const { data: evaluations } = await supabase
-          .from('staff_performance')
-          .select('rating, evaluation_date, strengths, areas_for_improvement')
-          .eq('staff_id', staff.id)
-          .order('evaluation_date', { ascending: false })
-          .limit(1);
-
-        // Get task completion count (from orders for waiters/chefs, housekeeping tasks for cleaners)
-        let tasksCompleted = 0;
-        
-        if (staff.role === 'waiter' || staff.role === 'chef') {
-          // Count orders handled by this staff member
-          const { count } = await supabase
-            .from('orders')
-            .select('*', { count: 'exact' })
-            .eq('created_by_staff_id', staff.id)
-            .in('status', ['completed', 'served']);
-          tasksCompleted = count || 0;
-        } else if (staff.role === 'cleaner') {
-          // Count completed housekeeping tasks
-          const { count } = await supabase
-            .from('housekeeping_tasks')
-            .select('*', { count: 'exact' })
-            .eq('assigned_to', staff.id)
-            .eq('status', 'completed');
-          tasksCompleted = count || 0;
-        }
-
-        const latestEvaluation = evaluations?.[0];
-        const avgRating = latestEvaluation?.rating || 4.0; // Default rating if no evaluation exists
-
+      // Map team analytics data (waiters, chefs, staff)
+      for (const emp of teamData) {
+        const metrics = emp.metrics || {};
         performanceData.push({
-          id: staff.id,
-          name: staff.full_name,
-          role: staff.role,
-          tasksCompleted,
-          rating: avgRating,
-          status: staff.status === 'active' ? 'active' : 'inactive',
-          evaluationDate: latestEvaluation?.evaluation_date,
-          strengths: latestEvaluation?.strengths,
-          areas_for_improvement: latestEvaluation?.areas_for_improvement
+          id: emp.employee_id,
+          name: emp.employee_name || 'Unknown',
+          role: emp.role || 'staff',
+          tasksCompleted: metrics.total_orders || 0,
+          rating: metrics.customer_satisfaction || 0,
+          status: userStatusMap[emp.employee_id] || 'active'
         });
       }
 
-      // Sort by rating (highest first), then by tasks completed
+      // Get cleaners from admin users (not included in analytics/employees/team)
+      const cleaners = allUsers.filter((u: any) =>
+        (u.role === 'cleaner' || u.role === 'housekeeping') && u.status === 'active'
+      );
+
+      // Fetch completed housekeeping tasks to count per cleaner
+      if (cleaners.length > 0) {
+        const tasksResponse = await api.get('/housekeeping/tasks?status=completed&limit=1000').catch(() => ({ data: [] }));
+        const completedTasks: any[] = tasksResponse.data || [];
+
+        // Count completed tasks per assigned_to user
+        const taskCountMap: Record<string, number> = {};
+        for (const task of completedTasks) {
+          const assignee = task.assigned_to;
+          if (assignee) {
+            taskCountMap[assignee] = (taskCountMap[assignee] || 0) + 1;
+          }
+        }
+
+        for (const cleaner of cleaners) {
+          // Skip if already in team data (unlikely but safe)
+          if (performanceData.some(p => p.id === cleaner.id)) continue;
+
+          performanceData.push({
+            id: cleaner.id,
+            name: cleaner.full_name || 'Unknown',
+            role: 'cleaner',
+            tasksCompleted: taskCountMap[cleaner.id] || 0,
+            rating: 0,
+            status: cleaner.status || 'active'
+          });
+        }
+      }
+
+      // Sort by tasks completed (highest first), then by rating
       performanceData.sort((a, b) => {
-        if (b.rating !== a.rating) return b.rating - a.rating;
-        return b.tasksCompleted - a.tasksCompleted;
+        if (b.tasksCompleted !== a.tasksCompleted) return b.tasksCompleted - a.tasksCompleted;
+        return b.rating - a.rating;
       });
 
       setPerformance(performanceData);
     } catch (error: any) {
       console.error('Staff performance error:', error);
       toast.error('Failed to load staff performance data');
-      // Return mock data as fallback
-      setPerformance([
-        { id: '1', name: 'Chef Mario', role: 'chef', tasksCompleted: 45, rating: 4.8, status: 'active' },
-        { id: '2', name: 'Waiter Tom', role: 'waiter', tasksCompleted: 62, rating: 4.6, status: 'active' },
-        { id: '3', name: 'Cleaner Sarah', role: 'cleaner', tasksCompleted: 38, rating: 4.9, status: 'active' },
-        { id: '4', name: 'Waiter Jane', role: 'waiter', tasksCompleted: 55, rating: 4.5, status: 'on-break' }
-      ]);
+      setPerformance([]);
     } finally {
       setIsLoading(false);
     }

@@ -28,14 +28,14 @@ export function SystemConfiguration() {
 
   const { toast } = useToast();
 
-  const handleSave = (section) => {
+  const handleSave = (section: any) => {
     toast({
       title: "Settings saved",
       description: `${section} settings have been updated successfully`
     });
   };
 
-  const updateConfig = (key, value) => {
+  const updateConfig = (key: string, value: any) => {
     setConfig(prev => ({ ...prev, [key]: value }));
   };
 

@@ -10,7 +10,7 @@ from supabase import Client
 from decimal import Decimal
 import statistics
 
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_supabase_admin
 from app.middleware.auth import require_role
 from app.schemas.analytics import (
     RevenueAnalytics, RevenueByPeriod,
@@ -92,7 +92,7 @@ async def get_revenue_analytics(
     end_date: date = Query(...),
     period: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get comprehensive revenue analytics"""
     # Get bookings revenue
@@ -154,7 +154,7 @@ async def get_occupancy_analytics(
     start_date: date = Query(...),
     end_date: date = Query(...),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get occupancy analytics"""
     # Get total rooms
@@ -213,7 +213,7 @@ async def get_booking_analytics(
     start_date: date = Query(...),
     end_date: date = Query(...),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get booking analytics"""
     bookings_result = supabase.table("bookings")\
@@ -272,7 +272,7 @@ async def get_booking_analytics(
 @router.get("/customers", response_model=CustomerAnalytics)
 async def get_customer_analytics(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get customer analytics"""
     users_result = supabase.table("auth.users").select("*").execute()
@@ -303,7 +303,7 @@ async def get_customer_analytics(
 async def get_analytics_dashboard(
     period: str = Query("month", pattern="^(today|week|month|year)$"),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get comprehensive analytics dashboard"""
     # Calculate date range based on period
@@ -362,7 +362,7 @@ async def get_analytics_dashboard(
 async def forecast_revenue(
     horizon_days: int = Query(30, ge=1, le=365),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Forecast future revenue"""
     # Get historical data (last 90 days)
@@ -430,7 +430,7 @@ async def forecast_revenue(
 @router.get("/kpis", response_model=KPIDashboard)
 async def get_kpi_dashboard(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get KPI dashboard"""
     kpis = [
@@ -479,7 +479,7 @@ async def get_sales_analytics(
     end_date: str = Query(...),
     time_granularity: str = Query("day", pattern="^(hour|day|week|month)$"),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get sales analytics for the frontend SalesAnalytics component"""
     try:
@@ -499,7 +499,7 @@ async def get_sales_analytics(
         ).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
 
         orders_result = supabase.table("orders").select(
-            "id, status, created_at, total_amount, payment_method, payment_status"
+            "id, status, created_at, total_amount, payment_method, payment_status, items"
         ).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
 
         bookings = bookings_result.data
@@ -508,12 +508,13 @@ async def get_sales_analytics(
         # Calculate total revenue (using same logic as admin dashboard)
         # Bookings revenue - use paid_amount if available, otherwise total_amount
         booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings)
-        # Orders revenue - only count paid/completed orders
-        order_revenue = sum(float(o.get("total_amount") or o.get("total") or 0) for o in orders if o.get("payment_status") in ["paid", "completed"])
+        # Orders revenue - count paid/completed/served orders
+        completed_orders = [o for o in orders if o.get("status") in ["completed", "delivered", "served"]]
+        order_revenue = sum(float(o.get("total_amount") or 0) for o in completed_orders)
         total_revenue = booking_revenue + order_revenue
 
         # Calculate total orders
-        total_orders = len(bookings) + len(orders)
+        total_orders = len(bookings) + len(completed_orders)
 
         # Calculate average order value
         avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
@@ -527,11 +528,11 @@ async def get_sales_analytics(
         ).gte("created_at", prev_start.isoformat()).lte("created_at", prev_end.isoformat()).execute()
 
         prev_orders_result = supabase.table("orders").select(
-            "total_amount"
+            "total_amount, status"
         ).gte("created_at", prev_start.isoformat()).lte("created_at", prev_end.isoformat()).execute()
 
         prev_booking_revenue = sum(float(b.get("total_amount", 0)) for b in prev_bookings_result.data)
-        prev_order_revenue = sum(float(o.get("total_amount", 0)) for o in prev_orders_result.data if o.get("payment_status") in ["paid", "completed"])
+        prev_order_revenue = sum(float(o.get("total_amount", 0)) for o in prev_orders_result.data if o.get("status") in ["completed", "delivered", "served"])
         prev_total_revenue = prev_booking_revenue + prev_order_revenue
 
         growth_rate = ((total_revenue - prev_total_revenue) / prev_total_revenue * 100) if prev_total_revenue > 0 else 0
@@ -543,7 +544,7 @@ async def get_sales_analytics(
             hour_end = start_dt.replace(hour=hour, minute=59, second=59)
 
             hour_bookings = [b for b in bookings if hour_start.isoformat() <= b["created_at"] <= hour_end.isoformat()]
-            hour_orders = [o for o in orders if hour_start.isoformat() <= o["created_at"] <= hour_end.isoformat() and o.get("payment_status") in ["paid", "completed"]]
+            hour_orders = [o for o in completed_orders if hour_start.isoformat() <= o["created_at"] <= hour_end.isoformat()]
 
             hour_revenue = sum(float(b.get("total_amount", 0)) for b in hour_bookings)
             hour_revenue += sum(float(o.get("total_amount", 0)) for o in hour_orders)
@@ -555,47 +556,41 @@ async def get_sales_analytics(
                 "orders": hour_orders_count
             })
 
-        # Top performing items (from orders)
+        # Top performing items (from orders - items stored as JSON in orders.items)
         top_performing_items = []
-        if orders:
-            order_ids = [o["id"] for o in orders]
-            order_items_result = supabase.table("order_items").select(
-                "menu_item_id, quantity, price"
-            ).in_("order_id", order_ids).execute()
+        if completed_orders:
+            import json
+            item_revenue = {}
+            for order in completed_orders:
+                items_data = order.get("items", [])
+                if isinstance(items_data, str):
+                    try:
+                        items_data = json.loads(items_data)
+                    except (json.JSONDecodeError, TypeError):
+                        items_data = []
+                if not isinstance(items_data, list):
+                    items_data = []
+                for item in items_data:
+                    item_name = item.get("name", "Unknown")
+                    qty = int(item.get("quantity", 1))
+                    price = float(item.get("price", 0))
+                    revenue = price * qty
+                    if item_name in item_revenue:
+                        item_revenue[item_name]["quantity_sold"] += qty
+                        item_revenue[item_name]["revenue"] += revenue
+                    else:
+                        item_revenue[item_name] = {
+                            "item_name": item_name,
+                            "quantity_sold": qty,
+                            "revenue": revenue,
+                            "profit_margin": 30.0
+                        }
 
-            order_items = order_items_result.data
-
-            if order_items:
-                menu_item_ids = [item["menu_item_id"] for item in order_items]
-                menu_items_result = supabase.table("menu_items").select(
-                    "id, name"
-                ).in_("id", menu_item_ids).execute()
-
-                menu_items = menu_items_result.data
-                menu_item_map = {item["id"]: item for item in menu_items}
-
-                item_revenue = {}
-                for item in order_items:
-                    menu_item = menu_item_map.get(item["menu_item_id"])
-                    if menu_item:
-                        item_name = menu_item.get("name", "Unknown")
-                        revenue = float(item.get("price", 0)) * item.get("quantity", 0)
-                        if item_name in item_revenue:
-                            item_revenue[item_name]["quantity"] += item.get("quantity", 0)
-                            item_revenue[item_name]["revenue"] += revenue
-                        else:
-                            item_revenue[item_name] = {
-                                "item_name": item_name,
-                                "quantity_sold": item.get("quantity", 0),
-                                "revenue": revenue,
-                                "profit_margin": 30.0  # Simplified
-                            }
-
-                top_performing_items = sorted(
-                    item_revenue.values(),
-                    key=lambda x: x["revenue"],
-                    reverse=True
-                )[:10]
+            top_performing_items = sorted(
+                item_revenue.values(),
+                key=lambda x: x["revenue"],
+                reverse=True
+            )[:10]
 
         # Customer segments (simplified)
         customer_segments = [
@@ -649,7 +644,7 @@ async def get_team_performance(
     end_date: str = Query(...),
     time_granularity: str = Query("day", pattern="^(hour|day|week|month)$"),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get team performance analytics for the frontend EmployeePerformance component"""
     try:
@@ -673,30 +668,34 @@ async def get_team_performance(
 
         for employee in employees:
             emp_id = employee["id"]
+            emp_role = employee.get("role", "staff")
 
-            # Get orders where employee is creator, waiter, or chef
-            created_orders = supabase.table("orders").select(
-                "id, customer_id, total_amount, status, created_at, location"
-            ).eq("created_by_staff_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
-            
-            waiter_orders = supabase.table("orders").select(
-                "id, customer_id, total_amount, status, created_at, location"
-            ).eq("assigned_waiter_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
-            
-            chef_orders = supabase.table("orders").select(
-                "id, customer_id, total_amount, status, created_at, location"
-            ).eq("assigned_chef_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
+            # Sales attributed to waiters/creators only. Chefs get orders prepared count.
+            if emp_role == "chef":
+                chef_orders = supabase.table("orders").select(
+                    "id, customer_id, total_amount, status, created_at, location"
+                ).eq("assigned_chef_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
 
-            # Combine and deduplicate orders
-            orders_dict = {}
-            for order in created_orders.data + waiter_orders.data + chef_orders.data:
-                orders_dict[order["id"]] = order
-            emp_orders = list(orders_dict.values())
+                emp_orders = chef_orders.data
+                total_sales = 0  # Chefs don't get sales credit
+            else:
+                created_orders = supabase.table("orders").select(
+                    "id, customer_id, total_amount, status, created_at, location"
+                ).eq("created_by_staff_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
+
+                waiter_orders = supabase.table("orders").select(
+                    "id, customer_id, total_amount, status, created_at, location"
+                ).eq("assigned_waiter_id", emp_id).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
+
+                # Combine and deduplicate (waiter + creator only)
+                orders_dict = {o["id"]: o for o in created_orders.data}
+                orders_dict.update({o["id"]: o for o in waiter_orders.data})
+                emp_orders = list(orders_dict.values())
+                total_sales = sum(float(o.get("total_amount", 0)) for o in emp_orders)
 
             # Calculate metrics
-            total_sales = sum(float(o.get("total_amount", 0)) for o in emp_orders)
             total_orders = len(emp_orders)
-            completed_orders = len([o for o in emp_orders if o.get("status") == "delivered"])
+            completed_orders = len([o for o in emp_orders if o.get("status") in ["delivered", "completed", "served"]])
             avg_order_value = total_sales / total_orders if total_orders > 0 else 0
 
             # Simplified metrics
@@ -766,7 +765,7 @@ async def get_revenue_optimization(
     end_date: str = Query(...),
     location: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get revenue optimization recommendations"""
     try:
@@ -786,43 +785,41 @@ async def get_revenue_optimization(
         ).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
 
         orders_result = supabase.table("orders").select(
-            "id, status, created_at, total_amount, payment_status"
+            "id, status, created_at, total_amount, payment_status, items"
         ).gte("created_at", start_dt.isoformat()).lte("created_at", end_dt.isoformat()).execute()
 
         bookings = bookings_result.data
         orders = orders_result.data
 
-        # Current pricing analysis
+        # Current pricing analysis - parse items from JSON in orders.items
         current_pricing = []
         if orders:
-            # Get menu items for pricing analysis
-            order_ids = [o["id"] for o in orders]
-            order_items_result = supabase.table("order_items").select(
-                "menu_item_id, quantity, price"
-            ).in_("order_id", order_ids).execute()
-
-            order_items = order_items_result.data
-
-            if order_items:
-                menu_item_ids = [item["menu_item_id"] for item in order_items]
-                menu_items_result = supabase.table("menu_items").select(
-                    "id, name, base_price"
-                ).in_("id", menu_item_ids).execute()
-
-                menu_items = menu_items_result.data
-                menu_item_map = {item["id"]: item for item in menu_items}
-
-                for item in order_items:
-                    menu_item = menu_item_map.get(item["menu_item_id"])
-                    if menu_item:
-                        current_pricing.append({
-                            "item_id": menu_item["id"],
-                            "item_name": menu_item["name"],
-                            "current_price": float(menu_item["base_price"]),
-                            "suggested_price": float(menu_item["base_price"]) * 1.1,  # 10% increase suggestion
+            import json
+            seen_items = {}
+            for order in orders:
+                if order.get("status") not in ["completed", "delivered", "served"]:
+                    continue
+                items_data = order.get("items", [])
+                if isinstance(items_data, str):
+                    try:
+                        items_data = json.loads(items_data)
+                    except (json.JSONDecodeError, TypeError):
+                        items_data = []
+                if not isinstance(items_data, list):
+                    items_data = []
+                for item in items_data:
+                    item_name = item.get("name", "Unknown")
+                    price = float(item.get("price", 0))
+                    if item_name not in seen_items and price > 0:
+                        seen_items[item_name] = {
+                            "item_id": item.get("menu_item_id", item.get("id", "")),
+                            "item_name": item_name,
+                            "current_price": price,
+                            "suggested_price": round(price * 1.1, 2),
                             "confidence": 85.0,
                             "expected_impact": 12.0
-                        })
+                        }
+            current_pricing = list(seen_items.values())
 
         # Demand forecasting
         demand_forecasting = []
@@ -860,21 +857,29 @@ async def get_revenue_optimization(
             total_nights = 0
             for b in bookings:
                 if b.get("check_in_date") and b.get("check_out_date"):
-                    checkin = datetime.fromisoformat(b["check_in_date"].replace('Z', '+00:00'))
-                    checkout = datetime.fromisoformat(b["check_out_date"].replace('Z', '+00:00'))
-                    nights = (checkout - checkin).days
-                    total_nights += nights
-            avg_stay_length = total_nights / len(bookings)
+                    try:
+                        checkin = datetime.strptime(str(b["check_in_date"])[:10], "%Y-%m-%d")
+                        checkout = datetime.strptime(str(b["check_out_date"])[:10], "%Y-%m-%d")
+                        nights = (checkout - checkin).days
+                        total_nights += max(0, nights)
+                    except (ValueError, TypeError):
+                        pass
+            avg_stay_length = total_nights / len(bookings) if bookings else 0
 
             # Calculate booking lead time
             total_lead_time = 0
+            lead_count = 0
             for b in bookings:
                 if b.get("created_at") and b.get("check_in_date"):
-                    created = datetime.fromisoformat(b["created_at"].replace('Z', '+00:00'))
-                    checkin = datetime.fromisoformat(b["check_in_date"].replace('Z', '+00:00'))
-                    lead_time = (checkin - created).days
-                    total_lead_time += lead_time
-            booking_lead_time = total_lead_time / len(bookings)
+                    try:
+                        created = datetime.strptime(str(b["created_at"])[:10], "%Y-%m-%d")
+                        checkin = datetime.strptime(str(b["check_in_date"])[:10], "%Y-%m-%d")
+                        lead_time = (checkin - created).days
+                        total_lead_time += max(0, lead_time)
+                        lead_count += 1
+                    except (ValueError, TypeError):
+                        pass
+            booking_lead_time = total_lead_time / lead_count if lead_count > 0 else 0
 
             # Calculate cancellation rate
             cancelled_bookings = len([b for b in bookings if b["status"] == "cancelled"])
@@ -915,7 +920,7 @@ async def get_operational_metrics(
     end_date: str = Query(...),
     department: Optional[str] = Query(None),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get operational metrics"""
     try:
@@ -1029,7 +1034,7 @@ async def get_predictive_insights(
     start_date: str = Query(...),
     end_date: str = Query(...),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get predictive insights and forecasts"""
     try:
@@ -1102,7 +1107,7 @@ async def get_custom_analytics(
     start_date: str = Query(...),
     end_date: str = Query(...),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get custom analytics reports"""
     try:
@@ -1202,7 +1207,7 @@ async def get_custom_analytics(
 @router.get("/insights", response_model=InsightsList)
 async def get_insights(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get AI-generated insights"""
     insights = [

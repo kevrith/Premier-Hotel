@@ -15,10 +15,20 @@ export default function ProtectedRoute({
 }: ProtectedRouteProps) {
   const { user, userRole, isLoading, isAuthenticated } = useAuth();
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
+  const isOfflineSession = useAuthStore((state) => state.isOfflineSession);
   const location = useLocation();
 
-  // Wait for both hydration AND auth initialization
-  if (!hasHydrated || isLoading) {
+  // Wait for hydration
+  if (!hasHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // If loading but we have an offline session with cached user, don't block
+  if (isLoading && !isOfflineSession) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

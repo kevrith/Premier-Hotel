@@ -74,7 +74,7 @@ export default function NotificationSettings() {
         orderReadyAlerts: true,
         customerRequests: true
       };
-    } else if (role === 'cleaner') {
+    } else if (role === 'cleaner' || role === 'housekeeping') {
       return {
         roomAssignments: true,
         maintenanceRequests: true,
@@ -550,7 +550,7 @@ export default function NotificationSettings() {
                   </>
                 )}
 
-                {user.role.toLowerCase() === 'cleaner' && (
+                {['cleaner', 'housekeeping'].includes(user.role.toLowerCase()) && (
                   <>
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">

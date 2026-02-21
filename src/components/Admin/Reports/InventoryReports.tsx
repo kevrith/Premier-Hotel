@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Package, TrendingDown, AlertTriangle, RefreshCw, Download, Loader2, Calendar } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { inventoryService, InventoryItem, InventoryCategory, StockMovement, Supplier } from '@/lib/api/inventory';
+import { inventoryService, InventoryCategory, Supplier } from '@/lib/api/inventory';
 import HistoricalStockViewer from './HistoricalStockViewer';
 
 interface DisplayInventoryItem {
@@ -44,7 +44,7 @@ export function InventoryReports() {
   const [inventoryItems, setInventoryItems] = useState<DisplayInventoryItem[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
   const [stockMovements, setStockMovements] = useState<PurchaseRecord[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [_suppliers, _setSuppliers] = useState<Supplier[]>([]);
   const { toast } = useToast();
 
   // Load all data from API
@@ -105,7 +105,7 @@ export function InventoryReports() {
       setInventoryItems(displayItems);
       setCategories(categoriesData);
       setStockMovements(purchaseRecords);
-      setSuppliers(suppliersData);
+      _setSuppliers(suppliersData);
     } catch (error) {
       console.error('Error loading inventory reports data:', error);
       toast({

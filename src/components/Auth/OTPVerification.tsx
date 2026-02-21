@@ -130,6 +130,7 @@ export default function OTPVerification({ type, identifier, onSuccess, onBack }:
             navigate('/waiter');
             break;
           case 'cleaner':
+          case 'housekeeping':
             navigate('/cleaner');
             break;
           default:

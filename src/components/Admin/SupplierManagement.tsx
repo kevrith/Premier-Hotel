@@ -64,8 +64,8 @@ const SupplierManagement: React.FC = () => {
   );
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'success' | 'destructive'> = {
-      active: 'success',
+    const variants: Record<string, 'default' | 'destructive'> = {
+      active: 'default',
       inactive: 'default',
       blocked: 'destructive',
     };

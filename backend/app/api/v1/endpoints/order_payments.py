@@ -5,10 +5,19 @@ Handles direct payments for served orders in waiter dashboard
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
+import random
+import string
 from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import require_staff
 from pydantic import BaseModel
+
+
+def generate_payment_number():
+    """Generate unique payment number"""
+    chars = string.ascii_uppercase + string.digits
+    random_part = ''.join(random.choices(chars, k=10))
+    return f"PAY-{random_part}"
 
 router = APIRouter()
 
@@ -134,6 +143,34 @@ async def process_order_payment(
                 print(f"[ERROR] Traceback: {traceback.format_exc()}")
                 raise
         
+        # Create payment record in payments table for audit trail
+        if payment_data.payment_method != "room_charge":
+            try:
+                bill_id_for_payment = None
+                if existing_bill_response.data:
+                    bill_id_for_payment = existing_bill_response.data[0]["id"]
+                elif bill_response and bill_response.data:
+                    bill_id_for_payment = bill_response.data[0]["id"]
+
+                if bill_id_for_payment:
+                    payment_record = {
+                        "payment_number": generate_payment_number(),
+                        "bill_id": bill_id_for_payment,
+                        "amount": float(payment_data.amount),
+                        "payment_method": payment_data.payment_method,
+                        "payment_status": "completed",
+                        "mpesa_phone": payment_data.mpesa_phone,
+                        "card_transaction_ref": payment_data.card_reference,
+                        "processed_by_waiter_id": current_user.get("id"),
+                        "notes": payment_data.notes,
+                        "completed_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    supabase_admin.table("payments").insert(payment_record).execute()
+                    print(f"[DEBUG] Payment record created for bill {bill_id_for_payment}")
+            except Exception as payment_err:
+                # Don't fail the whole payment if ledger insert fails
+                print(f"[WARN] Payment ledger insert failed: {payment_err}")
+
         # Update order status to completed
         order_update = supabase_admin.table("orders").update({
             "status": "completed",

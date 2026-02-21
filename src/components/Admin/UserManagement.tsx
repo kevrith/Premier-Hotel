@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Search, Shield, AlertCircle, Activity, Users, TrendingUp, MoreHorizontal, UserX, Trash2, RotateCcw, FileText, BarChart3 } from 'lucide-react';
+import { Search, Shield, AlertCircle, Users, TrendingUp, MoreHorizontal, UserX, Trash2, RotateCcw, FileText, BarChart3 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { adminAPI, User } from '@/lib/api/admin-enhanced';
 import { UserAddDialog } from './UserAddDialog';

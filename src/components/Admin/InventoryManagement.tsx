@@ -9,15 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'react-hot-toast';
 import {
   Package,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
   Search,
   Plus,
   Edit,
@@ -31,9 +27,6 @@ import {
   XCircle,
   Clock,
   DollarSign,
-  ShoppingCart,
-  Truck,
-  Users
 } from 'lucide-react';
 
 // Import Purchase Order Components
@@ -97,10 +90,10 @@ export function InventoryManagement() {
   const [categories, setCategories] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isAdjustDialogOpen, setIsAdjustDialogOpen] = useState(false);
+  const [_selectedItem, _setSelectedItem] = useState<InventoryItem | null>(null);
+  const [_isAddDialogOpen, _setIsAddDialogOpen] = useState(false);
+  const [_isEditDialogOpen, _setIsEditDialogOpen] = useState(false);
+  const [_isAdjustDialogOpen, _setIsAdjustDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -152,17 +145,17 @@ export function InventoryManagement() {
   };
 
   const handleAddItem = () => {
-    setIsAddDialogOpen(true);
+    _setIsAddDialogOpen(true);
   };
 
   const handleEditItem = (item: InventoryItem) => {
-    setSelectedItem(item);
-    setIsEditDialogOpen(true);
+    _setSelectedItem(item);
+    _setIsEditDialogOpen(true);
   };
 
   const handleAdjustStock = (item: InventoryItem) => {
-    setSelectedItem(item);
-    setIsAdjustDialogOpen(true);
+    _setSelectedItem(item);
+    _setIsAdjustDialogOpen(true);
   };
 
   const handleDeleteItem = async (itemId: string) => {

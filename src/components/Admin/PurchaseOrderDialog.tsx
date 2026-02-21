@@ -77,8 +77,8 @@ const PurchaseOrderDialog: React.FC<PurchaseOrderDialogProps> = ({ open, onClose
 
   const loadInventoryItems = async () => {
     try {
-      const response = await inventoryService.getInventoryItems();
-      setInventoryItems(response.data || []);
+      const response = await inventoryService.getItems();
+      setInventoryItems(response || []);
     } catch (error: any) {
       toast({
         title: 'Error',

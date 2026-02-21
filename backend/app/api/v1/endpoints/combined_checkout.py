@@ -5,11 +5,18 @@ Handles payment for both room charges and F&B bills together
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
+import random
+import string
 from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import require_staff
 from pydantic import BaseModel
 from decimal import Decimal
+
+
+def _generate_payment_number():
+    chars = string.ascii_uppercase + string.digits
+    return f"PAY-{(''.join(random.choices(chars, k=10)))}"
 
 router = APIRouter()
 
@@ -210,7 +217,22 @@ async def process_combined_checkout(
                     "settled_by_waiter_id": current_user.get("id"),
                     "notes": f"Paid via combined checkout. Method: {checkout_data.payment_method.upper()}. {checkout_data.notes or ''}"
                 }).eq("id", bill["id"]).execute()
-        
+
+                # Create payment ledger record
+                try:
+                    supabase_admin.table("payments").insert({
+                        "payment_number": _generate_payment_number(),
+                        "bill_id": bill["id"],
+                        "amount": float(bill.get("total_amount", 0)),
+                        "payment_method": checkout_data.payment_method,
+                        "payment_status": "completed",
+                        "processed_by_waiter_id": current_user.get("id"),
+                        "notes": f"Combined checkout for room {clean_room_number}",
+                        "completed_at": datetime.now(timezone.utc).isoformat()
+                    }).execute()
+                except Exception as pay_err:
+                    print(f"[WARN] Payment ledger insert failed: {pay_err}")
+
         return CombinedCheckoutResponse(
             success=True,
             message=f"Payment of KES {folio_response['total_amount']:,.2f} processed successfully",

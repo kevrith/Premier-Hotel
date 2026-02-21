@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Hotel, Lock, Mail, AlertCircle, Loader2, Phone, Eye, EyeOff } from 'lucide-react';
+import { Hotel, Lock, Mail, AlertCircle, Loader2, Phone, Eye, EyeOff, WifiOff } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useOffline } from '@/contexts/OfflineContext';
 import OTPVerification from '@/components/Auth/OTPVerification';
@@ -44,6 +44,50 @@ export default function Login() {
   const [errors, setErrors] = useState<any>({});
 
   const from = location.state?.from?.pathname || '/';
+
+  // Check for cached session for offline login
+  const getCachedUser = () => {
+    try {
+      const stored = localStorage.getItem('auth-storage');
+      if (!stored) return null;
+      const parsed = JSON.parse(stored);
+      const cachedUser = parsed?.state?.user;
+      const lastAuth = parsed?.state?.lastAuthenticatedAt;
+      if (!cachedUser || !lastAuth) return null;
+      // Only allow if last auth was within 24 hours
+      const hoursSince = (Date.now() - new Date(lastAuth).getTime()) / (1000 * 60 * 60);
+      if (hoursSince > 24) return null;
+      return cachedUser;
+    } catch {
+      return null;
+    }
+  };
+
+  const cachedUser = !isOnline ? getCachedUser() : null;
+  const canContinueOffline = !isOnline && cachedUser !== null;
+
+  const handleContinueOffline = () => {
+    if (!cachedUser) return;
+    // Restore auth state from cached data
+    useAuthStore.setState({
+      user: cachedUser,
+      role: cachedUser.role,
+      isAuthenticated: true,
+      isOfflineSession: true,
+    });
+    toast.success('Continuing in offline mode with limited features');
+    // Navigate to role-based dashboard
+    switch (cachedUser.role) {
+      case 'admin': navigate('/admin'); break;
+      case 'manager': navigate('/manager'); break;
+      case 'chef': navigate('/chef'); break;
+      case 'waiter': navigate('/waiter'); break;
+      case 'cleaner':
+      case 'housekeeping': navigate('/cleaner'); break;
+      case 'customer':
+      default: navigate('/menu'); break;
+    }
+  };
 
   const validateEmailForm = () => {
     const newErrors: any = {};
@@ -154,6 +198,7 @@ export default function Login() {
             navigate('/waiter');
             break;
           case 'cleaner':
+          case 'housekeeping':
             navigate('/cleaner');
             break;
           case 'customer':
@@ -257,6 +302,7 @@ export default function Login() {
         navigate('/waiter');
         break;
       case 'cleaner':
+      case 'housekeeping':
         navigate('/cleaner');
         break;
       default:
@@ -294,11 +340,25 @@ export default function Login() {
 
         <CardContent>
           {!isOnline && (
-            <div className="mb-4 p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 flex items-start gap-2">
-              <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 mt-0.5" />
-              <div className="text-sm text-yellow-800 dark:text-yellow-200">
-                You are currently offline. Please connect to the internet to login.
+            <div className="mb-4 p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 mt-0.5" />
+                <div className="text-sm text-yellow-800 dark:text-yellow-200">
+                  {canContinueOffline
+                    ? 'You are currently offline. You can continue with limited features using your previously saved session.'
+                    : 'You are currently offline. Please connect to the internet to login.'}
+                </div>
               </div>
+              {canContinueOffline && (
+                <Button
+                  type="button"
+                  onClick={handleContinueOffline}
+                  className="w-full mt-3 bg-yellow-600 hover:bg-yellow-700 text-white"
+                >
+                  <WifiOff className="mr-2 h-4 w-4" />
+                  Continue Offline as {cachedUser?.full_name}
+                </Button>
+              )}
             </div>
           )}
 

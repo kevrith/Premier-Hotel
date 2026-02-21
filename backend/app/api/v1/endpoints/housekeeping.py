@@ -4,8 +4,8 @@ Housekeeping Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import List, Optional
-from datetime import datetime, date
-from app.core.supabase import get_supabase
+from datetime import datetime, date, timezone
+from app.core.supabase import get_supabase_admin
 from app.middleware.auth import get_current_user, require_role
 from app.schemas.housekeeping import (
     HousekeepingTaskCreate,
@@ -43,7 +43,7 @@ router = APIRouter()
 async def create_task(
     task: HousekeepingTaskCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Create a new housekeeping task.
@@ -89,8 +89,8 @@ async def list_tasks(
     to_date: Optional[date] = None,
     skip: int = 0,
     limit: int = 100,
-    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     List housekeeping tasks with optional filtering.
@@ -141,8 +141,8 @@ async def list_tasks(
 @router.get("/tasks/my-tasks", response_model=List[HousekeepingTaskResponse])
 async def get_my_tasks(
     status_filter: Optional[str] = Query(None, alias="status"),
-    current_user: dict = Depends(require_role(["cleaner", "staff", "admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["cleaner", "housekeeping", "staff", "admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get tasks assigned to the current user.
@@ -170,7 +170,7 @@ async def get_my_tasks(
 async def get_task(
     task_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get task details by ID.
@@ -199,8 +199,8 @@ async def get_task(
 async def update_task(
     task_id: str,
     task_update: HousekeepingTaskUpdate,
-    current_user: dict = Depends(require_role(["admin", "manager", "cleaner"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Update a housekeeping task.
@@ -240,8 +240,8 @@ async def update_task(
 async def start_task(
     task_id: str,
     start_request: TaskStartRequest,
-    current_user: dict = Depends(require_role(["cleaner", "staff", "admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["cleaner", "housekeeping", "staff", "admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Mark a task as started.
@@ -275,8 +275,8 @@ async def start_task(
 async def complete_task(
     task_id: str,
     complete_request: TaskCompleteRequest,
-    current_user: dict = Depends(require_role(["cleaner", "staff", "admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["cleaner", "housekeeping", "staff", "admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Mark a task as completed.
@@ -322,7 +322,7 @@ async def complete_task(
 async def delete_task(
     task_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Delete a housekeeping task.
@@ -355,7 +355,7 @@ async def delete_task(
 async def create_inspection(
     inspection: RoomInspectionCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Create a room inspection record.
@@ -389,8 +389,8 @@ async def list_inspections(
     to_date: Optional[date] = None,
     skip: int = 0,
     limit: int = 100,
-    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     List room inspections with optional filtering.
@@ -434,7 +434,7 @@ async def list_inspections(
 async def create_supply(
     supply: HousekeepingSupplyCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Add a new housekeeping supply to inventory.
@@ -466,8 +466,8 @@ async def list_supplies(
     low_stock: bool = False,
     skip: int = 0,
     limit: int = 100,
-    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     List housekeeping supplies with optional filtering.
@@ -501,8 +501,8 @@ async def list_supplies(
 
 @router.get("/supplies/low-stock", response_model=List[HousekeepingSupplyResponse])
 async def get_low_stock_supplies(
-    current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get supplies that are low in stock or out of stock.
@@ -531,7 +531,7 @@ async def update_supply(
     supply_id: str,
     supply_update: HousekeepingSupplyUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Update a housekeeping supply.
@@ -561,8 +561,8 @@ async def update_supply(
 @router.post("/supplies/usage", response_model=SupplyUsageResponse)
 async def log_supply_usage(
     usage: SupplyUsageCreate,
-    current_user: dict = Depends(require_role(["cleaner", "staff", "admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["cleaner", "housekeeping", "staff", "admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Log supply usage and update inventory.
@@ -612,8 +612,8 @@ async def log_supply_usage(
 @router.post("/lost-and-found", response_model=LostAndFoundResponse)
 async def create_lost_item(
     item: LostAndFoundCreate,
-    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Register a lost and found item.
@@ -648,8 +648,8 @@ async def list_lost_items(
     category: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
-    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     List lost and found items.
@@ -681,7 +681,7 @@ async def claim_lost_item(
     item_id: str,
     item_update: LostAndFoundUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Mark a lost item as claimed.
@@ -718,8 +718,8 @@ async def claim_lost_item(
 async def get_housekeeping_stats(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
-    current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get housekeeping statistics overview.
@@ -744,7 +744,7 @@ async def get_housekeeping_stats(
         completed_tasks = len([t for t in tasks if t["status"] == "completed"])
 
         # Overdue tasks (pending or in_progress with scheduled_time in the past)
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         overdue_tasks = len([
             t for t in tasks
             if t["status"] in ["pending", "in_progress"]
@@ -791,8 +791,8 @@ async def get_housekeeping_stats(
 
 @router.get("/stats/room-status", response_model=RoomStatusSummary)
 async def get_room_status_summary(
-    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get room status summary for housekeeping dashboard.
@@ -839,8 +839,8 @@ async def get_room_status_summary(
 
 @router.get("/stats/supplies", response_model=SupplyStats)
 async def get_supply_stats(
-    current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get housekeeping supplies statistics.

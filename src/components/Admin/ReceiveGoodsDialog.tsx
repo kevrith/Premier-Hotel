@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { purchaseOrdersService, PurchaseOrder, ReceiveGoodsRequest } from '@/lib/api/purchase-orders';
 import { useToast } from '@/hooks/use-toast';
 

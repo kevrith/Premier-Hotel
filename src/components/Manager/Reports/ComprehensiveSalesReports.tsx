@@ -31,7 +31,7 @@ interface EmployeeDetail {
 
 export const ComprehensiveSalesReports: React.FC = () => {
   const [reportType, setReportType] = useState<'summary' | 'employee' | 'daily'>('summary');
-  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [employeeData, setEmployeeData] = useState<EmployeeSales[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeDetail | null>(null);
@@ -47,59 +47,29 @@ export const ComprehensiveSalesReports: React.FC = () => {
   const loadReportData = async () => {
     setLoading(true);
     try {
-      const params: any = { start_date: startDate, end_date: endDate };
+      const params: any = {
+        start_date: startDate,
+        end_date: endDate,
+      };
+      if (roleFilter !== 'all') {
+        params.role = roleFilter;
+      }
 
-      // Get overall stats
-      const statsResponse = await api.get('/orders/manager/stats', { params });
-      
-      // Get all staff
-      const staffResponse = await api.get('/staff');
-      const staff = staffResponse.data || [];
-      
-      // Filter by role if needed
-      const filteredStaff = roleFilter !== 'all' 
-        ? staff.filter((s: any) => s.role === roleFilter)
-        : staff.filter((s: any) => ['waiter', 'chef'].includes(s.role));
-      
-      // Get sales for each employee using daily-sales endpoint
-      const employeeSalesPromises = filteredStaff.map(async (employee: any) => {
-        try {
-          const empParams = { ...params, employee_id: employee.id };
-          const empSales = await api.get('/orders/manager/daily-sales', { params: empParams });
-          
-          return {
-            employee_id: employee.id,
-            employee_name: employee.full_name || employee.name || 'Unknown',
-            role: employee.role,
-            total_sales: empSales.data?.total_revenue || 0,
-            total_orders: empSales.data?.total_orders || 0,
-            avg_order_value: empSales.data?.total_orders > 0 
-              ? empSales.data.total_revenue / empSales.data.total_orders 
-              : 0,
-            completion_rate: 100
-          };
-        } catch (err) {
-          console.error(`Error loading sales for ${employee.full_name}:`, err);
-          return {
-            employee_id: employee.id,
-            employee_name: employee.full_name || employee.name || 'Unknown',
-            role: employee.role,
-            total_sales: 0,
-            total_orders: 0,
-            avg_order_value: 0,
-            completion_rate: 0
-          };
-        }
-      });
-      
-      const employeeSales = await Promise.all(employeeSalesPromises);
-      
-      // Filter by search term
-      const filtered = employeeSales.filter(emp =>
-        emp.employee_name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      
-      setEmployeeData(filtered);
+      // Use the employee-sales report endpoint which queries the correct table
+      const response = await api.get('/reports/employee-sales', { params });
+      const data = response.data;
+
+      const employeeSales: EmployeeSales[] = (data.employees || []).map((emp: any) => ({
+        employee_id: emp.employee_id,
+        employee_name: emp.employee_name || 'Unknown',
+        role: emp.role,
+        total_sales: emp.total_sales || 0,
+        total_orders: emp.total_orders || 0,
+        avg_order_value: emp.avg_order_value || 0,
+        completion_rate: emp.completion_rate || 0,
+      }));
+
+      setEmployeeData(employeeSales);
     } catch (error) {
       console.error('Failed to load report data:', error);
     } finally {
@@ -138,8 +108,10 @@ export const ComprehensiveSalesReports: React.FC = () => {
     emp.employee_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalSales = filteredData.reduce((sum, emp) => sum + emp.total_sales, 0);
-  const totalOrders = filteredData.reduce((sum, emp) => sum + emp.total_orders, 0);
+  // Only sum sales from non-chef roles to avoid double counting
+  // (chef orders are the same orders waiters posted)
+  const totalSales = filteredData.filter(e => e.role !== 'chef').reduce((sum, emp) => sum + emp.total_sales, 0);
+  const totalOrders = filteredData.filter(e => e.role !== 'chef').reduce((sum, emp) => sum + emp.total_orders, 0);
 
   return (
     <div className="space-y-6">

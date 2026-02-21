@@ -4,9 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { User, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase as _supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
-import { createClient } from '@supabase/supabase-js';
 
 export function DebugUserRole() {
   const { user, userRole } = useAuth();
@@ -15,6 +14,7 @@ export function DebugUserRole() {
   const forceAdminRole = async () => {
     if (!user) return;
 
+    const supabase = _supabase as any;
     setIsUpdating(true);
     try {
       // Update both profiles table and try to update auth metadata

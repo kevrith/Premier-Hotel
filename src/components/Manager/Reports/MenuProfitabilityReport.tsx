@@ -5,7 +5,7 @@ import { Calendar, TrendingUp, TrendingDown } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ExportButton } from '@/components/Dashboard/ExportButton';
-import axios from 'axios';
+import api from '@/lib/api/client';
 
 export function MenuProfitabilityReport() {
   const [loading, setLoading] = useState(false);
@@ -18,14 +18,9 @@ export function MenuProfitabilityReport() {
   const fetchReport = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/financial-statements/menu-profitability`,
-        {
-          params: { start_date: startDate, end_date: endDate },
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
+      const response = await api.get('/financial/menu-profitability', {
+        params: { start_date: startDate, end_date: endDate }
+      });
       setData(response.data);
     } catch (error) {
       console.error('Error fetching menu profitability:', error);

@@ -3,11 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
-import { TrendingUp, Users, CreditCard, Bed, AlertTriangle, CheckCircle, Clock, Star } from 'lucide-react';
+import { TrendingUp, CreditCard, Bed, AlertTriangle, CheckCircle, Clock, Star } from 'lucide-react';
 import { reportsService } from '@/lib/api/reports';
 import { toast } from 'react-hot-toast';
 
-export function SystemOverview({ onStatsUpdate }) {
+export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdate?: (stats: any) => void }) {
   const [kpis, setKpis] = useState({
     totalRevenue: 0,
     totalBookings: 0,
@@ -17,8 +17,8 @@ export function SystemOverview({ onStatsUpdate }) {
     systemUptime: 99.9
   });
 
-  const [revenueData, setRevenueData] = useState([]);
-  const [projectionData, setProjectionData] = useState([]);
+  const [revenueData, setRevenueData] = useState<any[]>([]);
+  const [projectionData, setProjectionData] = useState<any[]>([]);
   const [projectionMetrics, setProjectionMetrics] = useState({
     nextMonthProjection: 0,
     next3MonthsProjection: 0,
@@ -28,13 +28,13 @@ export function SystemOverview({ onStatsUpdate }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Linear regression function for sales projection
-  const calculateLinearRegression = (data) => {
+  const calculateLinearRegression = (data: any) => {
     const n = data.length;
     if (n < 2) return { slope: 0, intercept: 0 };
 
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
 
-    data.forEach((point, index) => {
+    data.forEach((point: any, index: any) => {
       const x = index;
       const y = point.revenue;
       sumX += x;
@@ -50,16 +50,16 @@ export function SystemOverview({ onStatsUpdate }) {
   };
 
   // Calculate R-squared (confidence metric)
-  const calculateRSquared = (data, slope, intercept) => {
+  const calculateRSquared = (data: any, slope: any, intercept: any) => {
     const n = data.length;
     if (n < 2) return 0;
 
-    const yMean = data.reduce((sum, point) => sum + point.revenue, 0) / n;
+    const yMean = data.reduce((sum: any, point: any) => sum + point.revenue, 0) / n;
 
     let ssTotal = 0;
     let ssResidual = 0;
 
-    data.forEach((point, index) => {
+    data.forEach((point: any, index: any) => {
       const yActual = point.revenue;
       const yPredicted = slope * index + intercept;
 
@@ -190,7 +190,7 @@ export function SystemOverview({ onStatsUpdate }) {
     { hour: '20:00', active: 45 },
   ]);
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: any) => {
     switch (status) {
       case 'healthy': return 'bg-green-500';
       case 'warning': return 'bg-yellow-500';
@@ -199,7 +199,7 @@ export function SystemOverview({ onStatsUpdate }) {
     }
   };
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = (status: any) => {
     switch (status) {
       case 'healthy': return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'warning': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
@@ -482,7 +482,7 @@ export function SystemOverview({ onStatsUpdate }) {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }: any) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
@@ -525,7 +525,7 @@ export function SystemOverview({ onStatsUpdate }) {
                     </div>
                   </div>
                   <Badge 
-                    variant={item.status === 'healthy' ? 'default' : 'warning'}
+                    variant={item.status === 'healthy' ? 'default' : 'secondary'}
                     className={`${getStatusColor(item.status)} text-white`}
                   >
                     {item.status}

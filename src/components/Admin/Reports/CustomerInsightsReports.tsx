@@ -116,8 +116,8 @@ export function CustomerInsightsReports() {
           }
 
           // Track room type preference
-          const roomType = booking.room_type || 'Standard';
-          existing.roomTypes[roomType] = (existing.roomTypes[roomType] || 0) + 1;
+          const roomType: string = booking.room_type || 'Standard';
+          (existing.roomTypes as Record<string, number>)[roomType] = ((existing.roomTypes as Record<string, number>)[roomType] || 0) + 1;
 
           customerBookings.set(customerId, existing);
         });

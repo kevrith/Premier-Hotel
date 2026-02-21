@@ -134,10 +134,10 @@ async def get_order_stats(
         
         today_count = len(orders)
         pending_count = len([o for o in orders if o.get("status") in ['pending', 'preparing', 'ready', 'in-progress']])
-        completed_count = len([o for o in orders if o.get("status") in ['completed', 'delivered']])
-        
-        # Calculate revenue from completed orders only
-        total_revenue = sum(float(o.get("total_amount") or (o.get("subtotal", 0) + o.get("tax", 0))) for o in orders if o.get("status") in ['completed', 'delivered'])
+        completed_count = len([o for o in orders if o.get("status") in ['completed', 'delivered', 'served']])
+
+        # Calculate revenue from completed/served orders
+        total_revenue = sum(float(o.get("total_amount") or (o.get("subtotal", 0) + o.get("tax", 0))) for o in orders if o.get("status") in ['completed', 'delivered', 'served'])
         
         # Completion rate
         completion_rate = round((completed_count / today_count * 100) if today_count > 0 else 0, 1)
@@ -274,7 +274,7 @@ async def get_daily_sales(
         # Group by date
         daily_sales = {}
         for order in orders:
-            if order.get("status") in ['completed', 'delivered']:
+            if order.get("status") in ['completed', 'delivered', 'served']:
                 date = order["created_at"][:10]
                 if date not in daily_sales:
                     daily_sales[date] = {"date": date, "revenue": 0, "orders": 0}

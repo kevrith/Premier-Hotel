@@ -16,11 +16,8 @@ import { Button } from '@/components/ui/button';
 import { purchaseOrdersService, PurchaseOrderStats } from '@/lib/api/purchase-orders';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { useNavigate } from 'react-router-dom';
-
 const PurchaseOrderDashboard: React.FC = () => {
   const { toast } = useToast();
-  const navigate = useNavigate();
   const [stats, setStats] = useState<PurchaseOrderStats | null>(null);
   const [loading, setLoading] = useState(true);
 

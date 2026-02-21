@@ -8,11 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Tag, Plus, Edit, Trash2, Calendar, Percent } from 'lucide-react';
+import { Tag, Plus, Edit, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export function PromotionsManager() {
-  const [promotions, setPromotions] = useState([
+  const [promotions, setPromotions] = useState<any[]>([
     {
       id: '1',
       name: 'Summer Special',
@@ -52,7 +52,7 @@ export function PromotionsManager() {
   ]);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingPromo, setEditingPromo] = useState(null);
+  const [editingPromo, setEditingPromo] = useState<any>(null);
   const { toast } = useToast();
 
   const handleSavePromotion = (promoData: any) => {
@@ -226,7 +226,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
           <Input
             id="name"
             value={formData.name}
-            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, name: e.target.value }))}
             required
           />
         </div>
@@ -235,7 +235,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
           <Input
             id="code"
             value={formData.code}
-            onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, code: e.target.value.toUpperCase() }))}
             placeholder="SUMMER2025"
             required
           />
@@ -247,7 +247,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
         <Textarea
           id="description"
           value={formData.description}
-          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+          onChange={(e) => setFormData((prev: any) => ({ ...prev, description: e.target.value }))}
           rows={3}
         />
       </div>
@@ -257,7 +257,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
           <Label htmlFor="discount_type">Discount Type</Label>
           <Select
             value={formData.discount_type}
-            onValueChange={(value) => setFormData(prev => ({ ...prev, discount_type: value }))}
+            onValueChange={(value) => setFormData((prev: any) => ({ ...prev, discount_type: value }))}
           >
             <SelectTrigger id="discount_type">
               <SelectValue />
@@ -276,7 +276,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
             id="discount_value"
             type="number"
             value={formData.discount_value}
-            onChange={(e) => setFormData(prev => ({ ...prev, discount_value: Number(e.target.value) }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, discount_value: Number(e.target.value) }))}
             required
           />
         </div>
@@ -289,7 +289,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
             id="start_date"
             type="date"
             value={formData.start_date}
-            onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, start_date: e.target.value }))}
             required
           />
         </div>
@@ -299,7 +299,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
             id="end_date"
             type="date"
             value={formData.end_date}
-            onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, end_date: e.target.value }))}
             required
           />
         </div>
@@ -309,7 +309,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
         <Switch
           id="is_active"
           checked={formData.is_active}
-          onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
+          onCheckedChange={(checked) => setFormData((prev: any) => ({ ...prev, is_active: checked }))}
         />
         <Label htmlFor="is_active">Promotion Active</Label>
       </div>

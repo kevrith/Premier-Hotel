@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, TrendingUp, CreditCard, Tag, Download, Loader2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import reportsService, { RevenueAnalytics, OrdersStats, BookingsStats } from '@/lib/api/reports';
+import reportsService, { OrdersStats, BookingsStats } from '@/lib/api/reports';
 import apiClient from '@/lib/api/client';
 
 interface SalesData {
@@ -47,8 +46,8 @@ interface PaymentMethod {
 
 export function SalesReports() {
   const [dateRange, setDateRange] = useState('week');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [_dateFrom, _setDateFrom] = useState('');
+  const [_dateTo, _setDateTo] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [salesData, setSalesData] = useState<SalesData[]>([]);
   const [categorySales, setCategorySales] = useState<CategorySales[]>([]);

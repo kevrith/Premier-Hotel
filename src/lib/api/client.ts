@@ -99,6 +99,11 @@ apiClient.interceptors.response.use(
 
     // Handle network errors
     if (!error.response) {
+      // If offline, silently reject - the offline indicator tells the user
+      if (!navigator.onLine) {
+        return Promise.reject(error);
+      }
+      // Actually online but got no response - genuine network error
       toast.error('Network error. Please check your connection.');
       return Promise.reject(error);
     }
@@ -108,48 +113,40 @@ apiClient.interceptors.response.use(
     // Handle different error status codes
     switch (status) {
       case 401:
+        // Don't force logout when offline
+        if (!navigator.onLine) {
+          return Promise.reject(error);
+        }
+
         // Unauthorized - Token expired or invalid
         if (!originalRequest._retry) {
           originalRequest._retry = true;
 
           try {
-            // Try to refresh token
-            const authStorage = localStorage.getItem('auth-storage');
-            if (authStorage) {
-              const parsed: AuthStorage = JSON.parse(authStorage);
-              if (parsed.state?.refreshToken) {
-                const response = await axios.post<{ access_token: string }>(
-                  `${API_BASE_URL}/auth/refresh`,
-                  { refreshToken: parsed.state.refreshToken }
-                );
+            // Try to refresh token via cookie-based auth
+            await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
+              withCredentials: true,
+            });
 
-                const { access_token } = response.data;
-
-                // Update token in localStorage
-                const updatedState: AuthStorage = {
-                  state: { ...parsed.state, token: access_token },
-                  version: 0,
-                };
-                localStorage.setItem('auth-storage', JSON.stringify(updatedState));
-
-                // Retry original request with new token
-                originalRequest.headers.Authorization = `Bearer ${access_token}`;
-                return apiClient(originalRequest);
-              }
-            }
+            // Retry original request
+            return apiClient(originalRequest);
           } catch (refreshError) {
-            // Refresh failed, logout user
-            localStorage.removeItem('auth-storage');
-            window.location.href = '/login';
-            toast.error('Session expired. Please login again.');
+            // Only force redirect when online
+            if (navigator.onLine) {
+              localStorage.removeItem('auth-storage');
+              window.location.href = '/login';
+              toast.error('Session expired. Please login again.');
+            }
             return Promise.reject(refreshError);
           }
         }
 
-        // If retry failed or already retried, logout
-        localStorage.removeItem('auth-storage');
-        window.location.href = '/login';
-        toast.error('Session expired. Please login again.');
+        // If retry failed or already retried, logout (only when online)
+        if (navigator.onLine) {
+          localStorage.removeItem('auth-storage');
+          window.location.href = '/login';
+          toast.error('Session expired. Please login again.');
+        }
         break;
 
       case 403:

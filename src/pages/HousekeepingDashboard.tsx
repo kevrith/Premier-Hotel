@@ -41,7 +41,7 @@ export default function HousekeepingDashboard() {
     }
 
     const userRole = user?.role || 'customer';
-    if (!['admin', 'manager', 'cleaner', 'staff'].includes(userRole)) {
+    if (!['admin', 'manager', 'cleaner', 'housekeeping', 'staff'].includes(userRole)) {
       toast.error('You do not have permission to access housekeeping');
       navigate('/');
       return;
@@ -55,7 +55,7 @@ export default function HousekeepingDashboard() {
     try {
       const userRole = user?.role || 'customer';
 
-      if (userRole === 'cleaner') {
+      if (['cleaner', 'housekeeping'].includes(userRole)) {
         // Cleaners see only their tasks
         const [myTasksData, statsData, roomStatusData] = await Promise.all([
           housekeepingService.getMyTasks(),
@@ -221,12 +221,12 @@ export default function HousekeepingDashboard() {
     </Card>
   );
 
-  if (!isAuthenticated || !['admin', 'manager', 'cleaner', 'staff'].includes(user?.role || '')) {
+  if (!isAuthenticated || !['admin', 'manager', 'cleaner', 'housekeeping', 'staff'].includes(user?.role || '')) {
     return null;
   }
 
   const userRole = user?.role || 'customer';
-  const displayTasks = userRole === 'cleaner' ? myTasks : tasks;
+  const displayTasks = ['cleaner', 'housekeeping'].includes(userRole) ? myTasks : tasks;
 
   return (
     <div className="min-h-screen bg-background">
@@ -238,7 +238,7 @@ export default function HousekeepingDashboard() {
           <div>
             <h1 className="text-3xl md:text-4xl font-bold mb-2">Housekeeping Dashboard</h1>
             <p className="text-muted-foreground">
-              {userRole === 'cleaner' ? 'Your assigned tasks' : 'Manage housekeeping operations'}
+              {['cleaner', 'housekeeping'].includes(userRole) ? 'Your assigned tasks' : 'Manage housekeeping operations'}
             </p>
           </div>
 
@@ -348,7 +348,7 @@ export default function HousekeepingDashboard() {
                         <ClipboardList className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                         <h3 className="text-lg font-semibold mb-2">No tasks found</h3>
                         <p className="text-muted-foreground mb-4">
-                          {userRole === 'cleaner'
+                          {['cleaner', 'housekeeping'].includes(userRole)
                             ? 'You have no assigned tasks'
                             : 'Create your first housekeeping task'}
                         </p>

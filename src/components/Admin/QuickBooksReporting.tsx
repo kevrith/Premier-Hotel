@@ -1,6 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -8,9 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  FileText, Download, Calendar, Filter, Settings, Mail, Clock,
+  FileText, Download, Settings, Mail, Clock,
   DollarSign, TrendingUp, Package, Users, CreditCard, FileBarChart,
-  Briefcase, Building, Wallet, BarChart3, PieChart, ListChecks, Printer, User
+  Briefcase, Building, BarChart3, ListChecks, Printer, User
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { reportsService } from '@/lib/api/reports';
@@ -219,9 +218,9 @@ export function QuickBooksReporting() {
   const [reportData, setReportData] = useState<any>(null);
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
-  const [employeeDetails, setEmployeeDetails] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'summary' | 'detail'>('summary');
+  const [_employeeDetails, _setEmployeeDetails] = useState<any>(null);
+  const [_loading, _setLoading] = useState(false);
+  const [_viewMode, _setViewMode] = useState<'summary' | 'detail'>('summary');
 
   // Load employees on component mount
   useEffect(() => {
@@ -240,7 +239,7 @@ export function QuickBooksReporting() {
 
   // Generate report data from real APIs
   const generateReportData = async (reportName: string) => {
-    setLoading(true);
+    _setLoading(true);
     try {
       switch (reportName) {
         case 'Profit & Loss Standard':
@@ -259,7 +258,7 @@ export function QuickBooksReporting() {
           return generateGenericReportData(reportName);
       }
     } finally {
-      setLoading(false);
+      _setLoading(false);
     }
   };
 
@@ -1394,8 +1393,8 @@ export function QuickBooksReporting() {
 
   const handleEmployeeClick = async (employeeId: string) => {
     setSelectedEmployee(employeeId);
-    setViewMode('detail');
-    setLoading(true);
+    _setViewMode('detail');
+    _setLoading(true);
 
     try {
       const data = await generateEmployeeSalesData();
@@ -1405,13 +1404,13 @@ export function QuickBooksReporting() {
       console.error('Failed to load employee details:', error);
       toast.error('Failed to load employee details');
     } finally {
-      setLoading(false);
+      _setLoading(false);
     }
   };
 
   const handleBackToSummary = () => {
     setSelectedEmployee('');
-    setViewMode('summary');
+    _setViewMode('summary');
     setReportData(null);
   };
 
@@ -1745,7 +1744,7 @@ export function QuickBooksReporting() {
                   <Select value={selectedReport} onValueChange={(value) => {
                     setSelectedReport(value);
                     setReportData(null);
-                    setEmployeeDetails(null);
+                    _setEmployeeDetails(null);
                     setSelectedEmployee('');
                   }}>
                     <SelectTrigger>

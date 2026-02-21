@@ -103,7 +103,7 @@ export function SocketProvider({ children }) {
     // Room status handler (for cleaners)
     newSocket.on('room_status_change', (data) => {
       console.log('Room status change:', data);
-      if (user && ['cleaner', 'manager', 'admin'].includes(user.role)) {
+      if (user && ['cleaner', 'housekeeping', 'manager', 'admin'].includes(user.role)) {
         addNotification({
           type: 'room_status',
           title: 'Room Status Update',

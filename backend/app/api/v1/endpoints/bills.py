@@ -36,7 +36,7 @@ async def get_unpaid_orders(
     location_type: str,
     location: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
@@ -136,7 +136,7 @@ async def get_unpaid_orders(
 async def create_bill(
     bill_data: BillCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
@@ -253,7 +253,7 @@ async def create_bill(
 async def get_bill(
     bill_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Get bill details with order breakdown"""
@@ -324,7 +324,7 @@ async def get_bill(
 async def create_payment(
     payment_data: PaymentCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Process a payment for a bill
@@ -442,7 +442,7 @@ async def create_payment(
 @router.post("/mpesa/callback")
 async def mpesa_callback(
     callback_data: MPesaCallbackData,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Handle M-Pesa payment callbacks
@@ -532,7 +532,7 @@ async def mpesa_callback(
 async def list_bills(
     payment_status: str = None,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """List bills with optional filtering by payment status"""

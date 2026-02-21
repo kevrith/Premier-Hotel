@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar, Download, TrendingUp, Bed, DollarSign } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ExportButton } from '@/components/Dashboard/ExportButton';
-import axios from 'axios';
+import api from '@/lib/api/client';
 
 export function OccupancyReport() {
   const [loading, setLoading] = useState(false);
@@ -17,14 +17,9 @@ export function OccupancyReport() {
   const fetchReport = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/financial-statements/occupancy-report`,
-        {
-          params: { start_date: startDate, end_date: endDate },
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
+      const response = await api.get('/financial/occupancy-report', {
+        params: { start_date: startDate, end_date: endDate }
+      });
       setData(response.data);
     } catch (error) {
       console.error('Error fetching occupancy report:', error);

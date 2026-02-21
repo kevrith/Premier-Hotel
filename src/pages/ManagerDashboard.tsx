@@ -55,6 +55,7 @@ import { CustomerLifetimeValueReport } from '@/components/Manager/Reports/Custom
 import { RecentActivityFeed } from '@/components/Dashboard/RecentActivityFeed';
 import { NotificationCenter } from '@/components/Dashboard/NotificationCenter';
 import { DashboardCustomization, useWidgetVisibility } from '@/components/Dashboard/DashboardCustomization';
+import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagement';
 import { RefreshCw } from 'lucide-react';
 
 
@@ -132,9 +133,9 @@ export default function ManagerDashboard() {
         <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-8">
           {isVisible('revenue') && (
           <StatCard
-            title="Today's Revenue"
+            title="F&B Revenue (Today)"
             value={revenueLoading ? '...' : `KES ${revenueStats.todayRevenue.toLocaleString()}`}
-            subtitle={`Month: KES ${revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()}`}
+            subtitle={`Month F&B: KES ${revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()} | Rooms: KES ${revenueLoading ? '...' : revenueStats.roomRevenue.toLocaleString()}`}
             icon={DollarSign}
             color="text-green-500"
           />
@@ -177,7 +178,7 @@ export default function ManagerDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1 h-auto">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-1 h-auto">
             <TabsTrigger value="overview" className="text-xs sm:text-sm px-1 sm:px-3">Overview</TabsTrigger>
             <TabsTrigger value="staff" className="text-xs sm:text-sm px-1 sm:px-3">Staff</TabsTrigger>
             <TabsTrigger value="manage-staff" className="text-xs sm:text-sm px-1 sm:px-3">Manage</TabsTrigger>
@@ -187,6 +188,7 @@ export default function ManagerDashboard() {
             <TabsTrigger value="order-management" className="text-xs sm:text-sm px-1 sm:px-3">Orders</TabsTrigger>
             <TabsTrigger value="system-health" className="text-xs sm:text-sm px-1 sm:px-3">Health</TabsTrigger>
             <TabsTrigger value="content-management" className="text-xs sm:text-sm px-1 sm:px-3">Content</TabsTrigger>
+            <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-1 sm:px-3">Housekeeping</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -459,30 +461,26 @@ export default function ManagerDashboard() {
               </div>
 
               <TabsContent value="overview">
-                <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-4 sm:mb-6">
+                <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-6">
                   <div className="p-4 border rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Today's Revenue</p>
+                    <p className="text-sm text-muted-foreground mb-1">F&B Today</p>
                     <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.todayRevenue.toLocaleString()}</p>
-                    <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                      <TrendingUp className="h-3 w-3" />
-                      <span>Live data</span>
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
                   </div>
                   <div className="p-4 border rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">This Week</p>
+                    <p className="text-sm text-muted-foreground mb-1">F&B This Week</p>
                     <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.weekRevenue.toLocaleString()}</p>
-                    <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                      <TrendingUp className="h-3 w-3" />
-                      <span>Live data</span>
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
                   </div>
                   <div className="p-4 border rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">This Month</p>
+                    <p className="text-sm text-muted-foreground mb-1">F&B This Month</p>
                     <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()}</p>
-                    <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                      <TrendingUp className="h-3 w-3" />
-                      <span>Live data</span>
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-sm text-muted-foreground mb-1">Room Revenue (Month)</p>
+                    <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.roomRevenue.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Bookings & Accommodation</p>
                   </div>
                 </div>
               </TabsContent>
@@ -547,6 +545,11 @@ export default function ManagerDashboard() {
             <ContentManagement />
           </TabsContent>
 
+          {/* Housekeeping Management Tab */}
+          <TabsContent value="housekeeping" className="space-y-6">
+            <HousekeepingManagement />
+          </TabsContent>
+
           {/* Analytics Tab (Legacy) */}
           <TabsContent value="analytics" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-3">
@@ -558,30 +561,26 @@ export default function ManagerDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      <div className="grid gap-4 md:grid-cols-3">
+                      <div className="grid gap-4 md:grid-cols-4">
                         <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">Today's Revenue</p>
+                          <p className="text-sm text-muted-foreground mb-1">F&B Today</p>
                           <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.todayRevenue.toLocaleString()}</p>
-                          <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                            <TrendingUp className="h-3 w-3" />
-                            <span>Live data</span>
-                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
                         </div>
                         <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">This Week</p>
+                          <p className="text-sm text-muted-foreground mb-1">F&B This Week</p>
                           <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.weekRevenue.toLocaleString()}</p>
-                          <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                            <TrendingUp className="h-3 w-3" />
-                            <span>Live data</span>
-                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
                         </div>
                         <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">This Month</p>
+                          <p className="text-sm text-muted-foreground mb-1">F&B This Month</p>
                           <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()}</p>
-                          <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                            <TrendingUp className="h-3 w-3" />
-                            <span>Live data</span>
-                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+                        </div>
+                        <div className="p-4 border rounded-lg">
+                          <p className="text-sm text-muted-foreground mb-1">Room Revenue (Month)</p>
+                          <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.roomRevenue.toLocaleString()}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Bookings & Accommodation</p>
                         </div>
                       </div>
                       

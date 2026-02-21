@@ -3,12 +3,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { X } from 'lucide-react';
 
-export default function RoomForm({ room, onSave, onCancel }) {
+interface RoomFormProps {
+  room?: any;
+  onSave: (data: any) => void;
+  onCancel: () => void;
+}
+
+export default function RoomForm({ room, onSave, onCancel }: RoomFormProps) {
   const [formData, setFormData] = useState(room || {
     room_number: '',
     type: 'standard',
@@ -24,14 +29,14 @@ export default function RoomForm({ room, onSave, onCancel }) {
 
   const [newAmenity, setNewAmenity] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: any) => {
     e.preventDefault();
     onSave(formData);
   };
 
   const addAmenity = () => {
     if (newAmenity && !formData.amenities.includes(newAmenity)) {
-      setFormData(prev => ({
+      setFormData((prev: any) => ({
         ...prev,
         amenities: [...prev.amenities, newAmenity]
       }));
@@ -39,10 +44,10 @@ export default function RoomForm({ room, onSave, onCancel }) {
     }
   };
 
-  const removeAmenity = (amenity) => {
-    setFormData(prev => ({
+  const removeAmenity = (amenity: any) => {
+    setFormData((prev: any) => ({
       ...prev,
-      amenities: prev.amenities.filter(a => a !== amenity)
+      amenities: prev.amenities.filter((a: any) => a !== amenity)
     }));
   };
 
@@ -54,7 +59,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
           <Input
             id="room_number"
             value={formData.room_number}
-            onChange={(e) => setFormData(prev => ({ ...prev, room_number: e.target.value }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, room_number: e.target.value }))}
             placeholder="301"
             required
           />
@@ -63,7 +68,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
           <Label htmlFor="type">Room Type</Label>
           <Select
             value={formData.type}
-            onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
+            onValueChange={(value) => setFormData((prev: any) => ({ ...prev, type: value }))}
           >
             <SelectTrigger id="type">
               <SelectValue />
@@ -86,7 +91,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
             id="base_price"
             type="number"
             value={formData.base_price}
-            onChange={(e) => setFormData(prev => ({ ...prev, base_price: Number(e.target.value) }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, base_price: Number(e.target.value) }))}
             required
           />
         </div>
@@ -97,7 +102,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
             type="number"
             min="1"
             value={formData.max_occupancy}
-            onChange={(e) => setFormData(prev => ({ ...prev, max_occupancy: Number(e.target.value) }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, max_occupancy: Number(e.target.value) }))}
             required
           />
         </div>
@@ -108,7 +113,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
         <Textarea
           id="description"
           value={formData.description || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+          onChange={(e) => setFormData((prev: any) => ({ ...prev, description: e.target.value }))}
           rows={3}
           placeholder="Describe the room features and amenities..."
         />
@@ -122,7 +127,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
             type="number"
             min="1"
             value={formData.floor}
-            onChange={(e) => setFormData(prev => ({ ...prev, floor: Number(e.target.value) }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, floor: Number(e.target.value) }))}
             required
           />
         </div>
@@ -133,7 +138,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
             type="number"
             min="0"
             value={formData.size_sqm}
-            onChange={(e) => setFormData(prev => ({ ...prev, size_sqm: Number(e.target.value) }))}
+            onChange={(e) => setFormData((prev: any) => ({ ...prev, size_sqm: Number(e.target.value) }))}
           />
         </div>
       </div>
@@ -153,7 +158,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
           </Button>
         </div>
         <div className="flex flex-wrap gap-2">
-          {formData.amenities.map((amenity, index) => (
+          {formData.amenities.map((amenity: any, index: any) => (
             <Badge key={index} variant="secondary" className="flex items-center gap-1">
               {amenity}
               <X
@@ -169,7 +174,7 @@ export default function RoomForm({ room, onSave, onCancel }) {
         <Label htmlFor="status">Room Status</Label>
         <Select
           value={formData.status}
-          onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
+          onValueChange={(value) => setFormData((prev: any) => ({ ...prev, status: value }))}
         >
           <SelectTrigger id="status">
             <SelectValue />

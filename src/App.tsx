@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,6 +9,7 @@ import { OfflineProvider } from "./contexts/OfflineContext";
 import { SocketProvider } from "./contexts/SocketContext";
 import { MobileNavigation } from "./components/MobileNavigation";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { OfflineSessionBanner } from "./components/OfflineSessionBanner";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -30,7 +31,7 @@ import CleanerDashboard from "./pages/CleanerDashboard";
 import MyOrders from "./pages/MyOrders";
 import ReportsDashboard from "./pages/ReportsDashboard";
 import StaffManagement from "./pages/StaffManagement";
-import HousekeepingDashboard from "./pages/HousekeepingDashboard";
+// HousekeepingDashboard consolidated into CleanerDashboard
 import ServiceRequests from "./pages/ServiceRequests";
 import ExpenseTracking from "./pages/ExpenseTracking";
 import InventoryDashboard from "./pages/InventoryDashboard";
@@ -96,6 +97,7 @@ const App = () => {
             <AuthProvider>
               <OfflineProvider>
                 <SocketProvider>
+            <OfflineSessionBanner />
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Index />} />
@@ -167,9 +169,9 @@ const App = () => {
                 <Route path="/inventory" element={<InventoryDashboard />} />
               </Route>
 
-              {/* Housekeeping - Admin, Manager, Cleaner, Staff */}
-              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager', 'cleaner', 'staff']} />}>
-                <Route path="/housekeeping" element={<HousekeepingDashboard />} />
+              {/* Housekeeping - Redirect /housekeeping to /cleaner, keep sub-routes */}
+              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager', 'cleaner', 'housekeeping', 'staff']} />}>
+                <Route path="/housekeeping" element={<Navigate to="/cleaner" replace />} />
                 <Route path="/housekeeping/lost-found" element={<LostAndFound />} />
                 <Route path="/housekeeping/deep-cleaning" element={<DeepCleaningSchedule />} />
                 <Route path="/housekeeping/inventory" element={<InventoryManagement />} />
@@ -189,7 +191,7 @@ const App = () => {
                 <Route path="/waiter" element={<WaiterDashboard />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredRoles={['cleaner', 'admin']} />}>
+              <Route element={<ProtectedRoute requiredRoles={['cleaner', 'housekeeping', 'admin']} />}>
                 <Route path="/cleaner" element={<CleanerDashboard />} />
               </Route>
 

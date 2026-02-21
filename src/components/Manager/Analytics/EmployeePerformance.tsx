@@ -22,7 +22,7 @@ export function EmployeePerformance() {
   const [teamData, setTeamData] = useState<EmployeePerformance[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [filters, setFilters] = useState<AnalyticsFilters>({
-    start_date: format(new Date(), 'yyyy-MM-dd'),
+    start_date: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
     end_date: format(new Date(), 'yyyy-MM-dd'),
     time_granularity: 'day'
   });

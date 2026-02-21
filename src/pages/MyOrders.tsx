@@ -126,7 +126,7 @@ export default function MyOrders() {
             <div className="flex-1">
               <CardTitle className="flex items-center gap-2">
                 <ShoppingBag className="h-5 w-5" />
-                Order #{order.id.slice(0, 8)}
+                Order #{order.order_number || order.id.slice(0, 8)}
               </CardTitle>
               <CardDescription>
                 {format(new Date(order.createdAt), 'MMM d, yyyy h:mm a')}

@@ -180,6 +180,7 @@ export default function Register() {
             navigate('/waiter');
             break;
           case 'cleaner':
+          case 'housekeeping':
             navigate('/cleaner');
             break;
           default:
@@ -211,6 +212,7 @@ export default function Register() {
         navigate('/waiter');
         break;
       case 'cleaner':
+      case 'housekeeping':
         navigate('/cleaner');
         break;
       default:

@@ -36,6 +36,8 @@ interface AuthState {
   needsVerification: boolean;
   verificationType: 'email' | 'phone' | null;
   hasHydrated: boolean;
+  lastAuthenticatedAt: string | null;
+  isOfflineSession: boolean;
 
   // Actions
   login: (identifier: string, password: string, type?: 'email' | 'phone') => Promise<any>;
@@ -68,6 +70,8 @@ const useAuthStore = create<AuthState>()(
       needsVerification: false,
       verificationType: null,
       hasHydrated: false,
+      lastAuthenticatedAt: null,
+      isOfflineSession: false,
 
       // Login - Auto-detect email or phone
       login: async (identifier, password, type) => {
@@ -103,6 +107,8 @@ const useAuthStore = create<AuthState>()(
             role: user.role,
             isAuthenticated: true,
             isLoading: false,
+            lastAuthenticatedAt: new Date().toISOString(),
+            isOfflineSession: false,
             needsVerification: needsEmailVerification || needsPhoneVerification,
             verificationType: needsEmailVerification ? 'email' : needsPhoneVerification ? 'phone' : null,
           });
@@ -188,6 +194,8 @@ const useAuthStore = create<AuthState>()(
           error: null,
           needsVerification: false,
           verificationType: null,
+          lastAuthenticatedAt: null,
+          isOfflineSession: false,
         });
 
         // SECURITY: No localStorage.removeItem() needed - cookies cleared by backend
@@ -220,9 +228,23 @@ const useAuthStore = create<AuthState>()(
         authCheckInProgress = true;
         authCheckPromise = (async () => {
           try {
+            // If offline, trust cached state within a 24-hour window
+            if (!navigator.onLine) {
+              const { user, isAuthenticated, lastAuthenticatedAt } = get();
+              if (user && isAuthenticated && lastAuthenticatedAt) {
+                const hoursSinceAuth = (Date.now() - new Date(lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
+                if (hoursSinceAuth < 24) {
+                  set({ isOfflineSession: true });
+                  return true;
+                }
+              }
+              return false;
+            }
+
             // Use direct axios call to bypass interceptor and prevent refresh loops
             const response = await axios.get(`${API_BASE_URL}/auth/me`, {
               withCredentials: true,
+              headers: { 'Cache-Control': 'no-store' },
             });
 
             const user = response.data?.user || response.data;
@@ -233,6 +255,8 @@ const useAuthStore = create<AuthState>()(
                 role: user.role,
                 isAuthenticated: true,
                 error: null,
+                lastAuthenticatedAt: new Date().toISOString(),
+                isOfflineSession: false,
               });
               return true;
             } else {
@@ -240,15 +264,35 @@ const useAuthStore = create<AuthState>()(
                 user: null,
                 role: null,
                 isAuthenticated: false,
+                lastAuthenticatedAt: null,
+                isOfflineSession: false,
               });
               return false;
             }
-          } catch (error) {
-            // Cookie is invalid or expired - don't try to refresh, just mark as unauthenticated
+          } catch (error: any) {
+            // Distinguish network error from auth error
+            const isNetworkError = !error.response && (!navigator.onLine || error.code === 'ERR_NETWORK');
+
+            if (isNetworkError) {
+              // Network error - keep cached state if valid
+              const { user, isAuthenticated, lastAuthenticatedAt } = get();
+              if (user && isAuthenticated && lastAuthenticatedAt) {
+                const hoursSinceAuth = (Date.now() - new Date(lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
+                if (hoursSinceAuth < 24) {
+                  set({ isOfflineSession: true });
+                  return true;
+                }
+              }
+              return false;
+            }
+
+            // Genuine auth error (401, 403, etc.) - clear state
             set({
               user: null,
               role: null,
               isAuthenticated: false,
+              lastAuthenticatedAt: null,
+              isOfflineSession: false,
             });
             return false;
           } finally {
@@ -263,6 +307,12 @@ const useAuthStore = create<AuthState>()(
       // Refresh Access Token
       refreshAccessToken: async () => {
         try {
+          // Skip refresh when offline
+          if (!navigator.onLine) {
+            set({ isOfflineSession: true });
+            return true;
+          }
+
           // Use direct axios call to bypass interceptor
           await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
             withCredentials: true,
@@ -270,12 +320,22 @@ const useAuthStore = create<AuthState>()(
 
           // Check if still authenticated
           return await get().checkAuth();
-        } catch (error) {
-          // Refresh token is invalid or expired - don't loop, just mark as unauthenticated
+        } catch (error: any) {
+          // Don't logout on network errors
+          const isNetworkError = !error.response && (!navigator.onLine || error.code === 'ERR_NETWORK');
+
+          if (isNetworkError) {
+            set({ isOfflineSession: true });
+            return true;
+          }
+
+          // Genuine server rejection - session is truly invalid
           set({
             user: null,
             role: null,
             isAuthenticated: false,
+            lastAuthenticatedAt: null,
+            isOfflineSession: false,
           });
           return false;
         }
@@ -399,6 +459,7 @@ const useAuthStore = create<AuthState>()(
         user: state.user,
         role: state.role,
         isAuthenticated: state.isAuthenticated,
+        lastAuthenticatedAt: state.lastAuthenticatedAt,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);

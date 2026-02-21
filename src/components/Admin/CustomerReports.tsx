@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Users, Download, Star } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-export function CustomerReports({ onExport }) {
-  const [isLoading, setIsLoading] = useState(false);
+export function CustomerReports({ onExport: _onExport }: { onExport?: (...args: any[]) => any }) {
+  const [_isLoading, _setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const exportReport = (format) => {
+  const exportReport = (format: string) => {
     toast({
       title: `Exporting to ${format.toUpperCase()}`,
       description: "Customer insights report will be downloaded",
