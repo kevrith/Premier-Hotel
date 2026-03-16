@@ -39,6 +39,10 @@ export interface MenuItem {
   popular?: boolean;
   rating?: number;
   total_orders?: number;
+  track_inventory?: boolean;
+  stock_quantity?: number;
+  reorder_level?: number;
+  unit?: string;
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +74,7 @@ export interface MenuItemUpdate {
   preparation_time?: number;
   available?: boolean;
   popular?: boolean;
+  track_inventory?: boolean;
 }
 
 // ============================================

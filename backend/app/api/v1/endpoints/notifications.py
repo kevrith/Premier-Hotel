@@ -67,12 +67,14 @@ async def get_my_notifications(
     supabase: Client = Depends(get_supabase)
 ):
     """Get current user's notifications"""
-    query = supabase.table("notifications").select("*").eq("user_id", current_user["id"])
+    query = supabase.table("notifications").select(
+        "id, user_id, notification_type, title, message, read_at, created_at, data, fingerprint"
+    ).eq("user_id", current_user["id"])
 
     if unread_only:
         query = query.is_("read_at", "null")
 
-    query = query.order("created_at", desc=True).limit(limit).offset(offset)
+    query = query.order("created_at", desc=True).limit(min(limit, 30)).offset(offset)
     result = query.execute()
 
     return [NotificationResponse(**n) for n in result.data]
@@ -122,7 +124,9 @@ async def get_notification_stats(
     supabase: Client = Depends(get_supabase)
 ):
     """Get notification statistics"""
-    result = supabase.table("notifications").select("*").eq("user_id", current_user["id"]).execute()
+    result = supabase.table("notifications").select(
+        "id, user_id, notification_type, title, message, read_at, created_at, data, fingerprint"
+    ).eq("user_id", current_user["id"]).order("created_at", desc=True).limit(200).execute()
 
     notifications = result.data
     unread = [n for n in notifications if not n.get("read_at")]

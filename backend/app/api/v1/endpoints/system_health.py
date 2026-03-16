@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from supabase import Client
 from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import get_current_user
@@ -9,8 +9,6 @@ import psutil
 import time
 import httpx
 import smtplib
-import os
-
 import os
 
 router = APIRouter()
@@ -82,7 +80,7 @@ async def get_system_components(
         # Fallback to simple query if ping fails
         try:
             start = time.time()
-            supabase_admin.table("profiles").select("id").limit(1).execute()
+            supabase_admin.table("users").select("id").limit(1).execute()
             db_response_time = int((time.time() - start) * 1000)
             
             db_status = "healthy"
@@ -119,13 +117,24 @@ async def get_system_components(
     if cpu_percent > CPU_CRITICAL_THRESHOLD or memory_percent > MEMORY_CRITICAL_THRESHOLD:
         api_status = "critical"
     
+    # Use real average response time from tracker
+    tracked_times = request_tracker.get("response_times", [])
+    api_response_time = int(sum(tracked_times) / len(tracked_times)) if tracked_times else 0
+    total_req = request_tracker.get("total", 0)
+    errors = request_tracker.get("errors", 0)
+    uptime_start = request_tracker.get("start_time", time.time())
+    uptime_hours = (time.time() - uptime_start) / 3600
+    # Uptime % based on error rate (capped at 99.99%)
+    error_rate_pct = (errors / total_req * 100) if total_req > 0 else 0
+    api_uptime = round(max(95.0, 100.0 - error_rate_pct), 1)
+
     components.append(SystemComponent(
         id="api-server",
         name="API Server",
         status=api_status,
-        uptime=99.8,
+        uptime=api_uptime,
         lastCheck=datetime.now().isoformat(),
-        responseTime=50
+        responseTime=api_response_time
     ))
     
     # Payment Gateway - test M-Pesa API
@@ -230,7 +239,7 @@ async def get_system_metrics(
     
     try:
         # Use count query instead of fetching all data
-        active_users_result = supabase_admin.table("profiles").select("*", count="exact").limit(0).execute()
+        active_users_result = supabase_admin.table("users").select("*", count="exact").limit(0).execute()
         active_users = active_users_result.count if hasattr(active_users_result, 'count') else 0
     except:
         active_users = 0
@@ -250,6 +259,96 @@ async def get_system_metrics(
         averageResponseTime=int(avg_response_time),
         systemUptime=uptime_percent
     )
+
+@router.get("/activity")
+async def get_system_activity(
+    limit: int = Query(default=20, ge=1, le=50),
+    current_user: dict = Depends(get_current_user),
+    supabase_admin: Client = Depends(get_supabase_admin)
+):
+    """Get real system activity from notifications and recent events"""
+    if current_user.get("role") not in ['admin', 'manager']:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    events = []
+
+    try:
+        # Recent orders activity
+        orders_res = supabase_admin.table("orders").select(
+            "order_number, status, customer_name, created_at, updated_at"
+        ).order("updated_at", desc=True).limit(10).execute()
+
+        for o in (orders_res.data or []):
+            status = o.get("status", "")
+            name = o.get("customer_name") or "Guest"
+            num = o.get("order_number", "")
+            ts = o.get("updated_at") or o.get("created_at")
+            if status == "completed":
+                events.append({"event": f"Order {num} completed — {name}", "time": ts, "type": "success"})
+            elif status == "cancelled":
+                events.append({"event": f"Order {num} cancelled — {name}", "time": ts, "type": "warning"})
+            elif status == "pending":
+                events.append({"event": f"New order {num} placed — {name}", "time": ts, "type": "info"})
+    except Exception:
+        pass
+
+    try:
+        # Recent stock receipts
+        receipts_res = supabase_admin.table("stock_receipts").select(
+            "quantity, total_cost, received_at, notes"
+        ).order("received_at", desc=True).limit(5).execute()
+        for r in (receipts_res.data or []):
+            qty = r.get("quantity", 0)
+            cost = r.get("total_cost", 0)
+            ts = r.get("received_at")
+            events.append({"event": f"Stock received: {qty} units — KES {cost}", "time": ts, "type": "info"})
+    except Exception:
+        pass
+
+    try:
+        # Recent user logins (from notifications)
+        notif_res = supabase_admin.table("notifications").select(
+            "title, message, created_at, type"
+        ).order("created_at", desc=True).limit(10).execute()
+        for n in (notif_res.data or []):
+            ntype = "info"
+            if "error" in (n.get("type") or "").lower() or "fail" in (n.get("message") or "").lower():
+                ntype = "warning"
+            elif "success" in (n.get("type") or "").lower() or "complet" in (n.get("message") or "").lower():
+                ntype = "success"
+            events.append({"event": n.get("title") or n.get("message") or "System event", "time": n.get("created_at"), "type": ntype})
+    except Exception:
+        pass
+
+    # Sort by time desc, take latest N
+    def parse_ts(e):
+        try:
+            return datetime.fromisoformat((e.get("time") or "2000-01-01").replace("Z", "+00:00"))
+        except Exception:
+            return datetime.min
+
+    events.sort(key=parse_ts, reverse=True)
+    events = events[:limit]
+
+    # Format relative times
+    now = datetime.now(timezone.utc)
+    for e in events:
+        try:
+            ts = datetime.fromisoformat((e.get("time") or "").replace("Z", "+00:00"))
+            diff = int((now - ts).total_seconds())
+            if diff < 60:
+                e["time_display"] = "just now"
+            elif diff < 3600:
+                e["time_display"] = f"{diff // 60}m ago"
+            elif diff < 86400:
+                e["time_display"] = f"{diff // 3600}h ago"
+            else:
+                e["time_display"] = f"{diff // 86400}d ago"
+        except Exception:
+            e["time_display"] = ""
+
+    return events
+
 
 @router.get("/status")
 async def get_system_status(

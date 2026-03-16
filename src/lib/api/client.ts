@@ -32,9 +32,25 @@ interface AuthStorage {
 }
 
 /**
- * API Base URL - can be configured via environment variables
+ * API Base URL - auto-detects the server from the current hostname.
+ * If the app is opened via a local network IP (e.g. 192.168.1.5:5173),
+ * API calls automatically go to that same IP on port 8000 — no config needed.
  */
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const getApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  // Explicit env override (non-localhost) takes priority
+  if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+    return envUrl;
+  }
+  // Auto-detect: use the same hostname the browser is currently on
+  const host = window.location.hostname;
+  if (host !== 'localhost' && host !== '127.0.0.1') {
+    return `http://${host}:8000/api/v1`;
+  }
+  return envUrl || 'http://localhost:8000/api/v1';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 /**
  * Create axios instance with default configuration

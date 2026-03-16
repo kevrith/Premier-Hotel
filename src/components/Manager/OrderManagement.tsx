@@ -187,7 +187,8 @@ export default function OrderManagement() {
       if (searchTerm) params.append('search', searchTerm);
 
       const response = await api.get<Order[]>(`/orders/manager/manager?${params}`);
-      return (response.data.data ?? []) as Order[];
+      const raw = response.data as any;
+      return ((raw?.data ?? raw) || []) as Order[];
     },
     refetchInterval: 10000,
   });
@@ -197,7 +198,8 @@ export default function OrderManagement() {
     queryKey: ['order-stats'],
     queryFn: async (): Promise<QuickStats> => {
       const response = await api.get<QuickStats>('/orders/manager/stats');
-      return response.data.data as QuickStats;
+      const raw = response.data as any;
+      return (raw?.data ?? raw) as QuickStats;
     },
     refetchInterval: 30000,
   });

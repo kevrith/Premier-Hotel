@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import useAuthStore from '@/stores/authStore.secure';
@@ -45,6 +45,44 @@ export default function Login() {
 
   const from = location.state?.from?.pathname || '/';
 
+  // Auto-redirect when offline but valid session exists (user should not have to click "Continue Offline")
+  useEffect(() => {
+    if (!isOnline) {
+      const cached = getCachedUserDirect();
+      if (cached) {
+        useAuthStore.setState({ user: cached, role: cached.role, isAuthenticated: true, isOfflineSession: true });
+        redirectByRole(cached.role);
+      }
+    }
+  }, [isOnline]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const redirectByRole = (role: string) => {
+    switch (role) {
+      case 'admin': navigate('/admin'); break;
+      case 'manager': navigate('/manager'); break;
+      case 'chef': navigate('/chef'); break;
+      case 'waiter': navigate('/waiter'); break;
+      case 'owner': navigate('/owner'); break;
+      case 'cleaner':
+      case 'housekeeping': navigate('/cleaner'); break;
+      default: navigate('/menu'); break;
+    }
+  };
+
+  const getCachedUserDirect = () => {
+    try {
+      const stored = localStorage.getItem('auth-storage');
+      if (!stored) return null;
+      const parsed = JSON.parse(stored);
+      const cachedUser = parsed?.state?.user;
+      const lastAuth = parsed?.state?.lastAuthenticatedAt;
+      if (!cachedUser || !lastAuth) return null;
+      const hoursSince = (Date.now() - new Date(lastAuth).getTime()) / (1000 * 60 * 60);
+      if (hoursSince > 168) return null; // 7 days
+      return cachedUser;
+    } catch { return null; }
+  };
+
   // Check for cached session for offline login
   const getCachedUser = () => {
     try {
@@ -54,9 +92,9 @@ export default function Login() {
       const cachedUser = parsed?.state?.user;
       const lastAuth = parsed?.state?.lastAuthenticatedAt;
       if (!cachedUser || !lastAuth) return null;
-      // Only allow if last auth was within 24 hours
+      // Allow if last auth was within 7 days
       const hoursSince = (Date.now() - new Date(lastAuth).getTime()) / (1000 * 60 * 60);
-      if (hoursSince > 24) return null;
+      if (hoursSince > 168) return null;
       return cachedUser;
     } catch {
       return null;
@@ -68,25 +106,9 @@ export default function Login() {
 
   const handleContinueOffline = () => {
     if (!cachedUser) return;
-    // Restore auth state from cached data
-    useAuthStore.setState({
-      user: cachedUser,
-      role: cachedUser.role,
-      isAuthenticated: true,
-      isOfflineSession: true,
-    });
+    useAuthStore.setState({ user: cachedUser, role: cachedUser.role, isAuthenticated: true, isOfflineSession: true });
     toast.success('Continuing in offline mode with limited features');
-    // Navigate to role-based dashboard
-    switch (cachedUser.role) {
-      case 'admin': navigate('/admin'); break;
-      case 'manager': navigate('/manager'); break;
-      case 'chef': navigate('/chef'); break;
-      case 'waiter': navigate('/waiter'); break;
-      case 'cleaner':
-      case 'housekeeping': navigate('/cleaner'); break;
-      case 'customer':
-      default: navigate('/menu'); break;
-    }
+    redirectByRole(cachedUser.role);
   };
 
   const validateEmailForm = () => {

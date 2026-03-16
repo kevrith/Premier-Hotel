@@ -25,17 +25,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { StaffManagement } from '@/components/Manager/StaffManagement';
-import { DailySalesReport } from '@/components/Manager/Reports/DailySalesReport';
-import { EmployeeSalesReport } from '@/components/Manager/Reports/EmployeeSalesReport';
-import { PendingModifications } from '@/components/Manager/OrderManagement/PendingModifications';
-import { SalesAnalytics } from '@/components/Manager/Analytics/SalesAnalytics';
-import { EmployeePerformance } from '@/components/Manager/Analytics/EmployeePerformance';
+
 import OrderManagement from '@/components/Manager/OrderManagement';
 import { useDashboardSummary } from '@/hooks/useDashboardSummary';
 import { SystemHealth } from '@/components/Manager/SystemHealth';
 import { EnhancedUserManagement } from '@/components/Manager/EnhancedUserManagement';
 import { ContentManagement } from '@/components/Manager/ContentManagement';
-import { InventoryManagement } from '@/components/Manager/InventoryManagement';
 import { PermissionManagement } from '@/components/Permissions/PermissionManagement';
 import { EnhancedFinancialReports } from '@/components/Manager/Reports/EnhancedFinancialReports';
 import { ComprehensiveSalesReports } from '@/components/Manager/Reports/ComprehensiveSalesReports';
@@ -55,6 +50,10 @@ import { NotificationCenter } from '@/components/Dashboard/NotificationCenter';
 import { DashboardCustomization, useWidgetVisibility } from '@/components/Dashboard/DashboardCustomization';
 import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagement';
 import { StockManagement } from '@/components/Manager/StockManagement';
+import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
+import { ImportCenter } from '@/components/Admin/ImportCenter';
+import { DataExportCenter } from '@/components/Admin/DataExportCenter';
+import { LocationManagement } from '@/components/Admin/LocationManagement';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
 function LazyTab({ active, children }: { active: boolean; children: React.ReactNode }) {
@@ -176,18 +175,21 @@ export default function ManagerDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 lg:grid-cols-11 gap-1 h-auto">
+          <TabsList className="flex flex-wrap w-full gap-1 h-auto">
             <TabsTrigger value="overview" className="text-xs sm:text-sm px-1 sm:px-3">Overview</TabsTrigger>
-            <TabsTrigger value="staff" className="text-xs sm:text-sm px-1 sm:px-3">Staff</TabsTrigger>
-            <TabsTrigger value="manage-staff" className="text-xs sm:text-sm px-1 sm:px-3">Manage</TabsTrigger>
+            <TabsTrigger value="manage-staff" className="text-xs sm:text-sm px-1 sm:px-3">Staff</TabsTrigger>
             <TabsTrigger value="permissions" className="text-xs sm:text-sm px-1 sm:px-3">Perms</TabsTrigger>
             <TabsTrigger value="operations" className="text-xs sm:text-sm px-1 sm:px-3">Ops</TabsTrigger>
             <TabsTrigger value="financial-reports" className="text-xs sm:text-sm px-1 sm:px-3">Reports</TabsTrigger>
             <TabsTrigger value="order-management" className="text-xs sm:text-sm px-1 sm:px-3">Orders</TabsTrigger>
             <TabsTrigger value="stock" className="text-xs sm:text-sm px-1 sm:px-3">Stock</TabsTrigger>
+            <TabsTrigger value="stock-take" className="text-xs sm:text-sm px-1 sm:px-3">Stock Take</TabsTrigger>
+            <TabsTrigger value="locations" className="text-xs sm:text-sm px-1 sm:px-3">Locations</TabsTrigger>
             <TabsTrigger value="system-health" className="text-xs sm:text-sm px-1 sm:px-3">Health</TabsTrigger>
             <TabsTrigger value="content-management" className="text-xs sm:text-sm px-1 sm:px-3">Content</TabsTrigger>
             <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-1 sm:px-3">Housekeeping</TabsTrigger>
+            <TabsTrigger value="import" className="text-xs sm:text-sm px-1 sm:px-3">Import</TabsTrigger>
+            <TabsTrigger value="export-data" className="text-xs sm:text-sm px-1 sm:px-3">Export</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab — loads immediately, no LazyTab wrapper */}
@@ -302,24 +304,7 @@ export default function ManagerDashboard() {
             </div>
           </TabsContent>
 
-          {/* Staff Tab */}
-          <TabsContent value="staff" className="space-y-6">
-            <LazyTab active={activeTab === 'staff'}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Staff Performance</CardTitle>
-                  <CardDescription>Monitor and manage staff productivity</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-4">
-                    <p className="text-muted-foreground">No staff performance data available</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </LazyTab>
-          </TabsContent>
-
-          {/* Manage Staff Tab */}
+          {/* Staff Management Tab */}
           <TabsContent value="manage-staff" className="space-y-6">
             <LazyTab active={activeTab === 'manage-staff'}>
               <StaffManagement />
@@ -394,21 +379,21 @@ export default function ManagerDashboard() {
           <TabsContent value="financial-reports" className="space-y-4 sm:space-y-6">
             <LazyTab active={activeTab === 'financial-reports'}>
               <Tabs defaultValue="overview" className="space-y-4">
-                <div className="overflow-x-auto">
-                  <TabsList className="grid w-full grid-cols-4 sm:grid-cols-6 lg:grid-cols-13 gap-1 min-w-max">
-                    <TabsTrigger value="overview" className="text-xs sm:text-sm px-2">Overview</TabsTrigger>
-                    <TabsTrigger value="sales" className="text-xs sm:text-sm px-2">Sales</TabsTrigger>
-                    <TabsTrigger value="item-summary" className="text-xs sm:text-sm px-2">Items</TabsTrigger>
-                    <TabsTrigger value="voids" className="text-xs sm:text-sm px-2">Voids</TabsTrigger>
-                    <TabsTrigger value="pl" className="text-xs sm:text-sm px-2">P&L</TabsTrigger>
-                    <TabsTrigger value="balance" className="text-xs sm:text-sm px-2">Balance</TabsTrigger>
-                    <TabsTrigger value="cashflow" className="text-xs sm:text-sm px-2">Cash</TabsTrigger>
-                    <TabsTrigger value="inventory" className="text-xs sm:text-sm px-2">Inventory</TabsTrigger>
-                    <TabsTrigger value="vat" className="text-xs sm:text-sm px-2">VAT</TabsTrigger>
-                    <TabsTrigger value="compare" className="text-xs sm:text-sm px-2">Compare</TabsTrigger>
-                    <TabsTrigger value="occupancy" className="text-xs sm:text-sm px-2">Occupancy</TabsTrigger>
-                    <TabsTrigger value="menu-profit" className="text-xs sm:text-sm px-2">Menu</TabsTrigger>
-                    <TabsTrigger value="clv" className="text-xs sm:text-sm px-2">CLV</TabsTrigger>
+                <div className="overflow-x-auto pb-1">
+                  <TabsList className="inline-flex h-auto gap-1 p-1 min-w-max">
+                    <TabsTrigger value="overview"     className="px-4 py-2 text-sm font-medium">Overview</TabsTrigger>
+                    <TabsTrigger value="sales"        className="px-4 py-2 text-sm font-medium">Sales</TabsTrigger>
+                    <TabsTrigger value="item-summary" className="px-4 py-2 text-sm font-medium">Items</TabsTrigger>
+                    <TabsTrigger value="voids"        className="px-4 py-2 text-sm font-medium">Voids</TabsTrigger>
+                    <TabsTrigger value="pl"           className="px-4 py-2 text-sm font-medium">P&amp;L</TabsTrigger>
+                    <TabsTrigger value="balance"      className="px-4 py-2 text-sm font-medium">Balance</TabsTrigger>
+                    <TabsTrigger value="cashflow"     className="px-4 py-2 text-sm font-medium">Cash</TabsTrigger>
+                    <TabsTrigger value="inventory"    className="px-4 py-2 text-sm font-medium">Inventory</TabsTrigger>
+                    <TabsTrigger value="vat"          className="px-4 py-2 text-sm font-medium">VAT</TabsTrigger>
+                    <TabsTrigger value="compare"      className="px-4 py-2 text-sm font-medium">Compare</TabsTrigger>
+                    <TabsTrigger value="occupancy"    className="px-4 py-2 text-sm font-medium">Occupancy</TabsTrigger>
+                    <TabsTrigger value="menu-profit"  className="px-4 py-2 text-sm font-medium">Menu</TabsTrigger>
+                    <TabsTrigger value="clv"          className="px-4 py-2 text-sm font-medium">CLV</TabsTrigger>
                   </TabsList>
                 </div>
 
@@ -526,79 +511,34 @@ export default function ManagerDashboard() {
             </LazyTab>
           </TabsContent>
 
-          {/* Analytics Tab (Legacy) */}
-          <TabsContent value="analytics" className="space-y-6">
-            <LazyTab active={activeTab === 'analytics'}>
-              <div className="grid gap-6 md:grid-cols-3">
-                <div className="md:col-span-3">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Financial Reports</CardTitle>
-                      <CardDescription>Comprehensive financial analysis and reporting</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-6">
-                        <div className="grid gap-4 md:grid-cols-4">
-                          <div className="p-4 border rounded-lg">
-                            <p className="text-sm text-muted-foreground mb-1">F&B Today</p>
-                            <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.today.toLocaleString()}</p>
-                            <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
-                          </div>
-                          <div className="p-4 border rounded-lg">
-                            <p className="text-sm text-muted-foreground mb-1">F&B This Week</p>
-                            <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.week.toLocaleString()}</p>
-                            <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
-                          </div>
-                          <div className="p-4 border rounded-lg">
-                            <p className="text-sm text-muted-foreground mb-1">F&B This Month</p>
-                            <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.month.toLocaleString()}</p>
-                            <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
-                          </div>
-                          <div className="p-4 border rounded-lg">
-                            <p className="text-sm text-muted-foreground mb-1">Room Revenue (Month)</p>
-                            <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.room.toLocaleString()}</p>
-                            <p className="text-xs text-muted-foreground mt-1">Bookings & Accommodation</p>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-6 md:grid-cols-2">
-                          <DailySalesReport />
-                          <EmployeeSalesReport />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="md:col-span-3">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Order Management</CardTitle>
-                      <CardDescription>Order modifications, voids, and audit trails</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <PendingModifications />
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="md:col-span-3">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Advanced Analytics</CardTitle>
-                      <CardDescription>Sales analytics, performance metrics, and insights</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid gap-6 md:grid-cols-2">
-                        <SalesAnalytics />
-                        <EmployeePerformance />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
+          {/* Daily Stock Taking Tab */}
+          <TabsContent value="stock-take" className="space-y-6">
+            <LazyTab active={activeTab === 'stock-take'}>
+              <DailyStockTaking />
             </LazyTab>
           </TabsContent>
+
+          {/* Locations Tab - Multi-location stock management */}
+          <TabsContent value="locations" className="space-y-6">
+            <LazyTab active={activeTab === 'locations'}>
+              <LocationManagement />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Import Tab */}
+          <TabsContent value="import" className="space-y-6">
+            <LazyTab active={activeTab === 'import'}>
+              <ImportCenter />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Export Tab */}
+          <TabsContent value="export-data" className="space-y-6">
+            <LazyTab active={activeTab === 'export-data'}>
+              <DataExportCenter />
+            </LazyTab>
+          </TabsContent>
+
         </Tabs>
       </div>
     </div>

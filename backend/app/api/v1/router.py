@@ -3,7 +3,7 @@ API v1 Router - Combines all endpoint routers
 SECURITY: Using auth_secure for httpOnly cookie-based authentication
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth_secure as auth, admin_enhanced as admin, rooms, bookings, menu, orders, bills, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector, customers, purchase_orders, order_payments, recipes, combined_checkout, test_bills, permissions, settings, financial_statements, manager_orders, system_health, dashboard, stock
+from app.api.v1.endpoints import auth_secure as auth, admin_enhanced as admin, rooms, bookings, menu, orders, bills, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector, customers, purchase_orders, order_payments, recipes, combined_checkout, test_bills, permissions, settings, financial_statements, manager_orders, system_health, dashboard, stock, owner, daily_stock, location_stock, maintenance
 
 api_router = APIRouter()
 
@@ -62,6 +62,19 @@ api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboar
 
 # Stock / Inventory Receiving
 api_router.include_router(stock.router, prefix="/stock", tags=["Stock Management"])
+
+# Daily Stock Taking
+api_router.include_router(daily_stock.router, prefix="/daily-stock", tags=["Daily Stock Taking"])
+
+# Owner Multi-Branch Dashboard
+api_router.include_router(owner.router, prefix="/owner", tags=["Owner Dashboard"])
+
+# Multi-Location Stock Management
+api_router.include_router(location_stock.locations_router, prefix="/locations", tags=["Locations"])
+api_router.include_router(location_stock.stock_router, prefix="/location-stock", tags=["Location Stock"])
+
+# Maintenance Flags & Linen Inventory
+api_router.include_router(maintenance.router, prefix="/maintenance", tags=["Maintenance & Linen"])
 
 # Test endpoints (remove in production)
 api_router.include_router(test_bills.router, prefix="/test", tags=["Testing"])

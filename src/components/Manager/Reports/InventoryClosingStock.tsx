@@ -16,7 +16,9 @@ interface InventoryItem {
   closing_quantity: number;
   unit: string;
   unit_cost: number;
-  closing_value: number;
+  selling_price: number;
+  closing_value: number;        // at selling price
+  closing_value_cost: number;   // at cost price
   stock_status: string;
   min_quantity: number;
 }
@@ -25,7 +27,8 @@ interface DeptSummary {
   department: string;
   items: InventoryItem[];
   total_qty: number;
-  total_value: number;
+  total_value: number;       // at selling price
+  total_cost_value: number;  // at cost price
   low_stock: number;
   out_of_stock: number;
 }
@@ -80,6 +83,7 @@ export const InventoryClosingStock: React.FC = () => {
       items,
       total_qty: items.reduce((s, i) => s + i.closing_quantity, 0),
       total_value: items.reduce((s, i) => s + i.closing_value, 0),
+      total_cost_value: items.reduce((s, i) => s + i.closing_value_cost, 0),
       low_stock: items.filter(i => i.stock_status === 'Low Stock').length,
       out_of_stock: items.filter(i => i.stock_status === 'Out of Stock').length,
     }));
@@ -91,24 +95,26 @@ export const InventoryClosingStock: React.FC = () => {
     deptSummaries.forEach(dept => {
       rows.push({
         'Department': dept.department.toUpperCase() + ' — TOTAL',
-        'SKU': '',
         'Item Name': '',
         'Closing Qty': dept.total_qty.toFixed(2),
         'Unit': '',
-        'Closing Value (KES)': dept.total_value,
+        'Cost Price (KES)': '',
+        'Selling Price (KES)': '',
+        'Value at Cost (KES)': dept.total_cost_value.toFixed(2),
+        'Value at Selling (KES)': dept.total_value.toFixed(2),
         'Status': '',
-        'Min Qty': '',
       });
       dept.items.forEach(item => {
         rows.push({
           'Department': dept.department,
-          'SKU': item.sku,
           'Item Name': item.name,
           'Closing Qty': item.closing_quantity.toFixed(2),
           'Unit': item.unit,
-          'Closing Value (KES)': item.closing_value,
+          'Cost Price (KES)': item.unit_cost,
+          'Selling Price (KES)': item.selling_price,
+          'Value at Cost (KES)': item.closing_value_cost,
+          'Value at Selling (KES)': item.closing_value,
           'Status': item.stock_status,
-          'Min Qty': item.min_quantity,
         });
       });
     });

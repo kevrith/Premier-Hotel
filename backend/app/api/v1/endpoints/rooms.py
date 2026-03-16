@@ -12,7 +12,7 @@ from app.schemas.room import (
     AvailabilityCheck,
     AvailabilityResponse,
 )
-from app.middleware.auth_secure import get_current_user, require_admin
+from app.middleware.auth_secure import get_current_user, require_admin, require_manager_or_admin
 from datetime import date
 
 router = APIRouter()
@@ -201,7 +201,7 @@ async def check_availability(
 @router.post("/", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
 async def create_room(
     room_data: RoomCreate,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_manager_or_admin),
     supabase: Client = Depends(get_supabase_admin),
 ):
     """
@@ -254,7 +254,7 @@ async def create_room(
 async def update_room(
     room_id: str,
     room_data: RoomUpdate,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_manager_or_admin),
     supabase: Client = Depends(get_supabase_admin),
 ):
     """
@@ -325,7 +325,7 @@ async def update_room(
 @router.delete("/{room_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_room(
     room_id: str,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_manager_or_admin),
     supabase: Client = Depends(get_supabase_admin),
 ):
     """

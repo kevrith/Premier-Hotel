@@ -103,7 +103,7 @@ export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdat
 
         // Transform revenue data for chart
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const transformedRevenue = revenueAnalytics.data.map(item => {
+        const transformedRevenue = (revenueAnalytics.data || []).map(item => {
           const date = new Date(item.date + '-01');
           return {
             month: monthNames[date.getMonth()],

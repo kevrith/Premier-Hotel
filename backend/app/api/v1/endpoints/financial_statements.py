@@ -1,10 +1,11 @@
 """
 Profit & Loss Statement Endpoint
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from typing import Optional
 from datetime import datetime, timedelta
 from decimal import Decimal
+from pydantic import BaseModel
 from app.middleware.auth_secure import require_role
 from app.core.supabase import get_supabase, get_supabase_admin
 from supabase import Client
@@ -12,11 +13,21 @@ from supabase import Client
 router = APIRouter()
 
 
+def _start(date_str: str) -> str:
+    """Append T00:00:00 if no time component present."""
+    return date_str if 'T' in date_str else date_str + 'T00:00:00'
+
+
+def _end(date_str: str) -> str:
+    """Append T23:59:59 if no time component present."""
+    return date_str if 'T' in date_str else date_str + 'T23:59:59'
+
+
 @router.get("/profit-loss")
 async def get_profit_loss_statement(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Profit & Loss Statement"""
@@ -129,7 +140,7 @@ async def get_profit_loss_statement(
 async def get_cash_flow_report(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Cash Flow Report"""
@@ -138,6 +149,10 @@ async def get_cash_flow_report(
             end_date = datetime.now().isoformat()
         if not start_date:
             start_date = (datetime.now().replace(day=1)).isoformat()
+
+        # Normalise to full day range
+        start_date = _start(start_date)
+        end_date = _end(end_date)
 
         # CASH INFLOWS - grouped by payment method (mpesa, cash, card)
         cash_inflows = {"mpesa": 0, "cash": 0, "card": 0}
@@ -219,7 +234,7 @@ async def get_cash_flow_report(
 @router.get("/balance-sheet")
 async def get_balance_sheet(
     as_of_date: Optional[str] = Query(None),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Balance Sheet"""
@@ -298,10 +313,33 @@ async def get_balance_sheet(
         
         accounts_payable = sum(float(b.get("total_amount", 0)) for b in unpaid_bills.data)
 
-        total_liabilities = accounts_payable
+        # MANUAL ADJUSTMENTS
+        try:
+            adj_result = supabase.table("balance_sheet_adjustments").select("*").execute()
+            adjustments = adj_result.data or []
+        except Exception:
+            adjustments = []
 
-        # EQUITY
-        total_equity = total_assets - total_liabilities
+        def adj_total(section: str) -> float:
+            return sum(float(a["amount"]) for a in adjustments if a["section"] == section)
+
+        def adj_items(section: str) -> list:
+            return [{"name": a["name"], "amount": float(a["amount"]), "notes": a.get("notes"), "id": a["id"]}
+                    for a in adjustments if a["section"] == section]
+
+        fixed_assets_total = adj_total("fixed_assets")
+        other_assets_total = adj_total("other_assets")
+        loans_total = adj_total("loans")
+        other_liabilities_total = adj_total("other_liabilities")
+        owner_capital = adj_total("owner_capital")
+        owner_drawings = adj_total("owner_drawings")
+
+        total_assets = net_cash + inventory_value + accounts_receivable + fixed_assets_total + other_assets_total
+        total_liabilities = accounts_payable + loans_total + other_liabilities_total
+
+        # EQUITY  =  Capital + Retained Earnings (Assets − Liabilities) − Drawings
+        retained_earnings = total_assets - total_liabilities - owner_capital + owner_drawings
+        total_equity = owner_capital - owner_drawings + retained_earnings
 
         return {
             "as_of_date": as_of_date,
@@ -312,16 +350,35 @@ async def get_balance_sheet(
                     "inventory": round(inventory_value, 2),
                     "accounts_receivable": round(accounts_receivable, 2)
                 },
+                "fixed_assets": {
+                    "total": round(fixed_assets_total, 2),
+                    "items": adj_items("fixed_assets")
+                },
+                "other_assets": {
+                    "total": round(other_assets_total, 2),
+                    "items": adj_items("other_assets")
+                },
                 "total_assets": round(total_assets, 2)
             },
             "liabilities": {
                 "current_liabilities": {
                     "accounts_payable": round(accounts_payable, 2)
                 },
+                "loans": {
+                    "total": round(loans_total, 2),
+                    "items": adj_items("loans")
+                },
+                "other_liabilities": {
+                    "total": round(other_liabilities_total, 2),
+                    "items": adj_items("other_liabilities")
+                },
                 "total_liabilities": round(total_liabilities, 2)
             },
             "equity": {
-                "total_equity": round(total_equity, 2)
+                "owner_capital": round(owner_capital, 2),
+                "owner_drawings": round(owner_drawings, 2),
+                "retained_earnings": round(retained_earnings, 2),
+                "total_equity": round(total_assets - total_liabilities, 2)
             }
         }
 
@@ -337,7 +394,7 @@ async def get_balance_sheet(
 async def get_vat_report(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate VAT Report (16% Kenya VAT)"""
@@ -346,6 +403,10 @@ async def get_vat_report(
             end_date = datetime.now().isoformat()
         if not start_date:
             start_date = (datetime.now().replace(day=1)).isoformat()
+
+        # Normalise to full day range
+        start_date = _start(start_date)
+        end_date = _end(end_date)
 
         VAT_RATE = 0.16
 
@@ -414,11 +475,15 @@ async def get_comparative_analysis(
     current_start: str = Query(...),
     current_end: str = Query(...),
     compare_to: str = Query("previous_period", description="previous_period or previous_year"),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Comparative Analysis Report"""
     try:
+        # Normalise to full day range
+        current_start = _start(current_start)
+        current_end = _end(current_end)
+
         # Calculate comparison period
         current_start_dt = datetime.fromisoformat(current_start)
         current_end_dt = datetime.fromisoformat(current_end)
@@ -509,74 +574,40 @@ async def get_comparative_analysis(
 async def get_inventory_closing_stock(
     as_of_date: str = Query(..., description="Date to get closing stock (YYYY-MM-DD)"),
     category_id: Optional[str] = Query(None),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
-    """Get Inventory Closing Stock Report for any date"""
+    """Get Inventory Closing Stock Report using menu_items stock data."""
     try:
-        # Get all inventory items
-        items_query = supabase.table("inventory_items").select(
-            "id, sku, name, category_id, current_stock, minimum_stock, status"
-        ).eq("status", "active")
-        
-        if category_id:
-            items_query = items_query.eq("category_id", category_id)
-        
+        # Fetch all tracked menu items (have stock or track_inventory enabled)
+        items_query = supabase.table("menu_items").select(
+            "id, name, category, stock_quantity, reorder_level, unit, cost_price, base_price, track_inventory"
+        ).or_("track_inventory.eq.true,stock_quantity.gt.0")
+
         items_result = items_query.execute()
-        items = items_result.data
+        items = items_result.data or []
 
-        # Get all stock movements AFTER the specified date
-        as_of_datetime = datetime.strptime(as_of_date, "%Y-%m-%d")
-        as_of_end = as_of_datetime.replace(hour=23, minute=59, second=59).isoformat()
-        
-        movements_result = supabase.table("stock_movements").select(
-            "item_id, quantity, movement_type, created_at"
-        ).gt("created_at", as_of_end).execute()
-        
-        movements_after = movements_result.data
-
-        # Build map of movements per item
-        movements_by_item = {}
-        for movement in movements_after:
-            item_id = movement["item_id"]
-            if item_id not in movements_by_item:
-                movements_by_item[item_id] = []
-            movements_by_item[item_id].append(movement)
-
-        # Calculate closing stock for each item
         closing_stock_items = []
-        total_value = 0
+        total_cost_value = 0.0
+        total_selling_value = 0.0
         low_stock_count = 0
         out_of_stock_count = 0
 
         for item in items:
-            current_quantity = Decimal(str(item.get("current_stock", 0)))
-            closing_quantity = current_quantity
+            qty = float(item.get("stock_quantity") or 0)
+            cost_price = float(item.get("cost_price") or 0)
+            selling_price = float(item.get("base_price") or 0)
+            reorder = float(item.get("reorder_level") or 0)
 
-            # Reverse all movements after the cutoff date
-            item_movements = movements_by_item.get(item["id"], [])
-            for movement in item_movements:
-                movement_qty = Decimal(str(movement["quantity"]))
-                movement_type = movement["movement_type"]
+            cost_value = qty * cost_price
+            selling_value = qty * selling_price
+            total_cost_value += cost_value
+            total_selling_value += selling_value
 
-                # Reverse the movement effect
-                if movement_type in ["in", "return"]:
-                    closing_quantity -= movement_qty
-                elif movement_type in ["out", "damage", "expired"]:
-                    closing_quantity += movement_qty
-
-            # Ensure non-negative
-            closing_quantity = max(Decimal("0"), closing_quantity)
-            # No unit_cost column - set value to 0
-            item_value = Decimal("0")
-            total_value += float(item_value)
-
-            # Check stock levels
-            min_qty = Decimal(str(item.get("minimum_stock", 0)))
-            if closing_quantity == 0:
+            if qty <= 0:
                 out_of_stock_count += 1
                 stock_status = "Out of Stock"
-            elif closing_quantity <= min_qty:
+            elif qty <= reorder:
                 low_stock_count += 1
                 stock_status = "Low Stock"
             else:
@@ -584,37 +615,29 @@ async def get_inventory_closing_stock(
 
             closing_stock_items.append({
                 "item_id": item["id"],
-                "sku": item.get("sku", ""),
+                "sku": "",
                 "name": item["name"],
-                "category_id": item.get("category_id"),
-                "unit": "unit",
-                "closing_quantity": float(closing_quantity),
-                "current_quantity": float(current_quantity),
-                "quantity_change": float(current_quantity - closing_quantity),
-                "unit_cost": 0,
-                "closing_value": float(item_value),
-                "min_quantity": float(min_qty),
-                "reorder_point": float(min_qty),
+                "category_name": item.get("category") or "Uncategorized",
+                "unit": item.get("unit") or "piece",
+                "closing_quantity": qty,
+                "unit_cost": cost_price,
+                "selling_price": selling_price,
+                "closing_value": round(selling_value, 2),      # selling-price value (used for closing stock)
+                "closing_value_cost": round(cost_value, 2),    # cost-price value (for reference)
+                "min_quantity": reorder,
                 "stock_status": stock_status,
-                "movements_since": len(item_movements)
             })
 
-        # Get categories for reference
-        categories_result = supabase.table("inventory_categories").select("id, name").execute()
-        categories_map = {c["id"]: c["name"] for c in categories_result.data}
-
-        # Add category names
-        for item in closing_stock_items:
-            item["category_name"] = categories_map.get(item.get("category_id"), "Uncategorized")
-
-        # Sort by value (highest first)
+        # Sort by selling value descending
         closing_stock_items.sort(key=lambda x: x["closing_value"], reverse=True)
 
         return {
             "as_of_date": as_of_date,
             "summary": {
                 "total_items": len(closing_stock_items),
-                "total_value": round(total_value, 2),
+                "total_value": round(total_selling_value, 2),
+                "total_cost_value": round(total_cost_value, 2),
+                "total_selling_value": round(total_selling_value, 2),
                 "low_stock_items": low_stock_count,
                 "out_of_stock_items": out_of_stock_count,
                 "in_stock_items": len(closing_stock_items) - low_stock_count - out_of_stock_count
@@ -623,7 +646,6 @@ async def get_inventory_closing_stock(
         }
 
     except Exception as e:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate inventory closing stock: {str(e)}"
@@ -635,7 +657,7 @@ async def get_inventory_closing_stock(
 async def get_occupancy_report(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Occupancy & Room Performance Report"""
@@ -725,7 +747,7 @@ async def get_occupancy_report(
 async def get_menu_profitability(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Menu Item Profitability Report"""
@@ -834,7 +856,7 @@ async def get_menu_profitability(
 @router.get("/customer-lifetime-value")
 async def get_customer_lifetime_value(
     limit: int = Query(50, ge=1, le=200),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Generate Customer Lifetime Value Report using bookings and orders data"""
@@ -951,8 +973,119 @@ async def get_customer_lifetime_value(
         }
 
     except Exception as e:
-        from fastapi import HTTPException, status
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate CLV report: {str(e)}"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Balance Sheet Manual Adjustments
+# Lets the owner/admin record fixed assets, loans, owner capital & drawings.
+# ─────────────────────────────────────────────────────────────────────────────
+
+VALID_SECTIONS = {
+    "fixed_assets",     # Land, Building, Equipment, Vehicles
+    "other_assets",     # Deposits, Prepaid expenses
+    "loans",            # Bank loans, Director loans
+    "other_liabilities",# Tax payable, Accruals
+    "owner_capital",    # Capital injected by owner
+    "owner_drawings",   # Money withdrawn by owner
+}
+
+SECTION_LABELS = {
+    "fixed_assets":      "Fixed Assets",
+    "other_assets":      "Other Assets",
+    "loans":             "Loans & Borrowings",
+    "other_liabilities": "Other Liabilities",
+    "owner_capital":     "Owner's Capital",
+    "owner_drawings":    "Owner's Drawings",
+}
+
+
+class AdjustmentCreate(BaseModel):
+    section: str
+    name: str
+    amount: float
+    notes: Optional[str] = None
+
+
+class AdjustmentUpdate(BaseModel):
+    name: Optional[str] = None
+    amount: Optional[float] = None
+    notes: Optional[str] = None
+
+
+@router.get("/adjustments")
+async def list_adjustments(
+    # Owner, Admin, and Manager can VIEW (read-only for manager)
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """List all balance sheet manual adjustments."""
+    try:
+        result = supabase.table("balance_sheet_adjustments").select("*").order("section").order("name").execute()
+        grouped: dict = {}
+        for row in result.data:
+            sec = row["section"]
+            grouped.setdefault(sec, []).append(row)
+        # Return caller's role so the frontend can conditionally show edit controls
+        return {
+            "adjustments": result.data,
+            "by_section": grouped,
+            "caller_role": current_user.get("role"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/adjustments", status_code=201)
+async def create_adjustment(
+    body: AdjustmentCreate,
+    # Owner and Admin can ADD entries — Manager cannot
+    current_user: dict = Depends(require_role(["owner", "admin"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Add a new balance sheet adjustment (fixed asset, loan, owner drawing, etc.)."""
+    if body.section not in VALID_SECTIONS:
+        raise HTTPException(status_code=400, detail=f"Invalid section. Must be one of: {', '.join(VALID_SECTIONS)}")
+    result = supabase.table("balance_sheet_adjustments").insert({
+        "section": body.section,
+        "name": body.name,
+        "amount": body.amount,
+        "notes": body.notes,
+    }).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to create adjustment")
+    return result.data[0]
+
+
+@router.patch("/adjustments/{adjustment_id}")
+async def update_adjustment(
+    adjustment_id: str,
+    body: AdjustmentUpdate,
+    # Owner and Admin can EDIT — Manager cannot
+    current_user: dict = Depends(require_role(["owner", "admin"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Update an existing balance sheet adjustment."""
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    updates["updated_at"] = datetime.now().isoformat()
+    result = supabase.table("balance_sheet_adjustments").update(updates).eq("id", adjustment_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Adjustment not found")
+    return result.data[0]
+
+
+@router.delete("/adjustments/{adjustment_id}", status_code=204)
+async def delete_adjustment(
+    adjustment_id: str,
+    # ONLY the Owner can DELETE — permanent financial records require highest authority
+    current_user: dict = Depends(require_role(["owner"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Delete a balance sheet adjustment. Owner only — preserves audit trail."""
+    supabase.table("balance_sheet_adjustments").delete().eq("id", adjustment_id).execute()
+    return

@@ -265,7 +265,8 @@ class WebSocketSingleton {
 
   private async getToken(): Promise<string | null> {
     try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/ws-token', {
+      const apiHost = window.location.hostname === 'localhost' ? 'localhost:8000' : `${window.location.hostname}:8000`;
+      const response = await fetch(`http://${apiHost}/api/v1/auth/ws-token`, {
         method: 'GET',
         credentials: 'include',
         headers: {

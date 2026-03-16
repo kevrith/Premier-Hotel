@@ -6,7 +6,7 @@ from supabase import Client
 from typing import Optional, List
 from app.core.supabase import get_supabase, get_supabase_admin
 from app.schemas.menu import MenuItemCreate, MenuItemUpdate, MenuItemResponse
-from app.middleware.auth_secure import get_current_user, require_admin
+from app.middleware.auth_secure import get_current_user, require_admin, require_manager_or_admin
 
 router = APIRouter()
 
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/items", response_model=List[MenuItemResponse])
 async def get_menu_items(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=1000),
     category: Optional[str] = None,
     available: Optional[bool] = None,
     popular: Optional[bool] = None,
@@ -94,7 +94,7 @@ async def get_menu_item(item_id: str, supabase: Client = Depends(get_supabase)):
 @router.post("/items", response_model=MenuItemResponse, status_code=status.HTTP_201_CREATED)
 async def create_menu_item(
     item_data: MenuItemCreate,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_manager_or_admin),
     supabase: Client = Depends(get_supabase_admin),
 ):
     """
@@ -132,12 +132,10 @@ async def create_menu_item(
                 detail="Failed to create menu item",
             )
 
-        # Transform response data to match frontend expectations
         item_data_response = dict(response.data[0])
-        # Database has is_available, frontend expects both available and is_available
         if 'is_available' in item_data_response:
             item_data_response['available'] = item_data_response['is_available']
-        return MenuItemResponse(**item_data_response)
+        return item_data_response
 
     except HTTPException:
         raise
@@ -152,7 +150,7 @@ async def create_menu_item(
 async def update_menu_item(
     item_id: str,
     item_data: MenuItemUpdate,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_manager_or_admin),
     supabase: Client = Depends(get_supabase_admin),
 ):
     """
@@ -203,9 +201,10 @@ async def update_menu_item(
                 )
 
         # Update menu item
-        response = (
-            supabase.table("menu_items").update(update_data).eq("id", item_id).execute()
-        )
+        supabase.table("menu_items").update(update_data).eq("id", item_id).execute()
+
+        # Fetch fresh copy after update (avoids Pydantic constructor strict-validation issues)
+        response = supabase.table("menu_items").select("*").eq("id", item_id).execute()
 
         if not response.data:
             raise HTTPException(
@@ -213,12 +212,11 @@ async def update_menu_item(
                 detail="Failed to update menu item",
             )
 
-        # Transform response data to match frontend expectations
         item_data_response = dict(response.data[0])
-        # Database has is_available, frontend expects both available and is_available
         if 'is_available' in item_data_response:
             item_data_response['available'] = item_data_response['is_available']
-        return MenuItemResponse(**item_data_response)
+        # Return dict — FastAPI serialises via response_model without strict constructor validation
+        return item_data_response
 
     except HTTPException:
         raise
@@ -235,7 +233,7 @@ async def update_menu_item(
 @router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_menu_item(
     item_id: str,
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_manager_or_admin),
     supabase: Client = Depends(get_supabase_admin),
 ):
     """

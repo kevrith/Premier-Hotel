@@ -92,10 +92,6 @@ async def get_current_user(
         response = supabase.table("users").select("*").eq("id", user_id).execute()
 
         if not response.data:
-            # Try profiles table
-            response = supabase.table("profiles").select("*").eq("id", user_id).execute()
-
-        if not response.data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",

@@ -1,805 +1,279 @@
-# 🏨 Premier Hotel Management System
+# Premier Hotel Management System
 
-<div align="center">
-
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-3178c6.svg?logo=typescript)
-![React](https://img.shields.io/badge/React-19.2.0-61dafb.svg?logo=react)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.109.0-009688.svg?logo=fastapi)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![PWA](https://img.shields.io/badge/PWA-enabled-purple.svg)
-
-**A comprehensive, production-ready hotel management application with multi-role interfaces, real-time communication, and offline capabilities.**
-
-[Quick Start](#-installation) • [Features](#-features) • [Tech Stack](#-tech-stack) • [API Docs](#-api-documentation) • [Screenshots](#-screenshots)
-
-</div>
+A full-stack hotel management application built with React, TypeScript, and FastAPI — designed to streamline hotel operations across every role.
 
 ---
 
-## 🚀 Getting Started in 5 Minutes
+## Overview
 
-```bash
-# 1. Clone and setup
-git clone https://github.com/yourusername/premier-hotel.git
-cd premier-hotel
+Premier Hotel provides a unified platform for managing room bookings, food orders, staff operations, housekeeping, inventory, payments, and guest communication. It supports multiple roles with dedicated interfaces and real-time updates throughout.
 
-# 2. Setup backend (create venv, install dependencies, configure .env)
-cd backend && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-cp .env.example .env  # Then edit .env with your Supabase credentials
-cd ..
-
-# 3. Setup frontend
-npm install && cp .env.example .env  # Then edit .env
-
-# 4. Create super admin account
-cd backend && ./create_admin.sh && cd ..
-
-# 5. Start the entire application
-./start.sh
-```
-
-**Open http://localhost:5173 and login with your admin credentials!**
-
-📚 **Detailed Guides:**
-- [QUICK_START.md](QUICK_START.md) - Step-by-step setup guide
-- [SCRIPTS_GUIDE.md](SCRIPTS_GUIDE.md) - Complete reference for management scripts
-- [ADMIN_SETUP_GUIDE.md](ADMIN_SETUP_GUIDE.md) - Admin account and staff management
+**Roles:** Customer, Waiter, Chef, Cleaner, Manager, Admin
 
 ---
 
-## 📋 Table of Contents
+## Features
 
-- [Overview](#-overview)
-- [Features](#-features)
-- [Tech Stack](#-tech-stack)
-- [Architecture](#-architecture)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Usage](#-usage)
-- [API Documentation](#-api-documentation)
-- [Database Schema](#-database-schema)
-- [Screenshots](#-screenshots)
-- [Contributing](#-contributing)
-- [License](#-license)
+### Customer
+- Room browsing, booking, check-in, and check-out
+- Food ordering with real-time 6-stage order tracking
+- Bill viewing and payment (M-Pesa STK Push, Cash, Card)
+- Service requests and in-app messaging with staff
+- Loyalty points and booking history
 
----
+### Chef
+- Kitchen order queue with status management
+- Real-time order notifications via WebSocket
 
-## 🌟 Overview
-
-Premier Hotel Management System is a full-stack web application designed to streamline hotel operations and enhance guest experiences. Built with modern technologies, it provides a unified platform for managing bookings, food orders, staff operations, housekeeping, payments, and guest communication.
-
-### Key Highlights
-
-- 🎯 **Multi-Role System** - Separate interfaces for Customers, Staff (Manager, Waiter, Chef, Cleaner), and Administrators
-- 💳 **Payment Integration** - M-Pesa STK Push, Cash, and Card payment support
-- 🔔 **Real-Time Communication** - WebSocket-powered notifications and messaging
-- 📱 **Progressive Web App** - Installable, works offline, mobile-responsive
-- 🌐 **Internationalization** - English and Swahili language support
-- 🔒 **Enterprise Security** - JWT authentication, Row-Level Security, role-based access control
-- 📊 **Advanced Analytics** - Comprehensive reporting and business insights
-
----
-
-## ✨ Features
-
-### For Guests
-
-- ✅ **Room Booking System**
-  - Browse available rooms with advanced filtering
-  - Real-time availability checking
-  - Secure online booking with instant confirmation
-  - Digital check-in/check-out process
-
-- ✅ **Food Ordering**
-  - Browse interactive menu with categories
-  - Customize orders with special instructions
-  - Real-time order tracking (6-stage progress)
-  - Delivery to room or location
-
-- ✅ **Payment Options**
-  - M-Pesa STK Push integration
-  - Cash payments
-  - Card payments (framework ready)
-
-- ✅ **Guest Services**
-  - Service request submission
-  - In-app messaging with staff
-  - Rate and review experiences
-  - Loyalty points program
-  - Notification preferences
-
-### For Hotel Staff
-
-#### 👔 Manager Dashboard
-- Staff management (CRUD, shifts, attendance, performance)
-- Revenue and operational reports
-- Inventory and expense tracking
-- System overview and analytics
-
-#### 👨‍🍳 Chef Interface
-- Kitchen queue management
-- Order preparation tracking
-- Real-time order notifications
-- Ingredient management
-
-#### 🍽️ Waiter Interface
+### Waiter
 - Table and order management
-- Delivery tracking
-- Customer service requests
-- Order status updates
+- Delivery tracking and customer service requests
 
-#### 🧹 Cleaner Interface
+### Cleaner
 - Room cleaning task queue
-- Housekeeping supplies tracking
-- Room inspection checklists
+- Housekeeping supplies tracking and inspection checklists
 - Lost and found management
 
-### For Administrators
+### Manager
+- Staff management (add/edit/delete, shifts, attendance, performance)
+- Analytics and revenue reports
+- Menu management (items, categories, pricing, promotions)
+- Inventory and stock management
+- Order management and oversight
 
-- 📊 **Complete System Oversight**
-  - Real-time dashboard with key metrics
-  - User and staff management
-  - Payment tracking and reconciliation
-  - System configuration
+### Admin
+- Full user and staff management
+- System configuration and audit logs
+- Advanced reporting (employee sales, customer reports)
+- Purchase orders and supplier management
+- Inventory management
+- QuickBooks integration (sync, item mapping, reporting)
+- Tax settings and pricing controls
 
-- 📈 **Advanced Analytics**
-  - Revenue trends and forecasting
-  - Occupancy rates
-  - Popular items tracking
-  - Staff performance metrics
-
-- 🔐 **Security Management**
-  - Role-based access control
-  - Audit logging
-  - System health monitoring
-
-### System Features
-
-- ⚡ **Real-Time Updates** - WebSocket connections for instant notifications
-- 📧 **Email Notifications** - Automated emails for bookings, payments, and orders
-- 🔔 **Multi-Channel Notifications** - Browser, sound, in-app, and email alerts
-- 📱 **Offline Support** - IndexedDB caching with automatic sync
-- 🌓 **Dark Mode** - Automatic day/night theme switching
-- 🔍 **Advanced Search** - Filter and search across all entities
-- 📊 **Data Export** - Export reports to PDF/Excel
-- 🌍 **Multi-Language** - English and Swahili translations
+### System-Wide
+- Real-time WebSocket notifications
+- Progressive Web App (PWA) — installable, offline-capable
+- English and Swahili language support (i18next)
+- Dark mode support
+- PDF and Excel export for reports
+- QR code scanning
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Frontend
 
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **React** | 19.2.0 | UI framework with hooks and context |
-| **TypeScript** | 5.9.3 | Static type checking (strict mode) + JSDoc |
-| **Vite** | 7.2.4 | Fast build tool and dev server |
-| **Tailwind CSS** | 3.4.18 | Utility-first styling |
-| **Radix UI** | Latest | Accessible component primitives |
-| **Zustand** | 5.0.9 | State management |
-| **React Query** | 5.90.12 | Data fetching and caching |
-| **Socket.IO Client** | 4.8.1 | Real-time communication |
-| **Axios** | 1.13.2 | HTTP client |
-| **Dexie** | 4.2.1 | IndexedDB wrapper for offline |
-| **i18next** | 25.7.2 | Internationalization |
-| **Formik + Yup** | 2.4.9 / 1.7.1 | Form handling and validation |
-| **Chart.js** | 4.5.1 | Data visualization |
-| **Lucide React** | 0.554.0 | Icon library |
+| Technology | Purpose |
+|------------|---------|
+| React + TypeScript | UI framework with strict type checking |
+| Vite | Build tool and dev server |
+| Tailwind CSS + Radix UI | Styling and accessible components |
+| Zustand | State management |
+| React Query (@tanstack) | Data fetching and caching |
+| Socket.IO Client | Real-time WebSocket communication |
+| Axios | HTTP client |
+| Dexie (IndexedDB) | Offline data storage |
+| i18next | Internationalization (English + Swahili) |
+| Recharts + Chart.js | Data visualization |
+| jsPDF + XLSX | Report export |
+| Formik + Yup | Form handling and validation |
+| Lucide React + React Icons | Icons |
 
 ### Backend
 
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **FastAPI** | 0.109.0 | High-performance web framework |
-| **Uvicorn** | 0.27.0 | ASGI server |
-| **PostgreSQL** | Latest | Primary database (via Supabase) |
-| **Supabase** | 2.x | Backend-as-a-Service (Auth, DB, Storage) |
-| **SQLAlchemy** | 2.0.25 | ORM and database toolkit |
-| **asyncpg** | 0.29.0 | Async PostgreSQL driver |
-| **Pydantic** | 2.5.3 | Data validation |
-| **python-jose** | 3.3.0 | JWT token handling |
-| **passlib** | 1.7.4 | Password hashing (bcrypt) |
-| **Redis** | 5.0.1 | Caching layer (optional) |
-| **WebSockets** | 12.0 | Real-time communication |
-
-### Infrastructure
-
-- **Deployment**: Vercel (Frontend), Railway/Render (Backend)
-- **Database**: Supabase (PostgreSQL)
-- **Storage**: Supabase Storage (images, attachments)
-- **Email**: Gmail SMTP
-- **Payment Gateway**: Safaricom Daraja API (M-Pesa)
-- **Monitoring**: Built-in logging and error tracking
+| Technology | Purpose |
+|------------|---------|
+| FastAPI | High-performance Python web framework |
+| Uvicorn | ASGI server |
+| Supabase (PostgreSQL) | Database and authentication |
+| SQLAlchemy 2.0 | ORM |
+| Pydantic V2 | Data validation |
+| python-jose | JWT token handling |
+| passlib (bcrypt) | Password hashing |
+| WebSockets | Real-time communication |
 
 ---
 
-## 🏗️ Architecture
-
-### System Architecture
+## Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Client Layer                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Web App    │  │  Mobile PWA  │  │   Tablet     │      │
-│  │   (React)    │  │   (React)    │  │   (React)    │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         │                  │                  │              │
-│         └──────────────────┼──────────────────┘              │
-└────────────────────────────┼─────────────────────────────────┘
-                             │
-                    ┌────────▼────────┐
-                    │   API Gateway   │
-                    │   (Nginx/CDN)   │
-                    └────────┬────────┘
-                             │
-┌────────────────────────────┼─────────────────────────────────┐
-│                     Application Layer                         │
-│                    ┌────────▼────────┐                        │
-│                    │   FastAPI App   │                        │
-│                    │   (Uvicorn)     │                        │
-│                    └────────┬────────┘                        │
-│         ┌──────────────────┼──────────────────┐              │
-│         │                  │                  │              │
-│  ┌──────▼──────┐  ┌───────▼───────┐  ┌──────▼──────┐       │
-│  │   Auth      │  │   Business    │  │  WebSocket  │       │
-│  │ Middleware  │  │    Logic      │  │   Manager   │       │
-│  └─────────────┘  └───────┬───────┘  └─────────────┘       │
-└────────────────────────────┼─────────────────────────────────┘
-                             │
-┌────────────────────────────┼─────────────────────────────────┐
-│                       Data Layer                              │
-│         ┌──────────────────┼──────────────────┐              │
-│         │                  │                  │              │
-│  ┌──────▼──────┐  ┌───────▼───────┐  ┌──────▼──────┐       │
-│  │  PostgreSQL │  │  Redis Cache  │  │   Storage   │       │
-│  │  (Supabase) │  │   (Optional)  │  │  (Supabase) │       │
-│  └─────────────┘  └───────────────┘  └─────────────┘       │
-└─────────────────────────────────────────────────────────────┘
+premier-hotel/
+├── src/
+│   ├── components/
+│   │   ├── Admin/          # Admin dashboard (users, reports, QuickBooks, suppliers)
+│   │   ├── Manager/        # Manager dashboard (staff, analytics, menu, inventory)
+│   │   ├── Chef/           # Kitchen order queue
+│   │   ├── Waiter/         # Table and order management
+│   │   ├── Cleaner/        # Housekeeping tasks
+│   │   ├── BookingSystem/  # Room booking flow
+│   │   ├── FoodOrdering/   # Menu and order flow
+│   │   ├── CheckIn/        # Guest check-in
+│   │   ├── CheckOut/       # Guest check-out and billing
+│   │   ├── Bills/          # Bill management
+│   │   ├── Inventory/      # Inventory UI
+│   │   ├── Messaging/      # In-app messaging
+│   │   ├── Housekeeping/   # Housekeeping components
+│   │   └── ui/             # Shared UI primitives
+│   ├── pages/              # Route-level pages
+│   ├── stores/             # Zustand state stores
+│   ├── services/           # API service layer
+│   ├── hooks/              # Custom React hooks
+│   ├── contexts/           # React context providers
+│   ├── types/              # TypeScript type definitions
+│   └── i18n/               # Translation files
+├── backend/
+│   ├── app/
+│   │   ├── api/            # Route handlers
+│   │   ├── core/           # Config, security
+│   │   ├── models/         # Database models
+│   │   ├── schemas/        # Pydantic schemas
+│   │   ├── services/       # Business logic
+│   │   └── websocket/      # WebSocket manager
+│   ├── migrations/         # SQL migration files
+│   └── supabase_schema.sql # Full database schema
+├── start.sh                # Start frontend + backend
+├── stop.sh                 # Stop the application
+└── status.sh               # Check running status
 ```
-
-### Database Schema (27 Tables)
-
-**Core Entities**: `profiles`, `rooms`, `bookings`, `menu_items`, `orders`, `payments`
-
-**Staff Management**: `staff`, `staff_shifts`, `staff_attendance`, `staff_performance`, `staff_leaves`
-
-**Housekeeping**: `housekeeping_tasks`, `room_inspections`, `housekeeping_supplies`, `supply_usage`, `housekeeping_schedules`, `lost_and_found`
-
-**Service Requests**: `service_request_types`, `service_requests`, `service_request_status_history`, `service_request_attachments`, `service_request_comments`
-
-**Communication**: `notifications`, `notification_preferences`, `conversations`, `conversation_participants`, `messages`, `message_attachments`
-
-**Reviews & Analytics**: `reviews`, `review_responses`, `review_images`, `loyalty_points`, `expenses`, `inventory`, `analytics_data`
 
 ---
 
-## 📦 Installation
+## Installation
 
 ### Prerequisites
 
-- **Node.js** >= 18.x
-- **Python** >= 3.10
-- **PostgreSQL** (via Supabase account)
-- **Git**
+- Node.js >= 18
+- Python >= 3.10
+- A [Supabase](https://supabase.com) project (free tier works)
 
-### Quick Start (Recommended)
-
-#### 1. Clone the Repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/yourusername/premier-hotel.git
 cd premier-hotel
 ```
 
-#### 2. Backend Setup
+### 2. Backend setup
 
 ```bash
-# Navigate to backend directory
 cd backend
-
-# Create virtual environment
 python3 -m venv venv
-
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install dependencies
-./venv/bin/pip install -r requirements.txt
-
-# Create environment file
-cp .env.example .env
-
-# Configure environment variables (see Configuration section)
-nano .env
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env            # Edit with your credentials
 ```
 
-#### 3. Frontend Setup
+### 3. Frontend setup
 
 ```bash
-# Return to root directory
 cd ..
-
-# Install dependencies
 npm install
-
-# Create environment file
-cp .env.example .env
-
-# Configure environment variables
-nano .env
+cp .env.example .env            # Edit with your credentials
 ```
 
-#### 4. Database Setup
+### 4. Database
 
-```bash
-# Connect to Supabase and run the schema
-psql -h your-supabase-host -U postgres -d postgres -f backend/supabase_schema.sql
-```
+In your Supabase project's SQL editor, run the contents of `backend/supabase_schema.sql`.
 
-#### 5. Create Super Admin Account
+### 5. Create an admin account
 
 ```bash
 cd backend
 ./create_admin.sh
-cd ..
 ```
 
-You'll be prompted to enter:
-- Email address
-- Password (minimum 6 characters)
-- First name, last name, phone
-
-#### 6. Start the Application
+### 6. Start the app
 
 ```bash
-# Start both backend and frontend with one command
 ./start.sh
 ```
 
-The application will start and display:
-- **Frontend**: http://localhost:5173
-- **Backend**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-
-#### 7. Access the Application
-
-1. Open http://localhost:5173 in your browser
-2. Login with the admin credentials you created
-3. Create staff accounts (chef, waiter, cleaner) from Admin Dashboard
-
-### Management Scripts
-
-```bash
-# Start the application (both frontend and backend)
-./start.sh
-
-# Check application status
-./status.sh
-
-# Stop the application
-./stop.sh
-
-# Or press Ctrl+C in the terminal where start.sh is running
-```
-
-**For detailed script documentation, see** [SCRIPTS_GUIDE.md](SCRIPTS_GUIDE.md)
-
-### Manual Setup (Advanced)
-
-If you prefer to run frontend and backend separately:
-
-#### Terminal 1 - Backend:
-
-```bash
-cd backend
-./venv/bin/python3.12 -m uvicorn app.main:app --reload --port 8000
-```
-
-#### Terminal 2 - Frontend:
-
-```bash
-npm run dev
-```
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
 ---
 
-## ⚙️ Configuration
+## Environment Variables
 
-### Frontend Environment Variables
-
-Create `.env` in the project root:
+### Frontend (`.env` in project root)
 
 ```env
-# API Configuration
 VITE_API_BASE_URL=http://localhost:8000/api/v1
 VITE_WS_URL=ws://localhost:8000/api/v1/ws
-
-# Supabase Configuration
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-
-# App Configuration
 VITE_APP_NAME=Premier Hotel
-VITE_APP_VERSION=1.1.0
-
-# Payment Configuration (Optional)
-VITE_MPESA_SHORTCODE=174379
-VITE_STRIPE_PUBLIC_KEY=pk_test_xxx
 ```
 
-### Backend Environment Variables
-
-Create `.env` in the `backend` directory:
+### Backend (`backend/.env`)
 
 ```env
-# Application
 APP_NAME=Premier Hotel API
 ENVIRONMENT=development
-DEBUG=True
-SECRET_KEY=your-secret-key-here-generate-with-openssl-rand-hex-32
-
-# Database
+SECRET_KEY=your-secret-key        # openssl rand -hex 32
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-service-role-key
-SUPABASE_JWT_SECRET=your-jwt-secret
 DATABASE_URL=postgresql://postgres:password@db.your-project.supabase.co:5432/postgres
-
-# JWT Configuration
-JWT_SECRET_KEY=your-jwt-secret-key
+JWT_SECRET_KEY=your-jwt-secret
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
-
-# Email Configuration (Gmail SMTP)
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=noreply@premierhotel.com
-SMTP_FROM_NAME=Premier Hotel
-
-# M-Pesa Configuration
-MPESA_ENVIRONMENT=sandbox  # or production
-MPESA_CONSUMER_KEY=your-consumer-key
-MPESA_CONSUMER_SECRET=your-consumer-secret
+MPESA_ENVIRONMENT=sandbox
+MPESA_CONSUMER_KEY=your-key
+MPESA_CONSUMER_SECRET=your-secret
 MPESA_SHORTCODE=174379
 MPESA_PASSKEY=your-passkey
 MPESA_CALLBACK_URL=https://your-domain.com/api/v1/payments/mpesa/callback
-
-# Redis (Optional)
-REDIS_URL=redis://localhost:6379/0
-
-# CORS
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
-
-# Logging
-LOG_LEVEL=INFO
+ALLOWED_ORIGINS=http://localhost:5173
 ```
 
 ---
 
-## 🚀 Usage
+## API Overview
 
-### Development Mode (Recommended)
+Full interactive docs at `http://localhost:8000/docs`.
+
+| Area | Endpoints |
+|------|-----------|
+| Auth | register, login, logout, refresh, me, profile, change-password |
+| Rooms | list, get, create, update, delete, availability |
+| Bookings | list, create, cancel, check-in, check-out |
+| Menu | items CRUD |
+| Orders | create, list, status update, kitchen queue |
+| Payments | initiate, M-Pesa callback, status |
+| Staff | list, attendance, performance |
+| Housekeeping | tasks, inspections, supplies |
+| Inventory | items, stock levels, purchase orders |
+| Reports | revenue, employee sales, customer reports |
+| Notifications | list, preferences, WebSocket (`/api/v1/ws`) |
+
+---
+
+## Scripts
 
 ```bash
-# Start everything with one command
-./start.sh
-
-# Check if everything is running
-./status.sh
-
-# View logs in real-time
-tail -f backend.log    # Backend logs
-tail -f frontend.log   # Frontend logs
-
-# Stop the application
-./stop.sh              # Or press Ctrl+C
+./start.sh      # Start frontend and backend
+./stop.sh       # Stop the application
+./status.sh     # Check running status
 ```
 
-**See [SCRIPTS_GUIDE.md](SCRIPTS_GUIDE.md) for complete script documentation.**
-
-### Development Mode (Manual)
-
-If you need to run services separately:
+Manual startup:
 
 ```bash
-# Terminal 1: Frontend
+# Terminal 1 — backend
+cd backend && ./venv/bin/python3 -m uvicorn app.main:app --reload --port 8000
+
+# Terminal 2 — frontend
 npm run dev
-
-# Terminal 2: Backend
-cd backend
-./venv/bin/python3.12 -m uvicorn app.main:app --reload --port 8000
-```
-
-### Production Build
-
-```bash
-# Build frontend
-npm run build
-
-# Preview production build
-npm run preview
-
-# Run backend in production
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-### Testing
-
-```bash
-# Frontend tests
-npm run test
-
-# Backend tests
-cd backend
-pytest
-
-# Run specific test file
-pytest tests/test_auth.py -v
-```
-
-### Linting
-
-```bash
-# Frontend
-npm run lint
-
-# Backend
-cd backend
-flake8 app/
-black app/ --check
 ```
 
 ---
 
-## 📚 API Documentation
+## License
 
-### Interactive API Documentation
-
-Once the backend is running, access the interactive API documentation:
-
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
-
-### API Endpoints Overview
-
-#### Authentication
-- `POST /api/v1/auth/register` - Register new user
-- `POST /api/v1/auth/login` - User login
-- `POST /api/v1/auth/refresh` - Refresh access token
-- `GET /api/v1/auth/me` - Get current user
-
-#### Rooms & Bookings
-- `GET /api/v1/rooms` - List all rooms
-- `GET /api/v1/rooms/{id}` - Get room details
-- `POST /api/v1/bookings` - Create booking
-- `GET /api/v1/bookings/my-bookings` - User's bookings
-
-#### Orders & Menu
-- `GET /api/v1/menu` - Get menu items
-- `POST /api/v1/orders` - Create order
-- `GET /api/v1/orders/{id}` - Track order status
-
-#### Payments
-- `POST /api/v1/payments/initiate` - Initiate payment
-- `POST /api/v1/payments/mpesa/callback` - M-Pesa callback
-- `GET /api/v1/payments/status/{id}` - Check payment status
-
-#### Staff Management
-- `GET /api/v1/staff` - List staff members
-- `POST /api/v1/staff/attendance` - Clock in/out
-- `GET /api/v1/staff/performance` - Performance metrics
-
-#### Housekeeping
-- `GET /api/v1/housekeeping/tasks` - Get cleaning tasks
-- `POST /api/v1/housekeeping/inspections` - Submit inspection
-- `GET /api/v1/housekeeping/supplies` - Check supplies
-
-#### Notifications & Messaging
-- `GET /api/v1/notifications` - Get notifications
-- `POST /api/v1/messages` - Send message
-- `WS /api/v1/ws` - WebSocket connection
-
-**Full API documentation with 100+ endpoints available at `/docs`**
-
----
-
-## 🗄️ Database Schema
-
-### Entity Relationship Diagram
-
-```
-┌─────────────┐         ┌─────────────┐         ┌─────────────┐
-│   profiles  │────────▶│   bookings  │◀───────│    rooms    │
-│             │         │             │         │             │
-│ - user_id   │         │ - id        │         │ - id        │
-│ - email     │         │ - user_id   │         │ - number    │
-│ - role      │         │ - room_id   │         │ - type      │
-│ - loyalty   │         │ - status    │         │ - status    │
-└─────┬───────┘         │ - payment   │         └─────────────┘
-      │                 └─────────────┘
-      │
-      │         ┌─────────────┐         ┌─────────────┐
-      ├────────▶│   orders    │────────▶│ menu_items  │
-      │         │             │         │             │
-      │         │ - id        │         │ - id        │
-      │         │ - user_id   │         │ - name      │
-      │         │ - status    │         │ - price     │
-      │         │ - total     │         │ - category  │
-      │         └─────────────┘         └─────────────┘
-      │
-      │         ┌─────────────┐
-      └────────▶│  payments   │
-                │             │
-                │ - id        │
-                │ - user_id   │
-                │ - amount    │
-                │ - method    │
-                │ - status    │
-                └─────────────┘
-```
-
-### Key Tables
-
-**Users & Authentication**
-```sql
-profiles (
-  id UUID PRIMARY KEY,
-  email TEXT UNIQUE,
-  full_name TEXT,
-  phone TEXT,
-  role TEXT CHECK (role IN ('customer', 'admin', 'manager', 'staff', 'chef', 'waiter', 'cleaner')),
-  loyalty_points INTEGER DEFAULT 0,
-  created_at TIMESTAMP
-)
-```
-
-**Bookings**
-```sql
-bookings (
-  id UUID PRIMARY KEY,
-  user_id UUID REFERENCES profiles(id),
-  room_id UUID REFERENCES rooms(id),
-  check_in DATE,
-  check_out DATE,
-  guests INTEGER,
-  status TEXT,
-  total_amount DECIMAL,
-  payment_status TEXT,
-  created_at TIMESTAMP
-)
-```
-
-**Payments**
-```sql
-payments (
-  id UUID PRIMARY KEY,
-  user_id UUID REFERENCES profiles(id),
-  booking_id UUID REFERENCES bookings(id),
-  order_id UUID REFERENCES orders(id),
-  amount DECIMAL NOT NULL,
-  payment_method TEXT CHECK (payment_method IN ('mpesa', 'cash', 'card')),
-  status TEXT CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
-  transaction_id TEXT,
-  phone_number TEXT,
-  created_at TIMESTAMP
-)
-```
-
-**Full schema with 27 tables available in** `backend/supabase_schema.sql`
-
----
-
-## 📸 Screenshots
-
-<details>
-<summary>Click to view screenshots</summary>
-
-### Customer Interface
-![Landing Page](docs/screenshots/landing.png)
-![Room Booking](docs/screenshots/booking.png)
-![Food Menu](docs/screenshots/menu.png)
-![Order Tracking](docs/screenshots/order-tracking.png)
-
-### Staff Dashboards
-![Admin Dashboard](docs/screenshots/admin-dashboard.png)
-![Chef Kitchen](docs/screenshots/chef-kitchen.png)
-![Waiter Interface](docs/screenshots/waiter.png)
-
-### Mobile & PWA
-![Mobile Menu](docs/screenshots/mobile-menu.png)
-![Mobile Booking](docs/screenshots/mobile-booking.png)
-
-</details>
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these steps:
-
-1. **Fork the repository**
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. **Commit your changes**
-   ```bash
-   git commit -m 'Add some amazing feature'
-   ```
-4. **Push to the branch**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-5. **Open a Pull Request**
-
-### Coding Standards
-
-- Follow **PEP 8** for Python code
-- Use **ESLint** and **Prettier** for JavaScript/React
-- Write meaningful commit messages
-- Add tests for new features
-- Update documentation
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👥 Authors
-
-**Development Team**
-- Lead Developer: [Your Name](https://github.com/yourusername)
-
----
-
-## 🙏 Acknowledgments
-
-- [React](https://react.dev/) - UI framework
-- [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
-- [Supabase](https://supabase.com/) - Backend infrastructure
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
-- [Radix UI](https://www.radix-ui.com/) - UI components
-- [Safaricom Daraja](https://developer.safaricom.co.ke/) - M-Pesa integration
-
----
-
-## 📞 Support
-
-For support, email support@premierhotel.com or create an issue in the GitHub repository.
-
----
-
-## 🗺️ Roadmap
-
-- [x] Phase 1: Core functionality
-- [x] Phase 2: Payment integration (M-Pesa, Cash, Card)
-- [x] Phase 3: Staff management & operations
-- [x] Phase 4: Real-time features & PWA
-- [x] Phase 5: TypeScript migration (145 files, strict mode)
-- [x] Phase 6: TypeScript strict mode + JSDoc documentation
-- [ ] Phase 7: QuickBooks POS 2013 integration
-- [ ] Phase 8: Advanced analytics dashboards
-- [ ] Phase 9: Multi-property support
-- [ ] Phase 10: AI-powered features
-
----
-
-<div align="center">
-
-**Built with ❤️ by the Premier Hotel Team**
-
-[⬆ Back to Top](#-premier-hotel-management-system)
-
-</div>
+MIT

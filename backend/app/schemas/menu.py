@@ -40,6 +40,7 @@ class MenuItemUpdate(BaseModel):
     preparation_time: Optional[int] = Field(None, ge=0)
     available: Optional[bool] = None
     popular: Optional[bool] = None
+    track_inventory: Optional[bool] = None
 
 
 class MenuItemResponse(MenuItemBase):
@@ -49,6 +50,10 @@ class MenuItemResponse(MenuItemBase):
     is_available: Optional[bool] = True  # Duplicate field for frontend compatibility
     popular: Optional[bool] = False
     rating: Optional[Decimal] = None
+    track_inventory: Optional[bool] = False
+    stock_quantity: Optional[int] = 0
+    reorder_level: Optional[int] = None
+    unit: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

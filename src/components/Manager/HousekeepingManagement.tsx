@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
   ClipboardList, CheckCircle, Clock, AlertTriangle,
   Plus, PlayCircle, CheckCircle2, Trash2, RefreshCw,
-  Calendar, BedDouble, Loader2, Search, Users
+  Calendar, BedDouble, Loader2, Search, Users, Wrench, ShoppingBag
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import housekeepingService, {
@@ -19,6 +19,34 @@ import housekeepingService, {
 } from '@/lib/api/housekeeping';
 import { roomsAPI, Room } from '@/lib/api/rooms';
 import { staffService, Staff } from '@/lib/api/staff';
+import { api } from '@/lib/api/client';
+
+interface MaintenanceFlag {
+  id: string;
+  room_id: string;
+  task_id?: string;
+  reported_by?: string;
+  issue_type: string;
+  title: string;
+  description?: string;
+  priority: string;
+  status: string;
+  resolution_notes?: string;
+  created_at: string;
+}
+
+interface LinenItem {
+  id: string;
+  item_name: string;
+  category: string;
+  total_quantity: number;
+  in_use_quantity: number;
+  in_laundry_quantity: number;
+  damaged_quantity: number;
+  available_quantity: number;
+  reorder_level: number;
+  unit: string;
+}
 
 const TASK_TYPES = [
   { value: 'cleaning', label: 'Cleaning' },
@@ -64,6 +92,9 @@ export function HousekeepingManagement() {
   const [roomStatus, setRoomStatus] = useState<RoomStatusSummary | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlag[]>([]);
+  const [linenItems, setLinenItems] = useState<LinenItem[]>([]);
+  const [activeSection, setActiveSection] = useState<'tasks' | 'maintenance' | 'linen'>('tasks');
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -93,16 +124,20 @@ export function HousekeepingManagement() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [tasksData, statsData, roomStatusData, roomsData] = await Promise.all([
+      const [tasksData, statsData, roomStatusData, roomsData, flagsData, linenData] = await Promise.all([
         housekeepingService.getTasks({ limit: 200 }),
         housekeepingService.getStats(),
         housekeepingService.getRoomStatus(),
         roomsAPI.listRooms(),
+        api.get('/maintenance/flags').then(r => (r.data as any) || []).catch(() => []),
+        api.get('/maintenance/linen').then(r => (r.data as any) || []).catch(() => []),
       ]);
       setTasks(tasksData);
       setStats(statsData);
       setRoomStatus(roomStatusData);
       setRooms(roomsData);
+      setMaintenanceFlags(flagsData as MaintenanceFlag[]);
+      setLinenItems(linenData as LinenItem[]);
 
       // Fetch staff - try to get all and filter for housekeeping roles
       try {
@@ -325,8 +360,152 @@ export function HousekeepingManagement() {
         </Card>
       )}
 
+      {/* Section switcher */}
+      <div className="flex gap-2 flex-wrap">
+        <Button variant={activeSection === 'tasks' ? 'default' : 'outline'} onClick={() => setActiveSection('tasks')}>
+          <ClipboardList className="h-4 w-4 mr-2" /> Tasks
+        </Button>
+        <Button variant={activeSection === 'maintenance' ? 'default' : 'outline'} onClick={() => setActiveSection('maintenance')}>
+          <Wrench className="h-4 w-4 mr-2" />
+          Repair Issues {maintenanceFlags.filter(f => f.status === 'open').length > 0 && `(${maintenanceFlags.filter(f => f.status === 'open').length} open)`}
+        </Button>
+        <Button variant={activeSection === 'linen' ? 'default' : 'outline'} onClick={() => setActiveSection('linen')}>
+          <ShoppingBag className="h-4 w-4 mr-2" /> Linen Inventory
+        </Button>
+      </div>
+
+      {/* Maintenance Flags Panel */}
+      {activeSection === 'maintenance' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-600"><Wrench className="h-5 w-5" />Room Repair & Maintenance Issues</CardTitle>
+            <CardDescription>Issues reported by cleaning staff — action and resolve them</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {maintenanceFlags.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Wrench className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>No maintenance issues reported</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {maintenanceFlags.map(flag => (
+                  <Card key={flag.id} className={flag.priority === 'urgent' ? 'border-red-500 border-2' : flag.status === 'resolved' ? 'opacity-60' : ''}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <CardTitle className="text-sm font-semibold">{flag.title}</CardTitle>
+                          <CardDescription className="capitalize text-xs mt-0.5">
+                            {flag.issue_type.replace('_', ' ')} — Room {rooms.find(r => r.id === flag.room_id)?.room_number || flag.room_id.substring(0, 8)}
+                          </CardDescription>
+                        </div>
+                        <div className="flex gap-1 flex-wrap justify-end">
+                          <Badge className={`text-xs ${flag.status === 'open' ? 'bg-red-100 text-red-800' : flag.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                            {flag.status.replace('_', ' ')}
+                          </Badge>
+                          <Badge className={`text-xs ${flag.priority === 'urgent' ? 'bg-red-100 text-red-800' : flag.priority === 'high' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>
+                            {flag.priority}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0 space-y-3">
+                      {flag.description && <p className="text-sm text-muted-foreground">{flag.description}</p>}
+                      <p className="text-xs text-muted-foreground">{new Date(flag.created_at).toLocaleString()}</p>
+                      {flag.status !== 'resolved' && (
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={async () => {
+                            await api.patch(`/maintenance/flags/${flag.id}`, { status: 'in_progress' });
+                            toast.success('Marked in progress');
+                            loadData();
+                          }}>In Progress</Button>
+                          <Button size="sm" onClick={async () => {
+                            const notes = prompt('Resolution notes (optional):');
+                            await api.patch(`/maintenance/flags/${flag.id}`, { status: 'resolved', resolution_notes: notes || undefined });
+                            toast.success('Issue resolved');
+                            loadData();
+                          }}>Resolve</Button>
+                        </div>
+                      )}
+                      {flag.resolution_notes && (
+                        <p className="text-xs text-green-700 bg-green-50 p-2 rounded">Resolved: {flag.resolution_notes}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Linen Inventory Panel */}
+      {activeSection === 'linen' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><ShoppingBag className="h-5 w-5" />Linen & Room Inventory</CardTitle>
+            <CardDescription>Track and manage towels, sheets, pillows and all room linen</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {linenItems.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <ShoppingBag className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>No linen items</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-3">Item</th>
+                      <th className="text-center p-3">Category</th>
+                      <th className="text-center p-3 text-green-700">Available</th>
+                      <th className="text-center p-3 text-blue-700">In Use</th>
+                      <th className="text-center p-3 text-yellow-700">Laundry</th>
+                      <th className="text-center p-3 text-red-700">Damaged</th>
+                      <th className="text-center p-3">Total</th>
+                      <th className="text-center p-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {linenItems.map(item => {
+                      const isLow = item.available_quantity <= item.reorder_level;
+                      return (
+                        <tr key={item.id} className={`border-b ${isLow ? 'bg-orange-50' : ''}`}>
+                          <td className="p-3 font-medium">
+                            {item.item_name}
+                            {isLow && <span className="ml-2 text-xs text-orange-600 font-semibold">LOW</span>}
+                          </td>
+                          <td className="p-3 text-center capitalize">{item.category}</td>
+                          <td className="p-3 text-center font-bold text-green-700">{item.available_quantity}</td>
+                          <td className="p-3 text-center font-bold text-blue-700">{item.in_use_quantity}</td>
+                          <td className="p-3 text-center font-bold text-yellow-700">{item.in_laundry_quantity}</td>
+                          <td className="p-3 text-center font-bold text-red-700">{item.damaged_quantity}</td>
+                          <td className="p-3 text-center">{item.total_quantity} {item.unit}</td>
+                          <td className="p-3 text-center">
+                            <Button size="sm" variant="outline" onClick={async () => {
+                              const qty = prompt(`Add to total stock for ${item.item_name} (enter number to add):`);
+                              if (!qty || isNaN(Number(qty))) return;
+                              await api.patch(`/maintenance/linen/${item.id}`, {
+                                total_quantity: item.total_quantity + Number(qty)
+                              });
+                              toast.success('Stock updated');
+                              loadData();
+                            }}>+ Stock</Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Task List */}
-      <Card>
+      {activeSection === 'tasks' && <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -480,7 +659,7 @@ export function HousekeepingManagement() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* Create Task Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>

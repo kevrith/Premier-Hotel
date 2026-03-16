@@ -26,6 +26,7 @@ import MyBookings from "./pages/MyBookings";
 import UserProfile from "./pages/UserProfile";
 import AdminDashboard from "./pages/AdminDashboard";
 import ManagerDashboard from "./pages/ManagerDashboard";
+import OwnerDashboard from "./pages/OwnerDashboard";
 import ChefDashboard from "./pages/ChefDashboard";
 import WaiterDashboard from "./pages/WaiterDashboard";
 import CleanerDashboard from "./pages/CleanerDashboard";
@@ -141,6 +142,10 @@ const App = () => {
               </Route>
 
               {/* Protected Staff Routes */}
+              <Route element={<ProtectedRoute requiredRoles={['owner', 'admin']} />}>
+                <Route path="/owner" element={<OwnerDashboard />} />
+              </Route>
+
               <Route element={<ProtectedRoute requiredRoles={['admin']} />}>
                 <Route path="/admin" element={<AdminDashboard />} />
               </Route>

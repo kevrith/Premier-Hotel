@@ -8,7 +8,7 @@ from typing import Optional, List
 from datetime import datetime, timezone, date, timedelta
 from supabase import Client
 from pydantic import BaseModel
-from app.core.supabase import get_supabase_admin
+from app.core.supabase import get_supabase_admin, get_supabase
 from app.middleware.auth_secure import get_current_user
 
 router = APIRouter()
@@ -40,6 +40,7 @@ class UpdateMenuItemStockSettings(BaseModel):
     reorder_level: Optional[float] = 0
     unit: Optional[str] = "piece"
     cost_price: Optional[float] = 0
+    stock_department: Optional[str] = None  # 'kitchen', 'bar', 'both', or None (auto)
 
 
 @router.post("/receive")
@@ -85,11 +86,12 @@ async def receive_stock(
         "notes": req.notes,
     }).execute()
 
-    # Update menu item stock quantity
+    # Update menu item stock quantity and auto-toggle availability
     supabase.table("menu_items").update({
         "stock_quantity": new_qty,
         "track_inventory": True,
-        "cost_price": req.unit_cost,  # update latest cost price
+        "cost_price": req.unit_cost,
+        "is_available": new_qty > 0,  # auto-available when stock > 0
     }).eq("id", req.menu_item_id).execute()
 
     return {
@@ -109,10 +111,10 @@ async def get_stock_levels(
     current_user: dict = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_admin),
 ):
-    """Get current stock levels for all tracked menu items."""
+    """Get current stock levels for all tracked menu items (or any with qty > 0)."""
     query = supabase.table("menu_items").select(
-        "id, name, category, stock_quantity, reorder_level, unit, cost_price, track_inventory, is_available"
-    ).eq("track_inventory", True)
+        "id, name, category, stock_quantity, reorder_level, unit, cost_price, base_price, track_inventory, is_available, stock_department"
+    ).or_("track_inventory.eq.true,stock_quantity.gt.0")
 
     if category:
         query = query.eq("category", category)
@@ -195,9 +197,10 @@ async def adjust_stock(
     except Exception:
         pass
 
-    # Update stock level
+    # Update stock level and auto-toggle availability for tracked items
     supabase.table("menu_items").update({
         "stock_quantity": req.new_quantity,
+        "is_available": req.new_quantity > 0,
     }).eq("id", req.menu_item_id).execute()
 
     return {
@@ -226,6 +229,7 @@ async def update_item_stock_settings(
         "reorder_level": req.reorder_level,
         "unit": req.unit,
         "cost_price": req.cost_price,
+        "stock_department": req.stock_department,
     }).eq("id", menu_item_id).execute()
 
     return {"success": True}
@@ -239,7 +243,7 @@ async def get_stock_summary(
     """Get stock summary stats for dashboard."""
     items_res = supabase.table("menu_items").select(
         "stock_quantity, reorder_level, cost_price, track_inventory"
-    ).eq("track_inventory", True).execute()
+    ).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
 
     items = items_res.data or []
     total_items = len(items)

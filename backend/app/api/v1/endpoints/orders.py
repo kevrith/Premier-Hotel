@@ -71,8 +71,15 @@ async def get_all_orders(
     - Returns all orders with optional filters
     """
     try:
-        # Use admin client to bypass RLS
-        query = supabase_admin.table("orders").select("*")
+        # Use admin client to bypass RLS — select only needed columns (avoid fetching large items JSON)
+        query = supabase_admin.table("orders").select(
+            "id, order_number, customer_id, location, location_type, status, "
+            "subtotal, tax, total_amount, base_amount, vat_amount, tourism_levy_amount, "
+            "tax_inclusive, priority, special_instructions, notes, estimated_ready_time, "
+            "customer_name, customer_phone, order_type, payment_status, bill_id, paid_at, "
+            "created_by_staff_id, assigned_waiter_id, assigned_chef_id, "
+            "room_number, table_number, created_at, updated_at, items"
+        )
 
         # Apply filters
         if status:
@@ -221,9 +228,30 @@ async def get_kitchen_orders(
         logging.info(f"[KITCHEN] Staff map: {staff_map}")
         print(f"[KITCHEN DEBUG] Staff map: {staff_map}")
         
-        # Attach staff info to orders
+        # Bar/drinks categories — these don't need chef preparation
+        BAR_CATEGORIES = {
+            "drinks", "beverages", "beverage", "bar", "alcohol", "cocktails",
+            "cocktail", "spirits", "spirit", "beer", "wine", "wines",
+            "soda", "juice", "juices", "water", "soft drinks", "soft drink",
+        }
+
+        def is_bar_only_order(order: dict) -> bool:
+            """Returns True if ALL items in the order are bar/drink items (no cooking needed)."""
+            items = order.get("items", []) or []
+            if not items:
+                return False
+            for item in items:
+                cat = (item.get("category") or "").lower().strip()
+                if cat not in BAR_CATEGORIES:
+                    return False  # has at least one kitchen item
+            return True  # every item is a bar item
+
+        # Attach staff info to orders and filter out bar-only orders
         orders_with_staff = []
         for order in response.data:
+            # Skip orders that only contain bar/drink items — waiters handle those
+            if is_bar_only_order(order):
+                continue
             order_dict = dict(order)
             if order.get("assigned_chef_id") and order["assigned_chef_id"] in staff_map:
                 order_dict["assigned_chef"] = staff_map[order["assigned_chef_id"]]
@@ -231,14 +259,7 @@ async def get_kitchen_orders(
                 order_dict["assigned_waiter"] = staff_map[order["assigned_waiter_id"]]
             orders_with_staff.append(order_dict)
 
-        # Debug: Log the statuses of orders being returned
-        if logging.getLogger().isEnabledFor(logging.DEBUG):
-            order_summary = [{
-                'id': o.get('id')[:8] + '...',
-                'order_number': o.get('order_number'),
-                'status': o.get('status')
-            } for o in orders_with_staff]
-            logging.debug(f"Kitchen orders returned: {order_summary}")
+        logging.info(f"[KITCHEN] Returning {len(orders_with_staff)} kitchen orders (bar-only orders excluded)")
 
         return [OrderResponse(**order) for order in orders_with_staff]
 
@@ -247,6 +268,110 @@ async def get_kitchen_orders(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
         )
+
+
+@router.get("/manager/manager")
+async def get_manager_orders(
+    status: Optional[str] = Query(default=None),
+    type: Optional[str] = Query(default=None),
+    date: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    current_user: dict = Depends(get_current_user),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Get all orders for manager dashboard with filters"""
+    if current_user.get("role") not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Manager access required")
+
+    try:
+        query = supabase_admin.table("orders").select("*").order("created_at", desc=True)
+
+        if status and status != "all":
+            query = query.eq("status", status)
+        if type and type != "all":
+            query = query.eq("order_type", type)
+        if date and date != "all":
+            from datetime import date as date_type
+            today = datetime.now(timezone.utc).date().isoformat()
+            if date == "today":
+                query = query.gte("created_at", f"{today}T00:00:00").lte("created_at", f"{today}T23:59:59")
+            elif date == "yesterday":
+                from datetime import timedelta
+                yest = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+                query = query.gte("created_at", f"{yest}T00:00:00").lte("created_at", f"{yest}T23:59:59")
+            elif date == "week":
+                from datetime import timedelta
+                week_ago = (datetime.now(timezone.utc).date() - timedelta(days=7)).isoformat()
+                query = query.gte("created_at", f"{week_ago}T00:00:00")
+
+        query = query.limit(200)
+        result = query.execute()
+        orders = result.data or []
+
+        if search:
+            s = search.lower()
+            orders = [
+                o for o in orders if
+                s in (o.get("order_number") or "").lower() or
+                s in (o.get("customer_name") or "").lower() or
+                s in (o.get("customer_phone") or "").lower()
+            ]
+
+        return {"data": orders, "total": len(orders)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/manager/stats")
+async def get_manager_order_stats(
+    current_user: dict = Depends(get_current_user),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Get quick stats for manager order dashboard"""
+    if current_user.get("role") not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Manager access required")
+
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        today_start = f"{today}T00:00:00"
+        today_end = f"{today}T23:59:59"
+
+        result = supabase_admin.table("orders").select(
+            "status, total_amount, created_at, updated_at"
+        ).gte("created_at", today_start).lte("created_at", today_end).execute()
+
+        orders = result.data or []
+        total = len(orders)
+        pending = sum(1 for o in orders if o["status"] in ["pending", "preparing", "ready"])
+        completed = sum(1 for o in orders if o["status"] in ["completed", "served", "delivered", "paid"])
+        revenue = sum(float(o.get("total_amount") or 0) for o in orders if o["status"] not in ["cancelled"])
+
+        # Average completion time in minutes
+        times = []
+        for o in orders:
+            if o.get("created_at") and o.get("updated_at") and o["status"] in ["completed", "served", "paid"]:
+                try:
+                    c = datetime.fromisoformat(o["created_at"].replace("Z", "+00:00"))
+                    u = datetime.fromisoformat(o["updated_at"].replace("Z", "+00:00"))
+                    diff = (u - c).total_seconds() / 60
+                    if 0 < diff < 180:
+                        times.append(diff)
+                except Exception:
+                    pass
+
+        avg_time = round(sum(times) / len(times)) if times else 0
+        completion_rate = round((completed / total) * 100) if total > 0 else 0
+
+        return {
+            "today_orders": total,
+            "pending_orders": pending,
+            "completed_orders": completed,
+            "avg_completion_time": avg_time,
+            "total_revenue": round(revenue, 2),
+            "completion_rate": completion_rate,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
@@ -726,10 +851,10 @@ async def update_order_status(
         # First check if current user exists in profiles table to avoid foreign key errors
         user_exists = False
         try:
-            user_check = supabase_admin.table("profiles").select("id").eq("id", current_user["id"]).execute()
+            user_check = supabase_admin.table("users").select("id").eq("id", current_user["id"]).execute()
             user_exists = bool(user_check.data)
             if logging.getLogger().isEnabledFor(logging.DEBUG):
-                logging.debug(f"User {current_user['id']} exists in profiles: {user_exists}")
+                logging.debug(f"User {current_user['id']} exists in users: {user_exists}")
         except Exception as user_check_error:
             if logging.getLogger().isEnabledFor(logging.DEBUG):
                 logging.debug(f"Could not verify user existence: {str(user_check_error)}")
@@ -776,6 +901,55 @@ async def update_order_status(
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug("Skipping assigned_waiter_id - user not found in profiles table")
             
+            # AUTO-DEDUCT STOCK when order is served
+            try:
+                order_items = order.get("items", []) or []
+                bar_location_id = order.get("bar_location_id")
+                if isinstance(order_items, list) and order_items:
+                    # Get menu_item_ids for tracked items
+                    item_ids = [oi.get("menu_item_id") or oi.get("id") for oi in order_items if oi.get("menu_item_id") or oi.get("id")]
+                    if item_ids:
+                        if bar_location_id:
+                            # Per-location stock deduction
+                            loc_stock_res = supabase_admin.table("location_stock").select(
+                                "id, menu_item_id, quantity"
+                            ).eq("location_id", bar_location_id).in_("menu_item_id", item_ids).execute()
+                            loc_stock_map = {i["menu_item_id"]: i for i in (loc_stock_res.data or [])}
+
+                            for oi in order_items:
+                                mid = oi.get("menu_item_id") or oi.get("id")
+                                if not mid or mid not in loc_stock_map:
+                                    continue
+                                qty_sold = float(oi.get("quantity", 1))
+                                current = float(loc_stock_map[mid].get("quantity") or 0)
+                                new_qty = max(0, current - qty_sold)
+                                supabase_admin.table("location_stock").update({
+                                    "quantity": new_qty,
+                                }).eq("id", loc_stock_map[mid]["id"]).execute()
+                            logging.info(f"[STOCK] ✅ Per-location stock deducted for order {order_id} at location {bar_location_id}")
+                        else:
+                            # Fallback: global menu_items.stock_quantity deduction
+                            tracked_res = supabase_admin.table("menu_items").select(
+                                "id, stock_quantity, track_inventory, reorder_level"
+                            ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+                            tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
+
+                            for oi in order_items:
+                                mid = oi.get("menu_item_id") or oi.get("id")
+                                if not mid or mid not in tracked_map:
+                                    continue
+                                qty_sold = float(oi.get("quantity", 1))
+                                current = float(tracked_map[mid].get("stock_quantity") or 0)
+                                new_qty = max(0, current - qty_sold)
+                                supabase_admin.table("menu_items").update({
+                                    "stock_quantity": new_qty,
+                                    "is_available": new_qty > 0,
+                                }).eq("id", mid).execute()
+                            logging.info(f"[STOCK] ✅ Global stock deducted for order {order_id}")
+            except Exception as stock_err:
+                logging.warning(f"[STOCK] ⚠️ Stock deduction failed for order {order_id}: {stock_err}")
+                # Don't fail the order update if stock deduction fails
+
             # AUTO-CREATE UNPAID BILL when order is served
             try:
                 logging.info(f"[AUTO-BILL] Starting auto-bill creation for order {order_id}")
@@ -826,6 +1000,47 @@ async def update_order_status(
                 # Don't fail the order status update if bill creation fails
         elif mapped_new_status == "completed":
             update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+            # Deduct stock if order skipped the 'served' step (e.g. went ready→completed directly)
+            if old_status not in ("served", "delivered"):
+                try:
+                    order_items = order.get("items", []) or []
+                    bar_location_id = order.get("bar_location_id")
+                    if isinstance(order_items, list) and order_items:
+                        item_ids = [oi.get("menu_item_id") or oi.get("id") for oi in order_items if oi.get("menu_item_id") or oi.get("id")]
+                        if item_ids:
+                            if bar_location_id:
+                                loc_stock_res = supabase_admin.table("location_stock").select(
+                                    "id, menu_item_id, quantity"
+                                ).eq("location_id", bar_location_id).in_("menu_item_id", item_ids).execute()
+                                loc_stock_map = {i["menu_item_id"]: i for i in (loc_stock_res.data or [])}
+                                for oi in order_items:
+                                    mid = oi.get("menu_item_id") or oi.get("id")
+                                    if not mid or mid not in loc_stock_map:
+                                        continue
+                                    qty_sold = float(oi.get("quantity", 1))
+                                    current = float(loc_stock_map[mid].get("quantity") or 0)
+                                    new_qty = max(0, current - qty_sold)
+                                    supabase_admin.table("location_stock").update({"quantity": new_qty}).eq("id", loc_stock_map[mid]["id"]).execute()
+                                logging.info(f"[STOCK] ✅ Per-location stock deducted on completed for order {order_id}")
+                            else:
+                                tracked_res = supabase_admin.table("menu_items").select(
+                                    "id, stock_quantity, track_inventory"
+                                ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+                                tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
+                                for oi in order_items:
+                                    mid = oi.get("menu_item_id") or oi.get("id")
+                                    if not mid or mid not in tracked_map:
+                                        continue
+                                    qty_sold = float(oi.get("quantity", 1))
+                                    current = float(tracked_map[mid].get("stock_quantity") or 0)
+                                    new_qty = max(0, current - qty_sold)
+                                    supabase_admin.table("menu_items").update({
+                                        "stock_quantity": new_qty,
+                                        "is_available": new_qty > 0,
+                                    }).eq("id", mid).execute()
+                                logging.info(f"[STOCK] ✅ Global stock deducted on completed for order {order_id}")
+                except Exception as stock_err:
+                    logging.warning(f"[STOCK] ⚠️ Stock deduction on completed failed for order {order_id}: {stock_err}")
         elif mapped_new_status == "cancelled":
             update_data["cancelled_at"] = datetime.now(timezone.utc).isoformat()
 

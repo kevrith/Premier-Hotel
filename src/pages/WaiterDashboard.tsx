@@ -26,6 +26,7 @@ import {
   Wifi
 } from 'lucide-react';
 import { BillsManagement } from '@/components/Bills';
+import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { toast } from 'react-hot-toast';
 import { ordersApi, Order } from '@/lib/api/orders';
 import { useOrderUpdates } from '@/hooks/useOrderUpdates';
@@ -624,7 +625,7 @@ export default function WaiterDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="tables">
               Tables ({tableOrders.length})
             </TabsTrigger>
@@ -634,6 +635,9 @@ export default function WaiterDashboard() {
             <TabsTrigger value="bills">
               <Receipt className="h-4 w-4 mr-2" />
               Bills & Payments
+            </TabsTrigger>
+            <TabsTrigger value="stock-take">
+              Stock Take
             </TabsTrigger>
           </TabsList>
 
@@ -770,6 +774,11 @@ export default function WaiterDashboard() {
           {/* Bills Tab */}
           <TabsContent value="bills" className="space-y-6">
             <BillsManagement />
+          </TabsContent>
+
+          {/* Stock Take Tab */}
+          <TabsContent value="stock-take" className="space-y-6">
+            <DailyStockTaking defaultSessionType="bar" />
           </TabsContent>
         </Tabs>
       </div>

@@ -36,38 +36,48 @@ interface SystemMetrics {
   systemUptime: number;
 }
 
+interface ActivityEvent {
+  event: string;
+  time: string;
+  time_display: string;
+  type: 'success' | 'warning' | 'info';
+}
+
 export function SystemHealth() {
   const [components, setComponents] = useState<SystemComponent[]>([]);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
 
   useEffect(() => {
     loadSystemHealth();
-    const interval = setInterval(loadSystemHealth, 30000); // Update every 30 seconds
+    const interval = setInterval(loadSystemHealth, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const loadSystemHealth = async () => {
     setIsLoading(true);
     try {
-      const [componentsRes, metricsRes] = await Promise.all([
+      const [componentsRes, metricsRes, activityRes] = await Promise.all([
         api.get('/system/health/components'),
-        api.get('/system/health/metrics')
+        api.get('/system/health/metrics'),
+        api.get('/system/health/activity?limit=20')
       ]);
 
       setComponents(componentsRes.data as unknown as SystemComponent[]);
       setMetrics(metricsRes.data as unknown as SystemMetrics);
+      setActivity((activityRes.data as unknown as ActivityEvent[]) || []);
       setLastUpdated(new Date());
-      
+
       localStorage.setItem('system_health_components', JSON.stringify(componentsRes.data));
       localStorage.setItem('system_health_metrics', JSON.stringify(metricsRes.data));
     } catch (error: any) {
       console.error('Error loading system health:', error);
-      
+
       const cachedComponents = localStorage.getItem('system_health_components');
       const cachedMetrics = localStorage.getItem('system_health_metrics');
-      
+
       if (cachedComponents && cachedMetrics) {
         setComponents(JSON.parse(cachedComponents) as SystemComponent[]);
         setMetrics(JSON.parse(cachedMetrics) as SystemMetrics);
@@ -241,23 +251,18 @@ export function SystemHealth() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {[
-                      { event: 'Database connection established', time: '2 minutes ago', type: 'success' },
-                      { event: 'API server health check passed', time: '5 minutes ago', type: 'success' },
-                      { event: 'Email service experiencing delays', time: '12 minutes ago', type: 'warning' },
-                      { event: 'File storage backup completed', time: '20 minutes ago', type: 'success' },
-                      { event: 'Payment gateway response time increased', time: '30 minutes ago', type: 'warning' },
-                      { event: 'New user registration completed', time: '45 minutes ago', type: 'info' }
-                    ].map((activity, index) => (
+                    {activity.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
+                    ) : activity.map((item, index) => (
                       <div key={index} className="flex items-center justify-between py-2 border-b last:border-0">
                         <div className="flex items-center gap-3">
                           <div className={`h-2 w-2 rounded-full ${
-                            activity.type === 'success' ? 'bg-green-500' : 
-                            activity.type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'
+                            item.type === 'success' ? 'bg-green-500' :
+                            item.type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'
                           }`} />
-                          <span className="text-sm">{activity.event}</span>
+                          <span className="text-sm">{item.event}</span>
                         </div>
-                        <span className="text-xs text-muted-foreground">{activity.time}</span>
+                        <span className="text-xs text-muted-foreground">{item.time_display}</span>
                       </div>
                     ))}
                   </div>

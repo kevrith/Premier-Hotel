@@ -148,7 +148,11 @@ async def get_my_tasks(
     Get tasks assigned to the current user.
     """
     try:
-        query = supabase.table("housekeeping_tasks").select("*").eq("assigned_to", current_user["id"])
+        user_id = current_user["id"]
+        # Return tasks assigned to this user OR unassigned tasks (so cleaners can pick them up)
+        query = supabase.table("housekeeping_tasks").select("*").or_(
+            f"assigned_to.eq.{user_id},assigned_to.is.null"
+        )
 
         if status_filter:
             query = query.eq("status", status_filter)

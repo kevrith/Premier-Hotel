@@ -36,6 +36,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { InventoryManager } from '@/components/Chef/InventoryManager';
+import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { DailyReporting } from '@/components/Chef/DailyReporting';
 import { RecipeReference } from '@/components/Chef/RecipeReference';
 
@@ -684,7 +685,7 @@ export default function ChefDashboard() {
 
         {/* Main Tabs - Kitchen View */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 h-14">
+          <TabsList className="grid w-full grid-cols-5 h-14">
             <TabsTrigger value="orders" className="text-base font-semibold">
               <ChefHat className="h-5 w-5 mr-2" />
               Orders
@@ -692,6 +693,9 @@ export default function ChefDashboard() {
             <TabsTrigger value="inventory" className="text-base font-semibold">
               <Package className="h-5 w-5 mr-2" />
               Inventory
+            </TabsTrigger>
+            <TabsTrigger value="stock-take" className="text-base font-semibold">
+              Stock Take
             </TabsTrigger>
             <TabsTrigger value="reports" className="text-base font-semibold">
               <BarChart3 className="h-5 w-5 mr-2" />
@@ -811,6 +815,11 @@ export default function ChefDashboard() {
           {/* Inventory Tab */}
           <TabsContent value="inventory">
             <InventoryManager />
+          </TabsContent>
+
+          {/* Stock Take Tab */}
+          <TabsContent value="stock-take" className="space-y-6">
+            <DailyStockTaking defaultSessionType="kitchen" />
           </TabsContent>
 
           {/* Reports Tab */}

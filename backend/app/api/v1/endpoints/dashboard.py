@@ -3,6 +3,7 @@ Dashboard Summary Endpoint
 Returns all manager/admin KPIs in a single API call
 """
 import logging
+import asyncio
 from fastapi import APIRouter, Depends
 from datetime import datetime, date, timedelta, timezone
 from supabase import Client
@@ -11,6 +12,7 @@ from app.middleware.auth_secure import get_current_user
 
 router = APIRouter()
 
+
 @router.get("/manager/summary")
 async def get_manager_dashboard_summary(
     current_user: dict = Depends(get_current_user),
@@ -18,14 +20,80 @@ async def get_manager_dashboard_summary(
 ):
     """
     Single endpoint returning all KPIs for the manager dashboard.
-    Replaces 6 separate hook calls.
+    All DB queries run in parallel via asyncio.to_thread().
     """
     today = date.today().isoformat()
     week_ago = (date.today() - timedelta(days=7)).isoformat()
     month_ago = (date.today() - timedelta(days=30)).isoformat()
+    thirty_days_ago = month_ago
     today_start = f"{today}T00:00:00"
     today_end = f"{today}T23:59:59"
 
+    # ── Define all queries as callables ──────────────────────────────────
+    def q_orders_today():
+        return supabase.table("orders").select("total_amount, status, payment_status") \
+            .gte("created_at", today_start).lte("created_at", today_end).execute()
+
+    def q_orders_week():
+        return supabase.table("orders").select("total_amount") \
+            .gte("created_at", f"{week_ago}T00:00:00").lte("created_at", today_end).execute()
+
+    def q_orders_month():
+        return supabase.table("orders").select("total_amount") \
+            .gte("created_at", f"{month_ago}T00:00:00").lte("created_at", today_end).execute()
+
+    def q_room_revenue():
+        return supabase.table("bookings").select("total_price") \
+            .gte("created_at", f"{month_ago}T00:00:00").lte("created_at", today_end) \
+            .in_("status", ["confirmed", "completed"]).execute()
+
+    def q_staff():
+        return supabase.table("users").select("id, role, status, created_at") \
+            .in_("role", ["waiter", "chef", "cleaner", "manager"]).execute()
+
+    def q_rooms():
+        return supabase.table("rooms").select("status").execute()
+
+    def q_housekeeping():
+        return supabase.table("housekeeping_tasks").select("id").eq("status", "pending").execute()
+
+    def q_service_requests():
+        return supabase.table("service_requests").select("id").eq("status", "pending").execute()
+
+    def q_check_ins():
+        return supabase.table("bookings").select("id") \
+            .eq("check_in", today).in_("status", ["confirmed", "checked_in"]).execute()
+
+    def q_check_outs():
+        return supabase.table("bookings").select("id") \
+            .eq("check_out", today).eq("status", "completed").execute()
+
+    def q_reviews():
+        return supabase.table("reviews").select("rating") \
+            .gte("created_at", f"{month_ago}T00:00:00").execute()
+
+    # ── Run all queries in parallel ───────────────────────────────────────
+    results = await asyncio.gather(
+        asyncio.to_thread(q_orders_today),
+        asyncio.to_thread(q_orders_week),
+        asyncio.to_thread(q_orders_month),
+        asyncio.to_thread(q_room_revenue),
+        asyncio.to_thread(q_staff),
+        asyncio.to_thread(q_rooms),
+        asyncio.to_thread(q_housekeeping),
+        asyncio.to_thread(q_service_requests),
+        asyncio.to_thread(q_check_ins),
+        asyncio.to_thread(q_check_outs),
+        asyncio.to_thread(q_reviews),
+        return_exceptions=True,
+    )
+
+    (
+        r_orders_today, r_orders_week, r_orders_month, r_room_rev,
+        r_staff, r_rooms, r_hk, r_sr, r_ci, r_co, r_reviews
+    ) = results
+
+    # ── Aggregate ─────────────────────────────────────────────────────────
     result = {
         "revenue": {"today": 0, "week": 0, "month": 0, "room": 0},
         "orders": {"today_count": 0, "today_revenue": 0, "pending": 0, "in_progress": 0, "completed_today": 0},
@@ -38,101 +106,72 @@ async def get_manager_dashboard_summary(
     }
 
     try:
-        # ── Orders stats ──────────────────────────────────────────────
-        try:
-            orders_res = supabase.table("orders").select("total_amount, status, payment_status, created_at")\
-                .gte("created_at", today_start).lte("created_at", today_end).execute()
-            orders_today = orders_res.data or []
-            result["orders"]["today_count"] = len(orders_today)
-            result["orders"]["today_revenue"] = sum(float(o.get("total_amount", 0)) for o in orders_today if o.get("payment_status") != "cancelled")
-            result["orders"]["pending"] = sum(1 for o in orders_today if o.get("status") in ["pending", "confirmed"])
-            result["orders"]["in_progress"] = sum(1 for o in orders_today if o.get("status") in ["preparing", "in_progress"])
-            result["orders"]["completed_today"] = sum(1 for o in orders_today if o.get("status") in ["served", "completed"])
-            result["revenue"]["today"] = result["orders"]["today_revenue"]
-        except Exception as e:
-            logging.warning(f"Orders stats error: {e}")
-
-        # ── Week + Month revenue ──────────────────────────────────────
-        try:
-            week_res = supabase.table("orders").select("total_amount")\
-                .gte("created_at", f"{week_ago}T00:00:00").lte("created_at", today_end).execute()
-            result["revenue"]["week"] = sum(float(o.get("total_amount", 0)) for o in (week_res.data or []))
-
-            month_res = supabase.table("orders").select("total_amount")\
-                .gte("created_at", f"{month_ago}T00:00:00").lte("created_at", today_end).execute()
-            result["revenue"]["month"] = sum(float(o.get("total_amount", 0)) for o in (month_res.data or []))
-        except Exception as e:
-            logging.warning(f"Revenue stats error: {e}")
-
-        # ── Room revenue from bookings ─────────────────────────────────
-        try:
-            room_rev_res = supabase.table("bookings").select("total_price")\
-                .gte("created_at", f"{month_ago}T00:00:00").lte("created_at", today_end)\
-                .in_("status", ["confirmed", "completed"]).execute()
-            result["revenue"]["room"] = sum(float(b.get("total_price", 0)) for b in (room_rev_res.data or []))
-        except Exception as e:
-            logging.warning(f"Room revenue error: {e}")
-
-        # ── Staff stats ───────────────────────────────────────────────
-        try:
-            staff_res = supabase.table("users").select("id, role, status, created_at")\
-                .in_("role", ["waiter", "chef", "cleaner", "manager"]).execute()
-            staff = staff_res.data or []
-            thirty_days_ago = (date.today() - timedelta(days=30)).isoformat()
-            result["staff"]["total"] = len(staff)
-            result["staff"]["active"] = sum(1 for s in staff if s.get("status") == "active")
-            result["staff"]["waiters"] = sum(1 for s in staff if s.get("role") == "waiter")
-            result["staff"]["chefs"] = sum(1 for s in staff if s.get("role") == "chef")
-            result["staff"]["cleaners"] = sum(1 for s in staff if s.get("role") == "cleaner")
-            result["staff"]["recent_hires"] = sum(1 for s in staff if s.get("created_at", "") >= thirty_days_ago)
-        except Exception as e:
-            logging.warning(f"Staff stats error: {e}")
-
-        # ── Room status ───────────────────────────────────────────────
-        try:
-            rooms_res = supabase.table("rooms").select("status").execute()
-            rooms = rooms_res.data or []
-            result["rooms"]["available"] = sum(1 for r in rooms if r.get("status") == "available")
-            result["rooms"]["occupied"] = sum(1 for r in rooms if r.get("status") == "occupied")
-            result["rooms"]["cleaning"] = sum(1 for r in rooms if r.get("status") in ["cleaning", "dirty"])
-            result["rooms"]["maintenance"] = sum(1 for r in rooms if r.get("status") == "maintenance")
-            total_rooms = len(rooms)
-            if total_rooms > 0:
-                result["occupancy_rate"] = round(result["rooms"]["occupied"] / total_rooms * 100, 1)
-        except Exception as e:
-            logging.warning(f"Room status error: {e}")
-
-        # ── Pending tasks ─────────────────────────────────────────────
-        try:
-            hk_res = supabase.table("housekeeping_tasks").select("id").eq("status", "pending").execute()
-            sr_res = supabase.table("service_requests").select("id").eq("status", "pending").execute()
-            result["pending_tasks"]["housekeeping"] = len(hk_res.data or [])
-            result["pending_tasks"]["service_requests"] = len(sr_res.data or [])
-            result["pending_tasks"]["total"] = result["pending_tasks"]["housekeeping"] + result["pending_tasks"]["service_requests"]
-        except Exception as e:
-            logging.warning(f"Pending tasks error: {e}")
-
-        # ── Daily check-ins/check-outs ────────────────────────────────
-        try:
-            ci_res = supabase.table("bookings").select("id").eq("check_in", today).in_("status", ["confirmed", "checked_in"]).execute()
-            co_res = supabase.table("bookings").select("id").eq("check_out", today).eq("status", "completed").execute()
-            result["daily"]["check_ins"] = len(ci_res.data or [])
-            result["daily"]["check_outs"] = len(co_res.data or [])
-            result["daily"]["meal_orders"] = result["orders"]["today_count"]
-        except Exception as e:
-            logging.warning(f"Daily stats error: {e}")
-
-        # ── Customer satisfaction ─────────────────────────────────────
-        try:
-            rev_res = supabase.table("reviews").select("rating")\
-                .gte("created_at", f"{month_ago}T00:00:00").execute()
-            reviews = rev_res.data or []
-            if reviews:
-                result["customer_satisfaction"] = round(sum(r.get("rating", 0) for r in reviews) / len(reviews), 1)
-        except Exception as e:
-            logging.warning(f"Reviews error: {e}")
-
+        orders_today = (r_orders_today.data or []) if not isinstance(r_orders_today, Exception) else []
+        result["orders"]["today_count"] = len(orders_today)
+        result["orders"]["today_revenue"] = sum(float(o.get("total_amount", 0)) for o in orders_today if o.get("payment_status") != "cancelled")
+        result["orders"]["pending"] = sum(1 for o in orders_today if o.get("status") in ["pending", "confirmed"])
+        result["orders"]["in_progress"] = sum(1 for o in orders_today if o.get("status") in ["preparing", "in_progress"])
+        result["orders"]["completed_today"] = sum(1 for o in orders_today if o.get("status") in ["served", "completed"])
+        result["revenue"]["today"] = result["orders"]["today_revenue"]
     except Exception as e:
-        logging.error(f"Dashboard summary error: {e}")
+        logging.warning(f"Orders stats error: {e}")
+
+    try:
+        if not isinstance(r_orders_week, Exception):
+            result["revenue"]["week"] = sum(float(o.get("total_amount", 0)) for o in (r_orders_week.data or []))
+        if not isinstance(r_orders_month, Exception):
+            result["revenue"]["month"] = sum(float(o.get("total_amount", 0)) for o in (r_orders_month.data or []))
+    except Exception as e:
+        logging.warning(f"Revenue stats error: {e}")
+
+    try:
+        if not isinstance(r_room_rev, Exception):
+            result["revenue"]["room"] = sum(float(b.get("total_price", 0)) for b in (r_room_rev.data or []))
+    except Exception as e:
+        logging.warning(f"Room revenue error: {e}")
+
+    try:
+        staff = (r_staff.data or []) if not isinstance(r_staff, Exception) else []
+        result["staff"]["total"] = len(staff)
+        result["staff"]["active"] = sum(1 for s in staff if s.get("status") == "active")
+        result["staff"]["waiters"] = sum(1 for s in staff if s.get("role") == "waiter")
+        result["staff"]["chefs"] = sum(1 for s in staff if s.get("role") == "chef")
+        result["staff"]["cleaners"] = sum(1 for s in staff if s.get("role") == "cleaner")
+        result["staff"]["recent_hires"] = sum(1 for s in staff if s.get("created_at", "") >= thirty_days_ago)
+    except Exception as e:
+        logging.warning(f"Staff stats error: {e}")
+
+    try:
+        rooms = (r_rooms.data or []) if not isinstance(r_rooms, Exception) else []
+        result["rooms"]["available"] = sum(1 for r in rooms if r.get("status") == "available")
+        result["rooms"]["occupied"] = sum(1 for r in rooms if r.get("status") == "occupied")
+        result["rooms"]["cleaning"] = sum(1 for r in rooms if r.get("status") in ["cleaning", "dirty"])
+        result["rooms"]["maintenance"] = sum(1 for r in rooms if r.get("status") == "maintenance")
+        total_rooms = len(rooms)
+        if total_rooms > 0:
+            result["occupancy_rate"] = round(result["rooms"]["occupied"] / total_rooms * 100, 1)
+    except Exception as e:
+        logging.warning(f"Room status error: {e}")
+
+    try:
+        result["pending_tasks"]["housekeeping"] = len((r_hk.data or []) if not isinstance(r_hk, Exception) else [])
+        result["pending_tasks"]["service_requests"] = len((r_sr.data or []) if not isinstance(r_sr, Exception) else [])
+        result["pending_tasks"]["total"] = result["pending_tasks"]["housekeeping"] + result["pending_tasks"]["service_requests"]
+    except Exception as e:
+        logging.warning(f"Pending tasks error: {e}")
+
+    try:
+        result["daily"]["check_ins"] = len((r_ci.data or []) if not isinstance(r_ci, Exception) else [])
+        result["daily"]["check_outs"] = len((r_co.data or []) if not isinstance(r_co, Exception) else [])
+        result["daily"]["meal_orders"] = result["orders"]["today_count"]
+    except Exception as e:
+        logging.warning(f"Daily stats error: {e}")
+
+    try:
+        reviews = (r_reviews.data or []) if not isinstance(r_reviews, Exception) else []
+        if reviews:
+            result["customer_satisfaction"] = round(sum(r.get("rating", 0) for r in reviews) / len(reviews), 1)
+    except Exception as e:
+        logging.warning(f"Reviews error: {e}")
 
     return result

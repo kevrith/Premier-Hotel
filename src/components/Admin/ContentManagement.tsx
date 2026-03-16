@@ -5,7 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Database, Coffee, Hotel, Tag, Plus, Edit, Trash2, DollarSign } from 'lucide-react';
+import { Database, Coffee, Hotel, Tag, Plus, Edit, Trash2, DollarSign, Package, PackageX } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { menuAPI, MenuItem } from '@/lib/api/menu';
 import { roomsAPI, Room } from '@/lib/api/rooms';
@@ -19,6 +20,7 @@ export function ContentManagement() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRoomDialogOpen, setIsRoomDialogOpen] = useState(false);
@@ -98,6 +100,24 @@ export function ContentManagement() {
         description: error.message || "Failed to delete menu item",
         variant: "destructive"
       });
+    }
+  };
+
+  const handleToggleTracking = async (item: MenuItem) => {
+    setTogglingId(item.id);
+    try {
+      await menuAPI.updateMenuItem(item.id, { track_inventory: !item.track_inventory });
+      setMenuItems(prev =>
+        prev.map(i => i.id === item.id ? { ...i, track_inventory: !item.track_inventory } : i)
+      );
+      toast({
+        title: item.track_inventory ? 'Stock tracking disabled' : 'Stock tracking enabled',
+        description: `${item.name} will ${item.track_inventory ? 'no longer' : 'now'} appear in stock management`,
+      });
+    } catch (error: any) {
+      toast({ title: 'Failed to update', description: error.message, variant: 'destructive' });
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -248,6 +268,8 @@ export function ContentManagement() {
                       <TableHead>Price</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Track Stock</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -263,6 +285,41 @@ export function ContentManagement() {
                           <Badge variant={item.is_available ? 'default' : 'secondary'}>
                             {item.is_available ? 'Available' : 'Unavailable'}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={!!item.track_inventory}
+                              onCheckedChange={() => handleToggleTracking(item)}
+                              disabled={togglingId === item.id}
+                              className="data-[state=checked]:bg-emerald-500"
+                            />
+                            {item.track_inventory ? (
+                              <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                                <Package className="h-3 w-3" /> Tracked
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <PackageX className="h-3 w-3" /> Off
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {item.track_inventory ? (
+                            <span className={`font-mono text-sm font-semibold ${
+                              (item.stock_quantity ?? 0) === 0
+                                ? 'text-rose-500'
+                                : (item.stock_quantity ?? 0) <= (item.reorder_level ?? 5)
+                                ? 'text-amber-500'
+                                : 'text-emerald-600'
+                            }`}>
+                              {item.stock_quantity ?? 0}
+                              {item.unit ? ` ${item.unit}` : ''}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">

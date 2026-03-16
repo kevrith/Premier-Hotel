@@ -36,10 +36,12 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Configure CORS
+# CORS — allow configured origins + any private LAN IP (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+# allow_origin_regex covers all hotel LAN devices without manual IP config
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origin_regex=r'https?://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?',
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -73,14 +75,28 @@ async def limit_request_size(request: Request, call_next):
     return response
 
 
-# Request timing middleware
+# Request timing + tracking middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
-    """Add response time header to all requests"""
+    """Add response time header and track request metrics"""
+    from app.api.v1.endpoints.system_health import request_tracker
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
+
+    # Track metrics (skip health/docs endpoints)
+    path = request.url.path
+    if not any(p in path for p in ["/health", "/docs", "/redoc", "/openapi"]):
+        request_tracker["total"] += 1
+        if response.status_code >= 400:
+            request_tracker["errors"] += 1
+        ms = int(process_time * 1000)
+        request_tracker["response_times"].append(ms)
+        # Keep only last 1000 response times to avoid memory growth
+        if len(request_tracker["response_times"]) > 1000:
+            request_tracker["response_times"] = request_tracker["response_times"][-1000:]
+
     return response
 
 
@@ -133,9 +149,32 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 # ==================== APPLICATION LIFECYCLE ====================
 
+_keepalive_task: asyncio.Task = None
+
+async def _db_keepalive():
+    """
+    Ping the database every 4 minutes to prevent Supabase free-tier cold starts.
+    Cold starts cause 10-15 second delays on the first query after idle.
+    """
+    from app.core.supabase import get_supabase_admin
+    import concurrent.futures
+    while True:
+        await asyncio.sleep(240)  # 4 minutes
+        try:
+            def _ping():
+                sb = get_supabase_admin()
+                sb.table("users").select("id").limit(1).execute()
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _ping)
+            logger.debug("DB keepalive ping sent")
+        except Exception as e:
+            logger.warning(f"DB keepalive ping failed: {e}")
+
+
 @app.on_event("startup")
 async def startup():
     """Run on application startup"""
+    global _keepalive_task
     logger.info(f"🚀 {settings.APP_NAME} starting up...")
     logger.info(f"📚 API Documentation: http://localhost:8000/docs")
     logger.info(f"🔗 API Version: {settings.API_V1_PREFIX}")
@@ -145,6 +184,20 @@ async def startup():
     # QuickBooks tables exist and are accessible via Supabase client
     # await init_db()
     logger.warning("⚠️  AsyncPG pool disabled (Supabase restriction) - App fully functional with Supabase client")
+
+    # Warm up the DB connection on startup (avoids cold-start delay on first user request)
+    try:
+        def _warmup():
+            get_supabase_admin().table("users").select("id").limit(1).execute()
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _warmup)
+        logger.info("✅ Database connection warmed up")
+    except Exception as e:
+        logger.warning(f"DB warmup failed (non-fatal): {e}")
+
+    # Start keepalive background task
+    _keepalive_task = asyncio.create_task(_db_keepalive())
+    logger.info("✅ DB keepalive task started (pings every 4 min to prevent cold starts)")
 
     try:
         # Start automatic email queue processor
@@ -159,6 +212,9 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     """Run on application shutdown"""
+    global _keepalive_task
+    if _keepalive_task:
+        _keepalive_task.cancel()
     logger.info(f"🛑 {settings.APP_NAME} shutting down...")
 
     try:

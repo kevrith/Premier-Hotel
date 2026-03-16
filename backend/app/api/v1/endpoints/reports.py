@@ -5,9 +5,26 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
+from concurrent.futures import ThreadPoolExecutor
 from app.middleware.auth_secure import get_current_user, require_role
 from app.core.supabase import get_supabase, get_supabase_admin
 from supabase import Client
+
+_executor = ThreadPoolExecutor(max_workers=6)
+
+async def _par(*fns):
+    """Run synchronous callables in parallel, return results in order."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await asyncio.gather(*[loop.run_in_executor(_executor, fn) for fn in fns])
+
+
+def _start(date_str: str) -> str:
+    return date_str if 'T' in date_str else date_str + 'T00:00:00'
+
+
+def _end(date_str: str) -> str:
+    return date_str if 'T' in date_str else date_str + 'T23:59:59'
 
 router = APIRouter()
 
@@ -17,72 +34,66 @@ async def get_reports_overview(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_admin)
+    supabase: Client = Depends(get_supabase)
 ):
     """
-    Get overall reports overview with key metrics
+    Get overall reports overview with key metrics.
+    Uses parallel queries and count-only where possible for speed.
     """
     try:
-        # Default to last 30 days if no dates provided
         if not end_date:
             end_date = datetime.now().isoformat()
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        # Get total revenue from bookings and orders
-        # Bookings revenue
-        bookings = supabase.table("bookings").select("id, status, created_at, paid_amount, total_amount, customer_id").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).execute()
+        def _bookings():
+            return supabase.table("bookings").select(
+                "status, paid_amount, total_amount, customer_id"
+            ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
 
-        booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings.data)
+        def _orders():
+            return supabase.table("orders").select(
+                "status, total_amount, customer_id, payment_status"
+            ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
 
-        # Orders revenue
-        orders = supabase.table("orders").select("id, status, created_at, total_amount, customer_id, payment_status").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).execute()
+        bookings_res, orders_res = await _par(_bookings, _orders)
+        bookings_data = bookings_res.data or []
+        orders_data   = orders_res.data or []
 
-        # Sum revenue from paid/served orders
-        order_revenue = sum(float(o.get("total_amount") or 0) for o in orders.data if o.get("payment_status") in ["paid", "completed"] or o.get("status") in ["completed", "delivered", "served"])
-
+        booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings_data)
+        order_revenue   = sum(
+            float(o.get("total_amount") or 0) for o in orders_data
+            if o.get("payment_status") in ["paid", "completed"]
+            or o.get("status") in ["completed", "delivered", "served"]
+        )
         total_revenue = booking_revenue + order_revenue
 
-        # Bookings stats
-        total_bookings = len(bookings.data)
-        confirmed_bookings = len([b for b in bookings.data if b["status"] in ["confirmed", "checked_in", "checked_out"]])
+        total_bookings     = len(bookings_data)
+        confirmed_bookings = sum(1 for b in bookings_data if b.get("status") in ["confirmed", "checked_in", "checked_out"])
+        total_orders       = len(orders_data)
+        completed_orders   = sum(1 for o in orders_data if o.get("status") in ["delivered", "completed", "served"])
 
-        # Orders stats
-        total_orders = len(orders.data)
-        completed_orders = len([o for o in orders.data if o["status"] in ["delivered", "completed", "served"]])
+        booking_users = {b["customer_id"] for b in bookings_data if b.get("customer_id")}
+        order_users   = {o["customer_id"] for o in orders_data   if o.get("customer_id")}
+        active_customers = len(booking_users | order_users)
 
-        # Get active customers (unique customers with bookings or orders)
-        booking_users = set(b.get("customer_id") for b in bookings.data if b.get("customer_id"))
-        order_users = set(o.get("customer_id") for o in orders.data if o.get("customer_id"))
-        active_customers = len(booking_users.union(order_users))
+        paid_orders   = sum(1 for o in orders_data if o.get("payment_status") in ["paid", "completed"])
+        paid_bookings = sum(1 for b in bookings_data if b.get("paid_amount") and float(b.get("paid_amount", 0)) > 0)
 
         return {
-            "period": {
-                "start": start_date,
-                "end": end_date
-            },
-            "revenue": {
-                "total": total_revenue,
-                "currency": "KES",
-                "payments_count": len([o for o in orders.data if o.get("payment_status") in ["paid", "completed"]]) + len([b for b in bookings.data if b.get("paid_amount") and float(b.get("paid_amount", 0)) > 0])
-            },
-            "bookings": {
+            "period":    {"start": start_date, "end": end_date},
+            "revenue":   {"total": total_revenue, "currency": "KES", "payments_count": paid_orders + paid_bookings},
+            "bookings":  {
                 "total": total_bookings,
                 "confirmed": confirmed_bookings,
-                "cancellation_rate": round((total_bookings - confirmed_bookings) / total_bookings * 100, 2) if total_bookings > 0 else 0
+                "cancellation_rate": round((total_bookings - confirmed_bookings) / total_bookings * 100, 2) if total_bookings > 0 else 0,
             },
-            "orders": {
+            "orders":    {
                 "total": total_orders,
                 "completed": completed_orders,
-                "completion_rate": round(completed_orders / total_orders * 100, 2) if total_orders > 0 else 0
+                "completion_rate": round(completed_orders / total_orders * 100, 2) if total_orders > 0 else 0,
             },
-            "customers": {
-                "active": active_customers
-            }
+            "customers": {"active": active_customers},
         }
 
     except Exception as e:
@@ -98,7 +109,7 @@ async def get_revenue_analytics(
     end_date: Optional[str] = Query(None),
     group_by: str = Query("day", description="Group by: day, week, month"),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase_admin)
+    supabase: Client = Depends(get_supabase)
 ):
     """
     Get revenue analytics grouped by time period
@@ -109,19 +120,23 @@ async def get_revenue_analytics(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        # Get bookings and orders for revenue calculation
-        bookings = supabase.table("bookings").select(
+        # Fetch all three sources in parallel
+        def _b(): return supabase.table("bookings").select(
             "paid_amount, total_amount, payment_method, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
+        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(2000).execute()
 
-        orders = supabase.table("orders").select(
+        def _o(): return supabase.table("orders").select(
             "total_amount, payment_method, payment_status, status, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
-        
-        # Get bills (waiter bills system) - bills table has no payment_method column
-        bills = supabase.table("bills").select(
+        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(2000).execute()
+
+        def _bills(): return supabase.table("bills").select(
             "total_amount, payment_status, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
+        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(2000).execute()
+
+        bookings_res, orders_res, bills_res = await _par(_b, _o, _bills)
+        bookings = bookings_res
+        orders   = orders_res
+        bills    = bills_res
 
         # Group revenue by date
         revenue_by_date: Dict[str, Dict[str, Any]] = {}
@@ -1394,6 +1409,9 @@ async def get_item_summary_report(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=1)).isoformat()
 
+        start_date = _start(start_date)
+        end_date = _end(end_date)
+
         # Get all non-cancelled orders in date range
         orders_result = supabase.table("orders").select(
             "id, items, total_amount, status, created_at"
@@ -1505,6 +1523,9 @@ async def get_void_report(
             end_date = datetime.now().isoformat()
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
+
+        start_date = _start(start_date)
+        end_date = _end(end_date)
 
         # Get order_modifications of type 'void'
         mods_result = supabase.table("order_modifications").select(

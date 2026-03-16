@@ -253,7 +253,7 @@ const useAuthStore = create<AuthState>()(
               const { user, isAuthenticated, lastAuthenticatedAt } = get();
               if (user && isAuthenticated && lastAuthenticatedAt) {
                 const hoursSinceAuth = (Date.now() - new Date(lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
-                if (hoursSinceAuth < 24) {
+                if (hoursSinceAuth < 168) { // 7 days
                   set({ isOfflineSession: true });
                   return true;
                 }
@@ -298,7 +298,7 @@ const useAuthStore = create<AuthState>()(
               const { user, isAuthenticated, lastAuthenticatedAt } = get();
               if (user && isAuthenticated && lastAuthenticatedAt) {
                 const hoursSinceAuth = (Date.now() - new Date(lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
-                if (hoursSinceAuth < 24) {
+                if (hoursSinceAuth < 168) { // 7 days
                   set({ isOfflineSession: true });
                   return true;
                 }

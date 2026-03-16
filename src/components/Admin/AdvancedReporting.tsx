@@ -2,14 +2,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { QuickBooksReporting } from './QuickBooksReporting';
 import { SalesReports } from './Reports/SalesReports';
-import { InventoryReports } from './Reports/InventoryReports';
 import { StaffPerformanceReports } from './Reports/StaffPerformanceReports';
 import { CustomerInsightsReports } from './Reports/CustomerInsightsReports';
 import { FinancialReports } from './Reports/FinancialReports';
 import { ItemSummaryReport } from '@/components/Manager/Reports/ItemSummaryReport';
 import { VoidedItemsReport } from '@/components/Manager/Reports/VoidedItemsReport';
 import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClosingStock';
-import { BarChart, DollarSign, Package, Users, MessageSquare, FileBarChart, TrendingUp, ShoppingBag, XCircle, Archive } from 'lucide-react';
+import { BarChart, DollarSign, Archive, Users, MessageSquare, FileBarChart, TrendingUp, ShoppingBag, XCircle } from 'lucide-react';
 
 export function AdvancedReporting() {
   return (
@@ -27,7 +26,7 @@ export function AdvancedReporting() {
         <CardContent>
           <Tabs defaultValue="financial" className="space-y-4">
             <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-9 min-w-max">
+              <TabsList className="grid w-full grid-cols-8 min-w-max">
                 <TabsTrigger value="financial">
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Financial
@@ -44,13 +43,9 @@ export function AdvancedReporting() {
                   <XCircle className="h-4 w-4 mr-2" />
                   Voids
                 </TabsTrigger>
-                <TabsTrigger value="inventory">
-                  <Package className="h-4 w-4 mr-2" />
-                  Inventory
-                </TabsTrigger>
                 <TabsTrigger value="closing-stock">
                   <Archive className="h-4 w-4 mr-2" />
-                  Stock
+                  Inventory
                 </TabsTrigger>
                 <TabsTrigger value="staff">
                   <Users className="h-4 w-4 mr-2" />
@@ -81,10 +76,6 @@ export function AdvancedReporting() {
 
             <TabsContent value="voids" className="space-y-4">
               <VoidedItemsReport />
-            </TabsContent>
-
-            <TabsContent value="inventory" className="space-y-4">
-              <InventoryReports />
             </TabsContent>
 
             <TabsContent value="closing-stock" className="space-y-4">

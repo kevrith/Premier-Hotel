@@ -61,7 +61,7 @@ async def register(user_data: UserRegister, supabase: Client = Depends(get_supab
             "status": "active",
         }
 
-        profile_response = supabase.table("profiles").insert(profile_data).execute()
+        profile_response = supabase.table("users").insert(profile_data).execute()
 
         if not profile_response.data:
             raise HTTPException(
@@ -126,7 +126,7 @@ async def login(credentials: UserLogin, supabase: Client = Depends(get_supabase)
         user_id = auth_response.user.id
 
         # Get user profile
-        profile_response = supabase.table("profiles").select("*").eq("id", user_id).execute()
+        profile_response = supabase.table("users").select("*").eq("id", user_id).execute()
 
         if not profile_response.data:
             raise HTTPException(
@@ -218,7 +218,7 @@ async def refresh_token(
         email = payload.get("email")
 
         # Get user profile
-        profile_response = supabase.table("profiles").select("*").eq("id", user_id).execute()
+        profile_response = supabase.table("users").select("*").eq("id", user_id).execute()
 
         if not profile_response.data:
             raise HTTPException(
@@ -279,7 +279,7 @@ async def update_profile(
 
         # Update profile
         response = (
-            supabase.table("profiles")
+            supabase.table("users")
             .update(update_data)
             .eq("id", current_user["id"])
             .execute()

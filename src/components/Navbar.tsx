@@ -28,6 +28,8 @@ export function Navbar() {
     if (!user?.role) return "/menu";
 
     switch (user.role) {
+      case 'owner':
+        return '/owner';
       case 'admin':
         return '/admin';
       case 'manager':

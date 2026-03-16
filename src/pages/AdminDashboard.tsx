@@ -17,9 +17,12 @@ import { UserManagement } from '@/components/Admin/UserManagement';
 import { ContentManagement } from '@/components/Admin/ContentManagement';
 import { SystemConfiguration } from '@/components/Admin/SystemConfiguration';
 import { AdvancedReporting } from '@/components/Admin/AdvancedReporting';
-import { InventoryManagement } from '@/components/Admin/InventoryManagement';
 import { SystemHealth } from '@/components/Manager/SystemHealth';
 import { StockManagement } from '@/components/Manager/StockManagement';
+import { ImportCenter } from '@/components/Admin/ImportCenter';
+import { DataExportCenter } from '@/components/Admin/DataExportCenter';
+import { LocationManagement } from '@/components/Admin/LocationManagement';
+import { NetworkInfo } from '@/components/Admin/NetworkInfo';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -71,13 +74,17 @@ export default function AdminDashboard() {
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
           <div className="overflow-x-auto">
-            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 gap-1 h-auto min-w-max">
+            <TabsList className="grid w-full grid-cols-5 sm:grid-cols-11 gap-1 h-auto min-w-max">
               <TabsTrigger value="overview" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Overview</TabsTrigger>
               <TabsTrigger value="users" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Users</TabsTrigger>
               <TabsTrigger value="content" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Content</TabsTrigger>
               <TabsTrigger value="inventory" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Inventory</TabsTrigger>
+              <TabsTrigger value="locations" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Locations</TabsTrigger>
+              <TabsTrigger value="import" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Import</TabsTrigger>
+              <TabsTrigger value="export" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Export</TabsTrigger>
               <TabsTrigger value="reports" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Reports</TabsTrigger>
               <TabsTrigger value="health" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Health</TabsTrigger>
+              <TabsTrigger value="network" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Network</TabsTrigger>
               <TabsTrigger value="settings" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Settings</TabsTrigger>
             </TabsList>
           </div>
@@ -100,8 +107,22 @@ export default function AdminDashboard() {
 
           {/* Inventory Tab - Stock management and tracking */}
           <TabsContent value="inventory" className="space-y-4 sm:space-y-6">
-            <InventoryManagement />
             <StockManagement />
+          </TabsContent>
+
+          {/* Locations Tab - Multi-location stock management */}
+          <TabsContent value="locations" className="space-y-4 sm:space-y-6">
+            <LocationManagement />
+          </TabsContent>
+
+          {/* Import Tab */}
+          <TabsContent value="import" className="space-y-4 sm:space-y-6">
+            <ImportCenter />
+          </TabsContent>
+
+          {/* Export Tab */}
+          <TabsContent value="export" className="space-y-4 sm:space-y-6">
+            <DataExportCenter />
           </TabsContent>
 
           {/* Reports Tab - Advanced reporting and analytics */}
@@ -112,6 +133,11 @@ export default function AdminDashboard() {
           {/* Health Tab - System health monitoring */}
           <TabsContent value="health" className="space-y-4 sm:space-y-6">
             <SystemHealth />
+          </TabsContent>
+
+          {/* Network Tab - Local network info for staff access */}
+          <TabsContent value="network" className="space-y-4 sm:space-y-6">
+            <NetworkInfo />
           </TabsContent>
 
           {/* Settings Tab - System configuration */}
