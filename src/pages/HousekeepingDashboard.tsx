@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navbar } from '@/components/Navbar';
@@ -20,18 +20,22 @@ import {
   Calendar
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import housekeepingService from '@/lib/api/housekeeping';
+import housekeepingService, {
+  HousekeepingTask,
+  HousekeepingStats,
+  RoomStatusSummary,
+} from '@/lib/api/housekeeping';
 
 export default function HousekeepingDashboard() {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [tasks, setTasks] = useState([]);
-  const [myTasks, setMyTasks] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [roomStatus, setRoomStatus] = useState(null);
-  const [selectedTask, setSelectedTask] = useState(null);
+  const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
+  const [myTasks, setMyTasks] = useState<HousekeepingTask[]>([]);
+  const [stats, setStats] = useState<HousekeepingStats | null>(null);
+  const [roomStatus, setRoomStatus] = useState<RoomStatusSummary | null>(null);
+  const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -86,7 +90,7 @@ export default function HousekeepingDashboard() {
     }
   };
 
-  const handleStartTask = async (taskId) => {
+  const handleStartTask = async (taskId: string) => {
     try {
       await housekeepingService.startTask(taskId);
       toast.success('Task started');
@@ -97,7 +101,7 @@ export default function HousekeepingDashboard() {
     }
   };
 
-  const handleCompleteTask = async (taskId) => {
+  const handleCompleteTask = async (taskId: string) => {
     try {
       await housekeepingService.completeTask(taskId, {
         completed_at: new Date().toISOString()
@@ -110,7 +114,7 @@ export default function HousekeepingDashboard() {
     }
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status: string) => {
     const colors = {
       pending: 'bg-yellow-100 text-yellow-800',
       assigned: 'bg-blue-100 text-blue-800',
@@ -119,20 +123,20 @@ export default function HousekeepingDashboard() {
       cancelled: 'bg-red-100 text-red-800',
       on_hold: 'bg-gray-100 text-gray-800'
     };
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return (colors as Record<string, string>)[status] || 'bg-gray-100 text-gray-800';
   };
 
-  const getPriorityBadge = (priority) => {
+  const getPriorityBadge = (priority: string) => {
     const colors = {
       low: 'bg-blue-100 text-blue-800',
       normal: 'bg-gray-100 text-gray-800',
       high: 'bg-orange-100 text-orange-800',
       urgent: 'bg-red-100 text-red-800'
     };
-    return colors[priority] || 'bg-gray-100 text-gray-800';
+    return (colors as Record<string, string>)[priority] || 'bg-gray-100 text-gray-800';
   };
 
-  const StatCard = ({ title, value, icon: Icon, subtitle, color }) => (
+  const StatCard = ({ title, value, icon: Icon, subtitle, color }: { title: string; value: number | string; icon: React.ElementType; subtitle?: string; color?: string }) => (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -149,7 +153,7 @@ export default function HousekeepingDashboard() {
     </Card>
   );
 
-  const TaskCard = ({ task }) => (
+  const TaskCard = ({ task }: { task: HousekeepingTask }) => (
     <Card className="hover:shadow-lg transition-shadow">
       <CardContent className="pt-6">
         <div className="flex items-start justify-between mb-4">

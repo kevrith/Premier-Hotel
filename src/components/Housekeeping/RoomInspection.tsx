@@ -226,7 +226,7 @@ export function RoomInspection({ roomId, roomNumber, isOpen, onClose, onComplete
       };
 
       // Submit inspection
-      const inspection = await housekeepingService.submitInspection(inspectionData);
+      const inspection = await housekeepingService.submitInspection(inspectionData as any);
 
       // Upload photos
       for (const item of items) {
@@ -452,7 +452,7 @@ export function RoomInspection({ roomId, roomNumber, isOpen, onClose, onComplete
                             </Button>
                           </div>
                           <input
-                            ref={el => fileInputRefs.current[item.id] = el}
+                            ref={(el) => { fileInputRefs.current[item.id] = el; }}
                             type="file"
                             accept="image/*"
                             multiple

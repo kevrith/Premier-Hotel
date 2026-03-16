@@ -4,7 +4,7 @@
  * No authentication required
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,15 +40,53 @@ export default function CustomerPayment() {
 
   const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('mpesa');
   const [mpesaPhone, setMpesaPhone] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
+  const [cardEmail, setCardEmail] = useState('');
+
+  // M-Pesa STK push state
+  const [stkCheckoutId, setStkCheckoutId] = useState<string | null>(null);
+  const [stkStatus, setStkStatus] = useState<'idle' | 'pending' | 'completed' | 'failed'>('idle');
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Load Paystack inline script
+  useEffect(() => {
+    if (document.querySelector('script[src="https://js.paystack.co/v1/inline.js"]')) return;
+    const script = document.createElement('script');
+    script.src = 'https://js.paystack.co/v1/inline.js';
+    script.async = true;
+    document.head.appendChild(script);
+  }, []);
 
   useEffect(() => {
     if (billNumber) {
       fetchBill();
     }
   }, [billNumber]);
+
+  // Poll M-Pesa STK status
+  useEffect(() => {
+    if (stkCheckoutId && stkStatus === 'pending') {
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const result = await billsApi.getMpesaSTKStatus(stkCheckoutId);
+          if (result.status === 'completed') {
+            clearInterval(pollIntervalRef.current!);
+            setStkStatus('completed');
+            setPaymentSuccess(true);
+            fetchBill();
+          } else if (result.status === 'failed') {
+            clearInterval(pollIntervalRef.current!);
+            setStkStatus('failed');
+            setProcessing(false);
+          }
+        } catch (e) {
+          // ignore poll errors
+        }
+      }, 3000);
+    }
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [stkCheckoutId, stkStatus]);
 
   const fetchBill = async () => {
     if (!billNumber) return;
@@ -83,7 +121,7 @@ export default function CustomerPayment() {
   };
 
   const handleMpesaPayment = async () => {
-    if (!mpesaPhone || mpesaPhone.length < 12) {
+    if (!mpesaPhone || mpesaPhone.length < 9) {
       toast.error('Please enter a valid phone number (254XXXXXXXXX)');
       return;
     }
@@ -92,32 +130,25 @@ export default function CustomerPayment() {
 
     setProcessing(true);
     try {
-      await billsApi.processPayment({
-        bill_id: bill.id,
-        amount: getRemainingBalance(),
-        payment_method: 'mpesa',
-        mpesa_phone: mpesaPhone,
-        notes: 'Customer self-payment via QR code',
-      });
-
-      setPaymentSuccess(true);
-      toast.success('Payment initiated! Please check your phone for M-Pesa prompt.');
-
-      // Refresh bill after 3 seconds
-      setTimeout(() => {
-        fetchBill();
-      }, 3000);
+      const result = await billsApi.initiateMpesaSTK(bill.id, mpesaPhone, getRemainingBalance());
+      if (result.success) {
+        setStkCheckoutId(result.checkout_request_id);
+        setStkStatus('pending');
+        toast.success(result.customer_message || 'STK push sent! Check your phone.');
+      } else {
+        toast.error(result.message || 'Failed to send STK push');
+        setProcessing(false);
+      }
     } catch (error: any) {
       console.error('Payment error:', error);
       toast.error(error.response?.data?.detail || 'Payment failed. Please try again.');
-    } finally {
       setProcessing(false);
     }
   };
 
   const handleCardPayment = async () => {
-    if (!cardNumber || !cardExpiry || !cardCvv) {
-      toast.error('Please fill in all card details');
+    if (!cardEmail || !cardEmail.includes('@')) {
+      toast.error('Please enter a valid email address');
       return;
     }
 
@@ -125,26 +156,51 @@ export default function CustomerPayment() {
 
     setProcessing(true);
     try {
-      // In production, this would integrate with a payment gateway
-      await billsApi.processPayment({
-        bill_id: bill.id,
-        amount: getRemainingBalance(),
-        payment_method: 'card',
-        card_transaction_ref: `CARD-${Date.now()}`,
-        notes: 'Customer self-payment via QR code',
+      const result = await billsApi.initializePaystack(bill.id, cardEmail, getRemainingBalance());
+
+      if (!result.success) {
+        toast.error(result.message || 'Failed to initialize Paystack');
+        setProcessing(false);
+        return;
+      }
+
+      const { access_code, reference, public_key } = result;
+
+      const PaystackPop = (window as any).PaystackPop;
+      if (!PaystackPop) {
+        toast.error('Paystack is not loaded. Please refresh and try again.');
+        setProcessing(false);
+        return;
+      }
+
+      const handler = PaystackPop.setup({
+        key: public_key,
+        email: cardEmail,
+        amount: Math.round(getRemainingBalance() * 100),
+        currency: 'KES',
+        ref: reference,
+        access_code: access_code,
+        callback: async (response: any) => {
+          try {
+            await billsApi.verifyPaystack(response.reference || reference);
+            setPaymentSuccess(true);
+            toast.success('Card payment successful!');
+            fetchBill();
+          } catch (e) {
+            toast.error('Payment completed but verification failed. Please contact staff.');
+          }
+          setProcessing(false);
+        },
+        onClose: () => {
+          toast('Payment window closed');
+          setProcessing(false);
+        },
       });
 
-      setPaymentSuccess(true);
-      toast.success('Payment successful!');
-
-      // Refresh bill
-      setTimeout(() => {
-        fetchBill();
-      }, 2000);
+      handler.openIframe();
     } catch (error: any) {
       console.error('Payment error:', error);
       toast.error(error.response?.data?.detail || 'Payment failed. Please try again.');
-    } finally {
       setProcessing(false);
     }
   };
@@ -297,7 +353,12 @@ export default function CustomerPayment() {
               <CardDescription>Choose your preferred payment method</CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
+              <Tabs value={paymentMethod} onValueChange={(v) => {
+                  setPaymentMethod(v as any);
+                  setStkStatus('idle');
+                  setStkCheckoutId(null);
+                  if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+                }}>
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="mpesa" className="flex items-center gap-2">
                     <Smartphone className="h-4 w-4" />
@@ -310,100 +371,109 @@ export default function CustomerPayment() {
                 </TabsList>
 
                 <TabsContent value="mpesa" className="space-y-4 pt-4">
-                  <Alert>
-                    <Smartphone className="h-4 w-4" />
-                    <AlertDescription>
-                      Enter your M-Pesa registered phone number. You'll receive an STK push to
-                      complete the payment.
-                    </AlertDescription>
-                  </Alert>
+                  {stkStatus === 'idle' && (
+                    <>
+                      <Alert>
+                        <Smartphone className="h-4 w-4" />
+                        <AlertDescription>
+                          Enter your M-Pesa registered phone number. You'll receive an STK push to
+                          complete the payment.
+                        </AlertDescription>
+                      </Alert>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="mpesa_phone">Phone Number</Label>
-                    <Input
-                      id="mpesa_phone"
-                      type="tel"
-                      placeholder="254712345678"
-                      value={mpesaPhone}
-                      onChange={(e) => setMpesaPhone(e.target.value)}
-                      disabled={processing}
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="mpesa_phone">Phone Number</Label>
+                        <Input
+                          id="mpesa_phone"
+                          type="tel"
+                          placeholder="254712345678"
+                          value={mpesaPhone}
+                          onChange={(e) => setMpesaPhone(e.target.value)}
+                          disabled={processing}
+                        />
+                      </div>
 
-                  <Button
-                    onClick={handleMpesaPayment}
-                    disabled={processing || !mpesaPhone}
-                    className="w-full"
-                    size="lg"
-                  >
-                    {processing ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>Pay {formatCurrency(remainingBalance)} via M-Pesa</>
-                    )}
-                  </Button>
+                      <Button
+                        onClick={handleMpesaPayment}
+                        disabled={processing || !mpesaPhone}
+                        className="w-full"
+                        size="lg"
+                      >
+                        {processing ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Sending STK Push...
+                          </>
+                        ) : (
+                          <>Pay {formatCurrency(remainingBalance)} via M-Pesa</>
+                        )}
+                      </Button>
+                    </>
+                  )}
+
+                  {stkStatus === 'pending' && (
+                    <Alert>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <AlertDescription>
+                        Waiting for M-Pesa confirmation on {mpesaPhone}... Check your phone for the prompt.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {stkStatus === 'completed' && (
+                    <Alert className="border-green-200 bg-green-50">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <AlertDescription className="text-green-800">M-Pesa payment confirmed!</AlertDescription>
+                    </Alert>
+                  )}
+
+                  {stkStatus === 'failed' && (
+                    <Alert className="border-red-200 bg-red-50">
+                      <AlertDescription className="text-red-800">
+                        Payment was declined. Please try again.
+                        <Button
+                          variant="link"
+                          className="p-0 h-auto text-red-700 ml-2"
+                          onClick={() => { setStkStatus('idle'); setProcessing(false); }}
+                        >
+                          Retry
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="card" className="space-y-4 pt-4">
                   <Alert>
                     <CreditCard className="h-4 w-4" />
                     <AlertDescription>
-                      Your payment is secure and encrypted. We accept Visa, Mastercard, and
-                      American Express.
+                      Powered by Paystack — Visa, Mastercard, and more accepted securely.
                     </AlertDescription>
                   </Alert>
 
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="card_number">Card Number</Label>
-                      <Input
-                        id="card_number"
-                        placeholder="1234 5678 9012 3456"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value)}
-                        disabled={processing}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="expiry">Expiry Date</Label>
-                        <Input
-                          id="expiry"
-                          placeholder="MM/YY"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value)}
-                          disabled={processing}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="cvv">CVV</Label>
-                        <Input
-                          id="cvv"
-                          placeholder="123"
-                          type="password"
-                          maxLength={3}
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value)}
-                          disabled={processing}
-                        />
-                      </div>
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="card_email">Email Address</Label>
+                    <Input
+                      id="card_email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={cardEmail}
+                      onChange={(e) => setCardEmail(e.target.value)}
+                      disabled={processing}
+                    />
+                    <p className="text-xs text-muted-foreground">Required for your payment receipt.</p>
                   </div>
 
                   <Button
                     onClick={handleCardPayment}
-                    disabled={processing || !cardNumber || !cardExpiry || !cardCvv}
+                    disabled={processing || !cardEmail}
                     className="w-full"
                     size="lg"
                   >
                     {processing ? (
                       <>
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Processing...
+                        Opening payment...
                       </>
                     ) : (
                       <>Pay {formatCurrency(remainingBalance)} via Card</>

@@ -10,6 +10,7 @@ import { SocketProvider } from "./contexts/SocketContext";
 import { MobileNavigation } from "./components/MobileNavigation";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { OfflineSessionBanner } from "./components/OfflineSessionBanner";
+import { OfflineBanner } from "./components/OfflineBanner";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -97,6 +98,7 @@ const App = () => {
             <AuthProvider>
               <OfflineProvider>
                 <SocketProvider>
+            <OfflineBanner />
             <OfflineSessionBanner />
             <Routes>
               {/* Public Routes */}

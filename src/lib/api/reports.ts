@@ -188,6 +188,12 @@ export interface EmployeeDetailResponse {
     daily: Array<{ date: string; revenue: number }>;
     hourly: Array<{ hour: string; revenue: number }>;
   };
+  items_by_category: Array<{
+    category: string;
+    items: Array<{ name: string; qty: number; revenue: number }>;
+    total_qty: number;
+    total_revenue: number;
+  }>;
 }
 
 class ReportsService {
@@ -200,7 +206,7 @@ class ReportsService {
     if (endDate) params.append('end_date', endDate);
 
     const response = await api.get<ReportsOverview>(`/reports/overview?${params.toString()}`);
-    return response.data;
+    return (response.data as any)?.data ?? response.data;
   }
 
   /**
@@ -217,7 +223,7 @@ class ReportsService {
     params.append('group_by', groupBy);
 
     const response = await api.get<RevenueAnalytics>(`/reports/revenue?${params.toString()}`);
-    return response.data;
+    return (response.data as any)?.data ?? response.data;
   }
 
   /**
@@ -229,7 +235,7 @@ class ReportsService {
     if (endDate) params.append('end_date', endDate);
 
     const response = await api.get<BookingsStats>(`/reports/bookings-stats?${params.toString()}`);
-    return response.data;
+    return (response.data as any)?.data ?? response.data;
   }
 
   /**
@@ -241,7 +247,7 @@ class ReportsService {
     if (endDate) params.append('end_date', endDate);
 
     const response = await api.get<OrdersStats>(`/reports/orders-stats?${params.toString()}`);
-    return response.data;
+    return (response.data as any)?.data ?? response.data;
   }
 
   /**
@@ -258,7 +264,7 @@ class ReportsService {
     if (endDate) params.append('end_date', endDate);
 
     const response = await api.get<TopCustomersResponse>(`/reports/top-customers?${params.toString()}`);
-    return response.data;
+    return (response.data as any)?.data ?? response.data;
   }
 
   /**
@@ -279,7 +285,7 @@ class ReportsService {
     if (role) params.append('role', role);
 
     const response = await api.get<EmployeeSalesResponse>(`/reports/employee-sales?${params.toString()}`);
-    return response.data;
+    return (response.data as any)?.data ?? response.data;
   }
 
   /**
@@ -295,7 +301,7 @@ class ReportsService {
     if (endDate) params.append('end_date', endDate);
 
     const response = await api.get<EmployeeDetailResponse>(`/reports/employee/${employeeId}/details?${params.toString()}`);
-    return response.data;
+    return (response.data as any)?.data ?? response.data;
   }
 
   /**

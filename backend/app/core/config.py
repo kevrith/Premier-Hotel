@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str = ""
     CLOUDINARY_API_SECRET: str = ""
 
+    # Paystack Configuration
+    PAYSTACK_SECRET_KEY: str = ""
+    PAYSTACK_PUBLIC_KEY: str = ""
+    PAYSTACK_WEBHOOK_SECRET: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True

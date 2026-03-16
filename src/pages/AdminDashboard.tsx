@@ -19,6 +19,7 @@ import { SystemConfiguration } from '@/components/Admin/SystemConfiguration';
 import { AdvancedReporting } from '@/components/Admin/AdvancedReporting';
 import { InventoryManagement } from '@/components/Admin/InventoryManagement';
 import { SystemHealth } from '@/components/Manager/SystemHealth';
+import { StockManagement } from '@/components/Manager/StockManagement';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -100,6 +101,7 @@ export default function AdminDashboard() {
           {/* Inventory Tab - Stock management and tracking */}
           <TabsContent value="inventory" className="space-y-4 sm:space-y-6">
             <InventoryManagement />
+            <StockManagement />
           </TabsContent>
 
           {/* Reports Tab - Advanced reporting and analytics */}

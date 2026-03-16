@@ -56,8 +56,8 @@ export function SystemHealth() {
         api.get('/system/health/metrics')
       ]);
 
-      setComponents(componentsRes.data);
-      setMetrics(metricsRes.data);
+      setComponents(componentsRes.data as unknown as SystemComponent[]);
+      setMetrics(metricsRes.data as unknown as SystemMetrics);
       setLastUpdated(new Date());
       
       localStorage.setItem('system_health_components', JSON.stringify(componentsRes.data));
@@ -69,8 +69,8 @@ export function SystemHealth() {
       const cachedMetrics = localStorage.getItem('system_health_metrics');
       
       if (cachedComponents && cachedMetrics) {
-        setComponents(JSON.parse(cachedComponents));
-        setMetrics(JSON.parse(cachedMetrics));
+        setComponents(JSON.parse(cachedComponents) as SystemComponent[]);
+        setMetrics(JSON.parse(cachedMetrics) as SystemMetrics);
         toast.success('Using cached system health data');
       } else {
         toast.error('Failed to load system health data');

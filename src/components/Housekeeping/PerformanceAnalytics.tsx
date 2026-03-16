@@ -96,8 +96,8 @@ export function PerformanceAnalytics() {
 
       // Load all analytics data
       const stats = await housekeepingService.getStats({
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0]
+        from_date: startDate.toISOString().split('T')[0],
+        to_date: endDate.toISOString().split('T')[0]
       });
 
       // Mock data - replace with actual API calls

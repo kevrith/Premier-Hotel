@@ -12,9 +12,9 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
 export function PricingManager() {
-  const [basePricing, setBasePricing] = useState([]);
-  const [seasonalRates, setSeasonalRates] = useState([]);
-  const [discounts, setDiscounts] = useState([]);
+  const [basePricing, setBasePricing] = useState<any[]>([]);
+  const [seasonalRates, setSeasonalRates] = useState<any[]>([]);
+  const [discounts, setDiscounts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
@@ -27,8 +27,8 @@ export function PricingManager() {
       setIsLoading(true);
       // Fetch room types and their base pricing
       const { data: rooms, error } = await supabase
-        .from('hotel_rooms')
-        .select('id, name, room_type, base_price_kes, price_per_night');
+        .from('rooms')
+        .select('id, room_number, type, base_price');
 
       if (error) throw error;
       setBasePricing(rooms || []);
@@ -46,8 +46,8 @@ export function PricingManager() {
   const updateRoomPrice = async (roomId: string, newPrice: number) => {
     try {
       const { error } = await supabase
-        .from('hotel_rooms')
-        .update({ price_per_night: newPrice })
+        .from('rooms')
+        .update({ base_price: newPrice })
         .eq('id', roomId);
 
       if (error) throw error;
@@ -109,19 +109,19 @@ export function PricingManager() {
                       <CardContent className="pt-6">
                         <div className="flex items-center justify-between">
                           <div>
-                            <h4 className="font-semibold">{room.name}</h4>
-                            <p className="text-sm text-muted-foreground">{room.room_type}</p>
+                            <h4 className="font-semibold">{room.room_number}</h4>
+                            <p className="text-sm text-muted-foreground">{room.type}</p>
                           </div>
                           <div className="flex items-center gap-4">
                             <div className="text-right">
-                              <p className="text-2xl font-bold">KES {room.price_per_night || room.base_price_kes}</p>
+                              <p className="text-2xl font-bold">KES {room.base_price}</p>
                               <p className="text-xs text-muted-foreground">per night</p>
                             </div>
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                const newPrice = prompt('Enter new price:', room.price_per_night?.toString() || room.base_price_kes?.toString());
+                                const newPrice = prompt('Enter new price:', room.base_price?.toString());
                                 if (newPrice) {
                                   updateRoomPrice(room.id, parseFloat(newPrice));
                                 }

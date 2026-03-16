@@ -35,6 +35,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import { housekeepingService } from '@/lib/api/housekeeping';
 
 interface LostItem {
@@ -82,7 +83,7 @@ export function LostAndFound() {
     setIsLoading(true);
     try {
       const data = await housekeepingService.getLostItems();
-      setItems(data);
+      setItems(data as unknown as LostItem[]);
     } catch (error) {
       console.error('Failed to load lost items:', error);
       toast.error('Failed to load lost items');
@@ -462,7 +463,7 @@ function LostItemDialog({ isOpen, onClose, mode, item, onSave }: LostItemDialogP
 
     try {
       if (mode === 'new') {
-        const newItem = await housekeepingService.createLostItem(formData);
+        const newItem = await housekeepingService.createLostItem(formData as any);
 
         // Upload photos if any
         if (photos.length > 0) {
@@ -475,7 +476,7 @@ function LostItemDialog({ isOpen, onClose, mode, item, onSave }: LostItemDialogP
 
         toast.success('Item registered successfully');
       } else if (mode === 'edit' && item) {
-        await housekeepingService.updateLostItem(item.id, formData);
+        await housekeepingService.updateLostItem(item.id, formData as any);
 
         // Upload new photos if any
         if (photos.length > 0) {

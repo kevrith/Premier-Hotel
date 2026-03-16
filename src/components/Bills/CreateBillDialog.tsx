@@ -34,6 +34,11 @@ interface CreateBillDialogProps {
   defaultLocationType?: 'table' | 'room';
   defaultLocation?: string;
   onBillCreated: (bill: BillResponse) => void;
+  onInitiateBill?: (
+    locationDisplay: string,
+    locationArgs: { locationType: 'table' | 'room'; location: string },
+    onProceed: () => void
+  ) => void;
 }
 
 export function CreateBillDialog({
@@ -42,6 +47,7 @@ export function CreateBillDialog({
   defaultLocationType = 'table',
   defaultLocation = '',
   onBillCreated,
+  onInitiateBill,
 }: CreateBillDialogProps) {
   const [locationType, setLocationType] = useState<'table' | 'room'>(defaultLocationType);
   const [location, setLocation] = useState(defaultLocation);
@@ -88,12 +94,7 @@ export function CreateBillDialog({
     }
   };
 
-  const handleCreateBill = async () => {
-    if (!unpaidOrders || unpaidOrders.order_count === 0) {
-      toast.error('No unpaid orders to bill');
-      return;
-    }
-
+  const doCreateBill = async () => {
     setCreating(true);
     try {
       const billData = {
@@ -118,6 +119,23 @@ export function CreateBillDialog({
       toast.error(error.response?.data?.detail || 'Failed to create bill');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleCreateBill = async () => {
+    if (!unpaidOrders || unpaidOrders.order_count === 0) {
+      toast.error('No unpaid orders to bill');
+      return;
+    }
+
+    const locationDisplay = `${locationType === 'table' ? 'Table' : 'Room'} ${location}`;
+
+    if (onInitiateBill) {
+      // Close the dialog first so the countdown banner is visible
+      onOpenChange(false);
+      onInitiateBill(locationDisplay, { locationType, location }, doCreateBill);
+    } else {
+      doCreateBill();
     }
   };
 

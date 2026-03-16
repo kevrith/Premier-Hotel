@@ -101,7 +101,7 @@ export function InventoryManagement() {
     setIsLoading(true);
     try {
       const data = await housekeepingService.getInventory();
-      setItems(data);
+      setItems(data as unknown as InventoryItem[]);
     } catch (error) {
       console.error('Failed to load inventory:', error);
       toast.error('Failed to load inventory');
@@ -113,7 +113,7 @@ export function InventoryManagement() {
   const loadUsageLogs = async () => {
     try {
       const data = await housekeepingService.getUsageLogs({ limit: 100 });
-      setUsageLogs(data);
+      setUsageLogs(data as unknown as UsageLog[]);
     } catch (error) {
       console.error('Failed to load usage logs:', error);
     }

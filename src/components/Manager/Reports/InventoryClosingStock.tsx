@@ -1,18 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Download, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Printer, Download, AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '@/lib/api/client';
 import * as XLSX from 'xlsx';
+
+interface InventoryItem {
+  item_id: string;
+  sku: string;
+  name: string;
+  category_name: string;
+  closing_quantity: number;
+  unit: string;
+  unit_cost: number;
+  closing_value: number;
+  stock_status: string;
+  min_quantity: number;
+}
+
+interface DeptSummary {
+  department: string;
+  items: InventoryItem[];
+  total_qty: number;
+  total_value: number;
+  low_stock: number;
+  out_of_stock: number;
+}
 
 export const InventoryClosingStock: React.FC = () => {
   const [asOfDate, setAsOfDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadData();
@@ -25,6 +47,9 @@ export const InventoryClosingStock: React.FC = () => {
         params: { as_of_date: asOfDate }
       });
       setData(response.data);
+      // Expand all departments by default
+      const depts = new Set<string>(response.data.items.map((i: InventoryItem) => i.category_name));
+      setExpandedDepts(depts);
     } catch (error) {
       console.error('Failed to load closing stock:', error);
     } finally {
@@ -32,60 +57,162 @@ export const InventoryClosingStock: React.FC = () => {
     }
   };
 
+  const toggleDept = (dept: string) => {
+    setExpandedDepts(prev => {
+      const next = new Set(prev);
+      if (next.has(dept)) next.delete(dept);
+      else next.add(dept);
+      return next;
+    });
+  };
+
+  // Group items by department
+  const deptSummaries: DeptSummary[] = useMemo(() => {
+    if (!data?.items) return [];
+    const map = new Map<string, InventoryItem[]>();
+    for (const item of data.items as InventoryItem[]) {
+      const dept = item.category_name || 'Uncategorized';
+      if (!map.has(dept)) map.set(dept, []);
+      map.get(dept)!.push(item);
+    }
+    return Array.from(map.entries()).map(([department, items]) => ({
+      department,
+      items,
+      total_qty: items.reduce((s, i) => s + i.closing_quantity, 0),
+      total_value: items.reduce((s, i) => s + i.closing_value, 0),
+      low_stock: items.filter(i => i.stock_status === 'Low Stock').length,
+      out_of_stock: items.filter(i => i.stock_status === 'Out of Stock').length,
+    }));
+  }, [data]);
+
   const handleExportExcel = () => {
     if (!data) return;
-    
-    const exportData = data.items.map((item: any) => ({
-      'SKU': item.sku,
-      'Item Name': item.name,
-      'Category': item.category_name,
-      'Closing Quantity': item.closing_quantity,
-      'Unit': item.unit,
-      'Unit Cost (KES)': item.unit_cost,
-      'Closing Value (KES)': item.closing_value,
-      'Status': item.stock_status,
-      'Min Quantity': item.min_quantity,
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const rows: any[] = [];
+    deptSummaries.forEach(dept => {
+      rows.push({
+        'Department': dept.department.toUpperCase() + ' — TOTAL',
+        'SKU': '',
+        'Item Name': '',
+        'Closing Qty': dept.total_qty.toFixed(2),
+        'Unit': '',
+        'Closing Value (KES)': dept.total_value,
+        'Status': '',
+        'Min Qty': '',
+      });
+      dept.items.forEach(item => {
+        rows.push({
+          'Department': dept.department,
+          'SKU': item.sku,
+          'Item Name': item.name,
+          'Closing Qty': item.closing_quantity.toFixed(2),
+          'Unit': item.unit,
+          'Closing Value (KES)': item.closing_value,
+          'Status': item.stock_status,
+          'Min Qty': item.min_quantity,
+        });
+      });
+    });
+    const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Closing Stock');
     XLSX.writeFile(workbook, `Inventory_Closing_Stock_${asOfDate}.xlsx`);
   };
 
-  if (!data) return <div>Loading...</div>;
+  const handlePrint = () => {
+    if (!data) return;
+    const win = window.open('', '_blank');
+    if (!win) return;
 
-  const { summary, items } = data;
+    const deptRows = deptSummaries.map(dept => `
+      <tr style="background:#e8eaf6;font-weight:bold">
+        <td colspan="2" style="padding:6px 8px;border:1px solid #ccc">${dept.department.toUpperCase()}</td>
+        <td style="padding:6px 8px;border:1px solid #ccc;text-align:right">${dept.total_qty.toFixed(2)}</td>
+        <td style="padding:6px 8px;border:1px solid #ccc"></td>
+        <td style="padding:6px 8px;border:1px solid #ccc;text-align:right">KES ${dept.total_value.toLocaleString()}</td>
+        <td style="padding:6px 8px;border:1px solid #ccc"></td>
+      </tr>
+      ${dept.items.map(item => `
+      <tr>
+        <td style="padding:5px 8px 5px 20px;border:1px solid #ccc;font-size:11px">${item.sku}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc">${item.name}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right">${item.closing_quantity.toFixed(2)}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc">${item.unit}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right">KES ${item.closing_value.toLocaleString()}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc">${item.stock_status}</td>
+      </tr>`).join('')}
+    `).join('');
+
+    win.document.write(`<!DOCTYPE html><html><head><title>Closing Stock</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px}h2,h3{text-align:center}
+      table{width:100%;border-collapse:collapse;font-size:12px}
+      th{background:#333;color:#fff;padding:8px;text-align:left}
+      @media print{body{padding:10px}}</style></head><body>
+      <h2>Premier Hotel</h2>
+      <h3>Inventory Closing Stock</h3>
+      <p style="text-align:center;color:#666">As of ${format(new Date(asOfDate), 'dd/MM/yyyy')}</p>
+      <table><thead><tr>
+        <th>SKU</th><th>Item Name</th><th style="text-align:right">Closing Qty</th>
+        <th>Unit</th><th style="text-align:right">Closing Value</th><th>Status</th>
+      </tr></thead><tbody>
+      ${deptRows}
+      <tr style="background:#e8f5e9;font-weight:bold">
+        <td colspan="2" style="padding:8px;border:1px solid #ccc">GRAND TOTAL</td>
+        <td style="padding:8px;border:1px solid #ccc;text-align:right">${data.summary.total_items} items</td>
+        <td style="padding:8px;border:1px solid #ccc"></td>
+        <td style="padding:8px;border:1px solid #ccc;text-align:right">KES ${data.summary.total_value.toLocaleString()}</td>
+        <td style="padding:8px;border:1px solid #ccc"></td>
+      </tr>
+      </tbody></table>
+      <p style="text-align:center;font-size:10px;margin-top:20px;color:#888">Generated: ${new Date().toLocaleString()}</p>
+      <script>window.onload=()=>setTimeout(()=>window.print(),400)</script>
+      </body></html>`);
+    win.document.close();
+  };
+
+  if (loading && !data) return (
+    <div className="flex items-center justify-center py-16 text-muted-foreground">
+      Loading inventory...
+    </div>
+  );
+
+  if (!data) return (
+    <div className="flex items-center justify-center py-16 text-muted-foreground">
+      No data available.
+    </div>
+  );
+
+  const { summary } = data;
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <CardTitle>Inventory Closing Stock Report</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 Stock position as of {format(new Date(asOfDate), 'MMM dd, yyyy')}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
               <Input
                 type="date"
                 value={asOfDate}
                 onChange={(e) => setAsOfDate(e.target.value)}
                 className="w-40"
               />
-              <Button variant="outline" onClick={() => window.print()}>
+              <Button variant="outline" size="sm" onClick={handlePrint}>
                 <Printer className="h-4 w-4 mr-2" />
                 Print
               </Button>
-              <Button variant="outline" onClick={handleExportExcel}>
+              <Button variant="outline" size="sm" onClick={handleExportExcel}>
                 <Download className="h-4 w-4 mr-2" />
                 Excel
               </Button>
             </div>
           </div>
         </CardHeader>
+
         <CardContent>
           {/* Summary Cards */}
           <div className="grid gap-4 md:grid-cols-4 mb-6">
@@ -115,79 +242,122 @@ export const InventoryClosingStock: React.FC = () => {
             </Card>
           </div>
 
-          {/* Items Table */}
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Item Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Closing Qty</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Unit Cost</TableHead>
-                  <TableHead className="text-right">Closing Value</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      No inventory items found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  items.map((item: any) => (
-                    <TableRow key={item.item_id}>
-                      <TableCell className="font-mono text-xs">{item.sku}</TableCell>
-                      <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell className="text-sm">{item.category_name}</TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {item.closing_quantity.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-sm">{item.unit}</TableCell>
-                      <TableCell className="text-right">
-                        KES {item.unit_cost.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        KES {item.closing_value.toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        {item.stock_status === 'Out of Stock' && (
-                          <Badge variant="destructive" className="flex items-center gap-1 w-fit">
-                            <XCircle className="h-3 w-3" />
-                            Out of Stock
-                          </Badge>
-                        )}
-                        {item.stock_status === 'Low Stock' && (
-                          <Badge variant="default" className="flex items-center gap-1 w-fit bg-yellow-500">
-                            <AlertTriangle className="h-3 w-3" />
-                            Low Stock
-                          </Badge>
-                        )}
-                        {item.stock_status === 'In Stock' && (
-                          <Badge variant="default" className="flex items-center gap-1 w-fit bg-green-500">
-                            <CheckCircle className="h-3 w-3" />
-                            In Stock
-                          </Badge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          {/* Department Summary + Drill-down Table */}
+          {deptSummaries.length === 0 ? (
+            <div className="text-center py-10 text-muted-foreground">No inventory items found.</div>
+          ) : (
+            <>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-800 text-white">
+                      <th className="text-left px-3 py-2 w-1/2">Department / Item</th>
+                      <th className="text-right px-3 py-2 w-28">Closing Qty</th>
+                      <th className="text-left px-3 py-2 w-16">Unit</th>
+                      <th className="text-right px-3 py-2">Closing Value</th>
+                      <th className="text-center px-3 py-2 w-28">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deptSummaries.map((dept) => (
+                      <React.Fragment key={dept.department}>
+                        {/* Department row */}
+                        <tr
+                          className="bg-indigo-50 hover:bg-indigo-100 cursor-pointer select-none"
+                          onClick={() => toggleDept(dept.department)}
+                        >
+                          <td className="px-3 py-2 font-bold flex items-center gap-1">
+                            {expandedDepts.has(dept.department)
+                              ? <ChevronDown className="h-4 w-4 text-indigo-600 shrink-0" />
+                              : <ChevronRight className="h-4 w-4 text-indigo-600 shrink-0" />}
+                            <span className="text-indigo-900">{dept.department.toUpperCase()}</span>
+                            {dept.low_stock > 0 && (
+                              <Badge className="ml-2 text-xs bg-yellow-500">{dept.low_stock} low</Badge>
+                            )}
+                            {dept.out_of_stock > 0 && (
+                              <Badge className="ml-1 text-xs" variant="destructive">{dept.out_of_stock} out</Badge>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right font-bold text-indigo-900">
+                            {dept.total_qty.toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-indigo-700 text-xs">{dept.items.length} items</td>
+                          <td className="px-3 py-2 text-right font-bold text-indigo-900">
+                            KES {dept.total_value.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-center text-xs text-indigo-700">
+                            {dept.items.length} SKUs
+                          </td>
+                        </tr>
 
-          {/* Footer Note */}
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-            <p className="font-semibold text-blue-900">Note:</p>
-            <p className="text-blue-800">
-              This report shows the calculated closing stock as of {format(new Date(asOfDate), 'MMM dd, yyyy')} at 11:59 PM.
-              The closing quantity is calculated by reversing all stock movements that occurred after this date.
-            </p>
-          </div>
+                        {/* Item rows */}
+                        {expandedDepts.has(dept.department) &&
+                          dept.items.map((item, ii) => (
+                            <tr
+                              key={item.item_id}
+                              className={ii % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                            >
+                              <td className="px-3 py-1.5 pl-8 text-gray-700">
+                                <span className="font-medium">{item.name}</span>
+                                {item.sku && (
+                                  <span className="ml-2 text-xs text-muted-foreground font-mono">{item.sku}</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-semibold text-gray-800">
+                                {item.closing_quantity.toFixed(2)}
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-500 text-xs">{item.unit}</td>
+                              <td className="px-3 py-1.5 text-right text-gray-700">
+                                KES {item.closing_value.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                {item.stock_status === 'Out of Stock' && (
+                                  <Badge variant="destructive" className="flex items-center gap-1 w-fit mx-auto text-xs">
+                                    <XCircle className="h-3 w-3" />
+                                    Out
+                                  </Badge>
+                                )}
+                                {item.stock_status === 'Low Stock' && (
+                                  <Badge className="flex items-center gap-1 w-fit mx-auto bg-yellow-500 text-xs">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Low
+                                  </Badge>
+                                )}
+                                {item.stock_status === 'In Stock' && (
+                                  <Badge className="flex items-center gap-1 w-fit mx-auto bg-green-500 text-xs">
+                                    <CheckCircle className="h-3 w-3" />
+                                    OK
+                                  </Badge>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                      </React.Fragment>
+                    ))}
+
+                    {/* Grand total */}
+                    <tr className="bg-green-50 border-t-2 border-green-300">
+                      <td className="px-3 py-2 font-bold text-green-900">
+                        GRAND TOTAL — {deptSummaries.length} departments
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold text-green-900">
+                        {deptSummaries.reduce((s, d) => s + d.total_qty, 0).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-green-700">{summary.total_items} items</td>
+                      <td className="px-3 py-2 text-right font-bold text-green-900">
+                        KES {summary.total_value.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2"></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Click a department row to expand/collapse its items.
+                Closing quantity is calculated by reversing all movements after {format(new Date(asOfDate), 'dd/MM/yyyy')} 11:59 PM.
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

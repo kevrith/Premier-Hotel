@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +20,8 @@ import {
   CheckCircle2,
   Star,
   UserCheck,
-  UserCog
+  UserCog,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { StaffManagement } from '@/components/Manager/StaffManagement';
@@ -29,13 +31,7 @@ import { PendingModifications } from '@/components/Manager/OrderManagement/Pendi
 import { SalesAnalytics } from '@/components/Manager/Analytics/SalesAnalytics';
 import { EmployeePerformance } from '@/components/Manager/Analytics/EmployeePerformance';
 import OrderManagement from '@/components/Manager/OrderManagement';
-import { useStaffStats } from '@/hooks/useStaffStats';
-import { useRevenueStats } from '@/hooks/useRevenueStats';
-import { usePendingTasks } from '@/hooks/usePendingTasks';
-import { useDailyStats } from '@/hooks/useDailyStats';
-import { useOperationsData } from '@/hooks/useOperationsData';
-import { useStaffPerformance } from '@/hooks/useStaffPerformance';
-import { useDebugData } from '@/hooks/useDebugData';
+import { useDashboardSummary } from '@/hooks/useDashboardSummary';
 import { SystemHealth } from '@/components/Manager/SystemHealth';
 import { EnhancedUserManagement } from '@/components/Manager/EnhancedUserManagement';
 import { ContentManagement } from '@/components/Manager/ContentManagement';
@@ -52,29 +48,31 @@ import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClo
 import { OccupancyReport } from '@/components/Manager/Reports/OccupancyReport';
 import { MenuProfitabilityReport } from '@/components/Manager/Reports/MenuProfitabilityReport';
 import { CustomerLifetimeValueReport } from '@/components/Manager/Reports/CustomerLifetimeValueReport';
+import { ItemSummaryReport } from '@/components/Manager/Reports/ItemSummaryReport';
+import { VoidedItemsReport } from '@/components/Manager/Reports/VoidedItemsReport';
 import { RecentActivityFeed } from '@/components/Dashboard/RecentActivityFeed';
 import { NotificationCenter } from '@/components/Dashboard/NotificationCenter';
 import { DashboardCustomization, useWidgetVisibility } from '@/components/Dashboard/DashboardCustomization';
 import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagement';
-import { RefreshCw } from 'lucide-react';
+import { StockManagement } from '@/components/Manager/StockManagement';
 
+// Lazy-loading wrapper: only mounts children once the tab has been activated
+function LazyTab({ active, children }: { active: boolean; children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { if (active) setMounted(true); }, [active]);
+  if (!mounted) return null;
+  return <>{children}</>;
+}
 
 export default function ManagerDashboard() {
   const navigate = useNavigate();
   const { user, isAuthenticated, role } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('overview');
-  const { stats: staffStats, isLoading: statsLoading } = useStaffStats();
-  const { stats: revenueStats, isLoading: revenueLoading } = useRevenueStats();
-  const { tasks: pendingTasks, isLoading: tasksLoading } = usePendingTasks();
-  const { stats: dailyStats, isLoading: dailyLoading } = useDailyStats();
-  const { roomStats, kitchenStats, isLoading: operationsLoading } = useOperationsData();
-  const { performance: staffPerformance, isLoading: performanceLoading } = useStaffPerformance();
-  const debugData = useDebugData();
+  const { summary, isLoading } = useDashboardSummary();
   const { isVisible } = useWidgetVisibility();
 
-  const refreshAllStats = () => {
-    window.location.reload();
-  };
+  const refreshAllStats = () => queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
 
   useEffect(() => {
     if (!isAuthenticated || (role !== 'manager' && role !== 'admin')) {
@@ -134,8 +132,8 @@ export default function ManagerDashboard() {
           {isVisible('revenue') && (
           <StatCard
             title="F&B Revenue (Today)"
-            value={revenueLoading ? '...' : `KES ${revenueStats.todayRevenue.toLocaleString()}`}
-            subtitle={`Month F&B: KES ${revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()} | Rooms: KES ${revenueLoading ? '...' : revenueStats.roomRevenue.toLocaleString()}`}
+            value={isLoading ? '...' : `KES ${summary.revenue.today.toLocaleString()}`}
+            subtitle={`Month F&B: KES ${isLoading ? '...' : summary.revenue.month.toLocaleString()} | Rooms: KES ${isLoading ? '...' : summary.revenue.room.toLocaleString()}`}
             icon={DollarSign}
             color="text-green-500"
           />
@@ -143,7 +141,7 @@ export default function ManagerDashboard() {
           {isVisible('occupancy') && (
           <StatCard
             title="Occupancy Rate"
-            value={revenueLoading ? '...' : `${revenueStats.occupancyToday}%`}
+            value={isLoading ? '...' : `${summary.occupancy_rate}%`}
             subtitle="Rooms occupied today"
             icon={BedDouble}
             color="text-blue-500"
@@ -152,8 +150,8 @@ export default function ManagerDashboard() {
           {isVisible('staff') && (
           <StatCard
             title="Active Staff"
-            value={statsLoading ? '...' : staffStats.activeStaff}
-            subtitle={`Total: ${statsLoading ? '...' : staffStats.totalStaff} staff members`}
+            value={isLoading ? '...' : summary.staff.active}
+            subtitle={`Total: ${isLoading ? '...' : summary.staff.total} staff members`}
             icon={UserCheck}
             color="text-purple-500"
           />
@@ -161,7 +159,7 @@ export default function ManagerDashboard() {
           {isVisible('tasks') && (
           <StatCard
             title="Pending Tasks"
-            value={tasksLoading ? '...' : pendingTasks.length}
+            value={isLoading ? '...' : summary.pending_tasks.total}
             subtitle="Requires attention"
             icon={Clock}
             color="text-orange-500"
@@ -178,7 +176,7 @@ export default function ManagerDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-1 h-auto">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 lg:grid-cols-11 gap-1 h-auto">
             <TabsTrigger value="overview" className="text-xs sm:text-sm px-1 sm:px-3">Overview</TabsTrigger>
             <TabsTrigger value="staff" className="text-xs sm:text-sm px-1 sm:px-3">Staff</TabsTrigger>
             <TabsTrigger value="manage-staff" className="text-xs sm:text-sm px-1 sm:px-3">Manage</TabsTrigger>
@@ -186,12 +184,13 @@ export default function ManagerDashboard() {
             <TabsTrigger value="operations" className="text-xs sm:text-sm px-1 sm:px-3">Ops</TabsTrigger>
             <TabsTrigger value="financial-reports" className="text-xs sm:text-sm px-1 sm:px-3">Reports</TabsTrigger>
             <TabsTrigger value="order-management" className="text-xs sm:text-sm px-1 sm:px-3">Orders</TabsTrigger>
+            <TabsTrigger value="stock" className="text-xs sm:text-sm px-1 sm:px-3">Stock</TabsTrigger>
             <TabsTrigger value="system-health" className="text-xs sm:text-sm px-1 sm:px-3">Health</TabsTrigger>
             <TabsTrigger value="content-management" className="text-xs sm:text-sm px-1 sm:px-3">Content</TabsTrigger>
             <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-1 sm:px-3">Housekeeping</TabsTrigger>
           </TabsList>
 
-          {/* Overview Tab */}
+          {/* Overview Tab — loads immediately, no LazyTab wrapper */}
           <TabsContent value="overview" className="space-y-4 sm:space-y-6">
             <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
               {/* Pending Tasks */}
@@ -201,42 +200,29 @@ export default function ManagerDashboard() {
                   <CardDescription>Tasks requiring immediate attention</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {tasksLoading ? (
+                  {isLoading ? (
                     <div className="text-center py-4">
                       <p className="text-muted-foreground">Loading tasks...</p>
                     </div>
-                  ) : pendingTasks.length === 0 ? (
+                  ) : summary.pending_tasks.total === 0 ? (
                     <div className="text-center py-4">
                       <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
                       <p className="text-muted-foreground">No pending tasks</p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {pendingTasks.map((task) => (
-                        <div key={task.id} className="flex items-start justify-between border-b pb-4 last:border-0">
-                          <div className="space-y-1 flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold">{task.task}</p>
-                              <Badge variant={
-                                task.priority === 'urgent' ? 'destructive' :
-                                task.priority === 'high' ? 'default' :
-                                'secondary'
-                              }>
-                                {task.priority}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">Assigned to: {task.assignedTo}</p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              Due: {task.deadline}
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline">View</Button>
-                            <Button size="sm">Resolve</Button>
-                          </div>
+                    <div className="space-y-2">
+                      {summary.pending_tasks.housekeeping > 0 && (
+                        <div className="flex items-center justify-between border-b pb-2">
+                          <p className="font-semibold">Housekeeping Tasks</p>
+                          <Badge variant="default">{summary.pending_tasks.housekeeping} pending</Badge>
                         </div>
-                      ))}
+                      )}
+                      {summary.pending_tasks.service_requests > 0 && (
+                        <div className="flex items-center justify-between border-b pb-2 last:border-0">
+                          <p className="font-semibold">Service Requests</p>
+                          <Badge variant="default">{summary.pending_tasks.service_requests} pending</Badge>
+                        </div>
+                      )}
                     </div>
                   )}
                 </CardContent>
@@ -254,28 +240,28 @@ export default function ManagerDashboard() {
                       <BedDouble className="h-4 w-4 text-blue-500" />
                       <span className="text-sm">Check-ins</span>
                     </div>
-                    <span className="font-semibold">{dailyLoading ? '...' : `${dailyStats.checkIns} guests`}</span>
+                    <span className="font-semibold">{isLoading ? '...' : `${summary.daily.check_ins} guests`}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <BedDouble className="h-4 w-4 text-orange-500" />
                       <span className="text-sm">Check-outs</span>
                     </div>
-                    <span className="font-semibold">{dailyLoading ? '...' : `${dailyStats.checkOuts} guests`}</span>
+                    <span className="font-semibold">{isLoading ? '...' : `${summary.daily.check_outs} guests`}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Utensils className="h-4 w-4 text-green-500" />
                       <span className="text-sm">Meal Orders</span>
                     </div>
-                    <span className="font-semibold">{dailyLoading ? '...' : `${dailyStats.mealOrders} orders`}</span>
+                    <span className="font-semibold">{isLoading ? '...' : `${summary.daily.meal_orders} orders`}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Star className="h-4 w-4 text-yellow-500" />
                       <span className="text-sm">Avg Rating</span>
                     </div>
-                    <span className="font-semibold">{dailyLoading ? '...' : `${dailyStats.avgRating || 0}★`}</span>
+                    <span className="font-semibold">{isLoading ? '...' : `${summary.customer_satisfaction || 0}★`}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -290,25 +276,25 @@ export default function ManagerDashboard() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Chefs</span>
                     <Badge className="bg-green-500">
-                      {statsLoading ? '...' : `${staffStats.staffByRole.chef} active`}
+                      {isLoading ? '...' : `${summary.staff.chefs} active`}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Waiters</span>
                     <Badge className="bg-green-500">
-                      {statsLoading ? '...' : `${staffStats.staffByRole.waiter} active`}
+                      {isLoading ? '...' : `${summary.staff.waiters} active`}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Cleaners</span>
                     <Badge className="bg-green-500">
-                      {statsLoading ? '...' : `${staffStats.staffByRole.cleaner} active`}
+                      {isLoading ? '...' : `${summary.staff.cleaners} active`}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">Recent Hires</span>
                     <Badge variant="outline">
-                      {statsLoading ? '...' : `${staffStats.recentHires} this month`}
+                      {isLoading ? '...' : `${summary.staff.recent_hires} this month`}
                     </Badge>
                   </div>
                 </CardContent>
@@ -318,308 +304,300 @@ export default function ManagerDashboard() {
 
           {/* Staff Tab */}
           <TabsContent value="staff" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Staff Performance</CardTitle>
-                <CardDescription>Monitor and manage staff productivity</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {performanceLoading ? (
-                  <div className="text-center py-4">
-                    <p className="text-muted-foreground">Loading staff performance...</p>
-                  </div>
-                ) : staffPerformance.length === 0 ? (
+            <LazyTab active={activeTab === 'staff'}>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Staff Performance</CardTitle>
+                  <CardDescription>Monitor and manage staff productivity</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <div className="text-center py-4">
                     <p className="text-muted-foreground">No staff performance data available</p>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {staffPerformance.map((staff) => (
-                      <div key={staff.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex items-center gap-4">
-                          <div className="h-12 w-12 rounded-full bg-gradient-gold flex items-center justify-center">
-                            <Users className="h-6 w-6 text-primary" />
-                          </div>
-                          <div>
-                            <p className="font-semibold">{staff.name}</p>
-                            <p className="text-sm text-muted-foreground capitalize">{staff.role}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="outline">{staff.status}</Badge>
-                              <span className="text-xs text-muted-foreground">
-                                {staff.tasksCompleted} tasks completed
-                              </span>
-                              {staff.evaluationDate && (
-                                <span className="text-xs text-muted-foreground">
-                                  Last eval: {new Date(staff.evaluationDate).toLocaleDateString()}
-                                </span>
-                              )}
-                            </div>
-                            {staff.strengths && (
-                              <p className="text-xs text-green-600 mt-1">
-                                Strengths: {staff.strengths}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="flex items-center gap-1 mb-2">
-                            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                            <span className="font-semibold">{staff.rating}</span>
-                          </div>
-                          <Button size="sm" variant="outline">View Details</Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </LazyTab>
           </TabsContent>
 
           {/* Manage Staff Tab */}
           <TabsContent value="manage-staff" className="space-y-6">
-            <StaffManagement />
+            <LazyTab active={activeTab === 'manage-staff'}>
+              <StaffManagement />
+            </LazyTab>
           </TabsContent>
 
           {/* Permissions Tab */}
           <TabsContent value="permissions" className="space-y-6">
-            <PermissionManagement />
+            <LazyTab active={activeTab === 'permissions'}>
+              <PermissionManagement />
+            </LazyTab>
           </TabsContent>
 
           {/* Operations Tab */}
           <TabsContent value="operations" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Room Status</CardTitle>
-                  <CardDescription>Current room availability</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span>Occupied</span>
-                    <Badge className="bg-red-500">{operationsLoading ? '...' : `${roomStats.occupied} rooms`}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Available</span>
-                    <Badge className="bg-green-500">{operationsLoading ? '...' : `${roomStats.available} rooms`}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Cleaning</span>
-                    <Badge className="bg-yellow-500">{operationsLoading ? '...' : `${roomStats.cleaning} rooms`}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Maintenance</span>
-                    <Badge className="bg-orange-500">{operationsLoading ? '...' : `${roomStats.maintenance} rooms`}</Badge>
-                  </div>
-                </CardContent>
-              </Card>
+            <LazyTab active={activeTab === 'operations'}>
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Room Status</CardTitle>
+                    <CardDescription>Current room availability</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span>Occupied</span>
+                      <Badge className="bg-red-500">{isLoading ? '...' : `${summary.rooms.occupied} rooms`}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Available</span>
+                      <Badge className="bg-green-500">{isLoading ? '...' : `${summary.rooms.available} rooms`}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Cleaning</span>
+                      <Badge className="bg-yellow-500">{isLoading ? '...' : `${summary.rooms.cleaning} rooms`}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Maintenance</span>
+                      <Badge className="bg-orange-500">{isLoading ? '...' : `${summary.rooms.maintenance} rooms`}</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Kitchen Operations</CardTitle>
-                  <CardDescription>Current order status</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span>Pending Orders</span>
-                    <Badge>{operationsLoading ? '...' : `${kitchenStats.pendingOrders} orders`}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>In Progress</span>
-                    <Badge className="bg-blue-500">{operationsLoading ? '...' : `${kitchenStats.inProgress} orders`}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Completed Today</span>
-                    <Badge className="bg-green-500">{operationsLoading ? '...' : `${kitchenStats.completedToday} orders`}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Avg Prep Time</span>
-                    <Badge variant="outline">{operationsLoading ? '...' : `${kitchenStats.avgPrepTime} mins`}</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Kitchen Operations</CardTitle>
+                    <CardDescription>Current order status</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span>Pending Orders</span>
+                      <Badge>{isLoading ? '...' : `${summary.orders.pending} orders`}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>In Progress</span>
+                      <Badge className="bg-blue-500">{isLoading ? '...' : `${summary.orders.in_progress} orders`}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Completed Today</span>
+                      <Badge className="bg-green-500">{isLoading ? '...' : `${summary.orders.completed_today} orders`}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Today's Revenue</span>
+                      <Badge variant="outline">{isLoading ? '...' : `KES ${summary.orders.today_revenue.toLocaleString()}`}</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </LazyTab>
           </TabsContent>
 
           {/* Financial Reports Tab */}
           <TabsContent value="financial-reports" className="space-y-4 sm:space-y-6">
-            <Tabs defaultValue="overview" className="space-y-4">
-              <div className="overflow-x-auto">
-                <TabsList className="grid w-full grid-cols-4 sm:grid-cols-6 lg:grid-cols-11 gap-1 min-w-max">
-                  <TabsTrigger value="overview" className="text-xs sm:text-sm px-2">Overview</TabsTrigger>
-                  <TabsTrigger value="sales" className="text-xs sm:text-sm px-2">Sales</TabsTrigger>
-                  <TabsTrigger value="pl" className="text-xs sm:text-sm px-2">P&L</TabsTrigger>
-                  <TabsTrigger value="balance" className="text-xs sm:text-sm px-2">Balance</TabsTrigger>
-                  <TabsTrigger value="cashflow" className="text-xs sm:text-sm px-2">Cash</TabsTrigger>
-                  <TabsTrigger value="inventory" className="text-xs sm:text-sm px-2">Inventory</TabsTrigger>
-                  <TabsTrigger value="vat" className="text-xs sm:text-sm px-2">VAT</TabsTrigger>
-                  <TabsTrigger value="compare" className="text-xs sm:text-sm px-2">Compare</TabsTrigger>
-                  <TabsTrigger value="occupancy" className="text-xs sm:text-sm px-2">Occupancy</TabsTrigger>
-                  <TabsTrigger value="menu-profit" className="text-xs sm:text-sm px-2">Menu</TabsTrigger>
-                  <TabsTrigger value="clv" className="text-xs sm:text-sm px-2">CLV</TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value="overview">
-                <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-6">
-                  <div className="p-4 border rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">F&B Today</p>
-                    <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.todayRevenue.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">F&B This Week</p>
-                    <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.weekRevenue.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">F&B This Month</p>
-                    <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
-                  </div>
-                  <div className="p-4 border rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Room Revenue (Month)</p>
-                    <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.roomRevenue.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Bookings & Accommodation</p>
-                  </div>
+            <LazyTab active={activeTab === 'financial-reports'}>
+              <Tabs defaultValue="overview" className="space-y-4">
+                <div className="overflow-x-auto">
+                  <TabsList className="grid w-full grid-cols-4 sm:grid-cols-6 lg:grid-cols-13 gap-1 min-w-max">
+                    <TabsTrigger value="overview" className="text-xs sm:text-sm px-2">Overview</TabsTrigger>
+                    <TabsTrigger value="sales" className="text-xs sm:text-sm px-2">Sales</TabsTrigger>
+                    <TabsTrigger value="item-summary" className="text-xs sm:text-sm px-2">Items</TabsTrigger>
+                    <TabsTrigger value="voids" className="text-xs sm:text-sm px-2">Voids</TabsTrigger>
+                    <TabsTrigger value="pl" className="text-xs sm:text-sm px-2">P&L</TabsTrigger>
+                    <TabsTrigger value="balance" className="text-xs sm:text-sm px-2">Balance</TabsTrigger>
+                    <TabsTrigger value="cashflow" className="text-xs sm:text-sm px-2">Cash</TabsTrigger>
+                    <TabsTrigger value="inventory" className="text-xs sm:text-sm px-2">Inventory</TabsTrigger>
+                    <TabsTrigger value="vat" className="text-xs sm:text-sm px-2">VAT</TabsTrigger>
+                    <TabsTrigger value="compare" className="text-xs sm:text-sm px-2">Compare</TabsTrigger>
+                    <TabsTrigger value="occupancy" className="text-xs sm:text-sm px-2">Occupancy</TabsTrigger>
+                    <TabsTrigger value="menu-profit" className="text-xs sm:text-sm px-2">Menu</TabsTrigger>
+                    <TabsTrigger value="clv" className="text-xs sm:text-sm px-2">CLV</TabsTrigger>
+                  </TabsList>
                 </div>
-              </TabsContent>
 
-              <TabsContent value="sales">
-                <ComprehensiveSalesReports />
-              </TabsContent>
+                <TabsContent value="overview">
+                  <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-4 sm:mb-6">
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-sm text-muted-foreground mb-1">F&B Today</p>
+                      <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.today.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+                    </div>
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-sm text-muted-foreground mb-1">F&B This Week</p>
+                      <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.week.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+                    </div>
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-sm text-muted-foreground mb-1">F&B This Month</p>
+                      <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.month.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+                    </div>
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-sm text-muted-foreground mb-1">Room Revenue (Month)</p>
+                      <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.room.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Bookings & Accommodation</p>
+                    </div>
+                  </div>
+                </TabsContent>
 
-              <TabsContent value="pl">
-                <ProfitLossStatement />
-              </TabsContent>
+                <TabsContent value="sales">
+                  <ComprehensiveSalesReports />
+                </TabsContent>
 
-              <TabsContent value="balance">
-                <BalanceSheet />
-              </TabsContent>
+                <TabsContent value="item-summary">
+                  <ItemSummaryReport />
+                </TabsContent>
 
-              <TabsContent value="cashflow">
-                <CashFlowReport />
-              </TabsContent>
+                <TabsContent value="voids">
+                  <VoidedItemsReport />
+                </TabsContent>
 
-              <TabsContent value="inventory">
-                <InventoryClosingStock />
-              </TabsContent>
+                <TabsContent value="pl">
+                  <ProfitLossStatement />
+                </TabsContent>
 
-              <TabsContent value="vat">
-                <VATReport />
-              </TabsContent>
+                <TabsContent value="balance">
+                  <BalanceSheet />
+                </TabsContent>
 
-              <TabsContent value="compare">
-                <ComparativeAnalysis />
-                <div className="mt-6">
-                  <EnhancedFinancialReports />
-                </div>
-              </TabsContent>
+                <TabsContent value="cashflow">
+                  <CashFlowReport />
+                </TabsContent>
 
-              <TabsContent value="occupancy">
-                <OccupancyReport />
-              </TabsContent>
+                <TabsContent value="inventory">
+                  <InventoryClosingStock />
+                </TabsContent>
 
-              <TabsContent value="menu-profit">
-                <MenuProfitabilityReport />
-              </TabsContent>
+                <TabsContent value="vat">
+                  <VATReport />
+                </TabsContent>
 
-              <TabsContent value="clv">
-                <CustomerLifetimeValueReport />
-              </TabsContent>
-            </Tabs>
+                <TabsContent value="compare">
+                  <ComparativeAnalysis />
+                  <div className="mt-6">
+                    <EnhancedFinancialReports />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="occupancy">
+                  <OccupancyReport />
+                </TabsContent>
+
+                <TabsContent value="menu-profit">
+                  <MenuProfitabilityReport />
+                </TabsContent>
+
+                <TabsContent value="clv">
+                  <CustomerLifetimeValueReport />
+                </TabsContent>
+              </Tabs>
+            </LazyTab>
           </TabsContent>
 
           {/* Order Management Tab */}
           <TabsContent value="order-management" className="space-y-6">
-            <OrderManagement />
+            <LazyTab active={activeTab === 'order-management'}>
+              <OrderManagement />
+            </LazyTab>
           </TabsContent>
 
           {/* System Health Tab */}
           <TabsContent value="system-health" className="space-y-6">
-            <SystemHealth />
+            <LazyTab active={activeTab === 'system-health'}>
+              <SystemHealth />
+            </LazyTab>
           </TabsContent>
 
           {/* Content Management Tab */}
           <TabsContent value="content-management" className="space-y-6">
-            <ContentManagement />
+            <LazyTab active={activeTab === 'content-management'}>
+              <ContentManagement />
+            </LazyTab>
           </TabsContent>
 
           {/* Housekeeping Management Tab */}
           <TabsContent value="housekeeping" className="space-y-6">
-            <HousekeepingManagement />
+            <LazyTab active={activeTab === 'housekeeping'}>
+              <HousekeepingManagement />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Stock Management Tab */}
+          <TabsContent value="stock" className="space-y-6">
+            <LazyTab active={activeTab === 'stock'}>
+              <StockManagement />
+            </LazyTab>
           </TabsContent>
 
           {/* Analytics Tab (Legacy) */}
           <TabsContent value="analytics" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-3">
-              <div className="md:col-span-3">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Financial Reports</CardTitle>
-                    <CardDescription>Comprehensive financial analysis and reporting</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-6">
-                      <div className="grid gap-4 md:grid-cols-4">
-                        <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">F&B Today</p>
-                          <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.todayRevenue.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+            <LazyTab active={activeTab === 'analytics'}>
+              <div className="grid gap-6 md:grid-cols-3">
+                <div className="md:col-span-3">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Financial Reports</CardTitle>
+                      <CardDescription>Comprehensive financial analysis and reporting</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-6">
+                        <div className="grid gap-4 md:grid-cols-4">
+                          <div className="p-4 border rounded-lg">
+                            <p className="text-sm text-muted-foreground mb-1">F&B Today</p>
+                            <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.today.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+                          </div>
+                          <div className="p-4 border rounded-lg">
+                            <p className="text-sm text-muted-foreground mb-1">F&B This Week</p>
+                            <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.week.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+                          </div>
+                          <div className="p-4 border rounded-lg">
+                            <p className="text-sm text-muted-foreground mb-1">F&B This Month</p>
+                            <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.month.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
+                          </div>
+                          <div className="p-4 border rounded-lg">
+                            <p className="text-sm text-muted-foreground mb-1">Room Revenue (Month)</p>
+                            <p className="text-2xl font-bold">KES {isLoading ? '...' : summary.revenue.room.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Bookings & Accommodation</p>
+                          </div>
                         </div>
-                        <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">F&B This Week</p>
-                          <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.weekRevenue.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
-                        </div>
-                        <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">F&B This Month</p>
-                          <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.monthRevenue.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Restaurant & Bar</p>
-                        </div>
-                        <div className="p-4 border rounded-lg">
-                          <p className="text-sm text-muted-foreground mb-1">Room Revenue (Month)</p>
-                          <p className="text-2xl font-bold">KES {revenueLoading ? '...' : revenueStats.roomRevenue.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Bookings & Accommodation</p>
+
+                        <div className="grid gap-6 md:grid-cols-2">
+                          <DailySalesReport />
+                          <EmployeeSalesReport />
                         </div>
                       </div>
-                      
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="md:col-span-3">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Order Management</CardTitle>
+                      <CardDescription>Order modifications, voids, and audit trails</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <PendingModifications />
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="md:col-span-3">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Advanced Analytics</CardTitle>
+                      <CardDescription>Sales analytics, performance metrics, and insights</CardDescription>
+                    </CardHeader>
+                    <CardContent>
                       <div className="grid gap-6 md:grid-cols-2">
-                        <DailySalesReport />
-                        <EmployeeSalesReport />
+                        <SalesAnalytics />
+                        <EmployeePerformance />
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
-
-              <div className="md:col-span-3">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Order Management</CardTitle>
-                    <CardDescription>Order modifications, voids, and audit trails</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <PendingModifications />
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="md:col-span-3">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Advanced Analytics</CardTitle>
-                    <CardDescription>Sales analytics, performance metrics, and insights</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <SalesAnalytics />
-                      <EmployeePerformance />
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+            </LazyTab>
           </TabsContent>
         </Tabs>
       </div>

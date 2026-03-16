@@ -212,6 +212,39 @@ export function BillDisplay({ bill }: BillDisplayProps) {
             </div>
           </>
         )}
+
+        {/* Waiter Order Attribution */}
+        {bill.orders && bill.orders.length > 0 && (
+          <div className="border-t pt-3 mt-3">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Order Attribution</h4>
+            {bill.orders.map((order, idx) => (
+              <div key={idx} className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {order.waiter_name || 'Staff'} (Order #{order.order_number})
+                </span>
+                <span>{formatCurrency(order.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* M-Pesa Transactions */}
+        {bill.payments?.some(p => p.payment_method === 'mpesa') && (
+          <div className="border-t pt-3 mt-3">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase mb-2">M-Pesa Transactions</h4>
+            {bill.payments.filter(p => p.payment_method === 'mpesa').map((p, idx) => (
+              <div key={idx} className="text-sm">
+                <div className="flex justify-between">
+                  <span className="font-mono text-blue-700">{p.mpesa_code || 'Pending'}</span>
+                  <span className="font-semibold">{formatCurrency(p.amount)}</span>
+                </div>
+                {p.mpesa_phone && (
+                  <p className="text-xs text-muted-foreground">Phone: {p.mpesa_phone}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
 

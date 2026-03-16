@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'react-hot-toast';
 import { billsApi } from '@/lib/api/bills';
 import type { BillResponse } from '@/types/bills';
@@ -15,9 +15,65 @@ import { Plus, Receipt, Loader2, DollarSign, Clock, CheckCircle } from 'lucide-r
 import { CreateBillDialog } from './CreateBillDialog';
 import { BillDisplay } from './BillDisplay';
 import { PaymentDialog } from './PaymentDialog';
+import { useAuth } from '@/contexts/AuthContext';
+import api from '@/lib/api/client';
+
+// ─── Bill Countdown Banner ────────────────────────────────────────────────────
+
+function BillCountdownBanner({
+  notifiedCount,
+  locationDisplay,
+  onProceed,
+  onDismiss,
+}: {
+  notifiedCount: number;
+  locationDisplay: string;
+  onProceed: () => void;
+  onDismiss: () => void;
+}) {
+  const [seconds, setSeconds] = useState(30);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSeconds(s => {
+        if (s <= 1) { clearInterval(timer); onProceed(); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 w-96 bg-white border-2 border-orange-400 rounded-xl shadow-xl p-4">
+      <div className="flex items-start gap-3">
+        <div className="text-3xl font-bold text-orange-600 w-12 text-center">{seconds}</div>
+        <div className="flex-1">
+          <p className="font-semibold text-sm">Bill Starting — {locationDisplay}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Notified {notifiedCount} other waiter{notifiedCount > 1 ? 's' : ''}. Add any remaining items now.
+          </p>
+          <div className="flex gap-2 mt-3">
+            <Button size="sm" onClick={onProceed} className="flex-1">Proceed Now</Button>
+            <Button size="sm" variant="outline" onClick={onDismiss}>Cancel</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function BillsManagement() {
+  const { user } = useAuth();
   const [bills, setBills] = useState<BillResponse[]>([]);
+  const [billCountdown, setBillCountdown] = useState<{
+    active: boolean;
+    notifiedCount: number;
+    secondsLeft: number;
+    locationDisplay: string;
+    onProceed: () => void;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedBill, setSelectedBill] = useState<BillResponse | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -119,6 +175,37 @@ export function BillsManagement() {
       fetchBills(activeTab);
     }
   }, [activeTab]);
+
+  const initiateBillWithNotification = async (
+    locationDisplay: string,
+    locationArgs: { locationType: 'table' | 'room'; location: string },
+    onProceed: () => void
+  ) => {
+    try {
+      const res = await api.post('/bills/initiate-notification', {
+        location_type: locationArgs.locationType,
+        location: locationArgs.location,
+        initiated_by: user?.full_name || 'Waiter',
+      });
+
+      if (res.data.notified > 0) {
+        // Show countdown for 30 seconds, then allow bill creation
+        setBillCountdown({
+          active: true,
+          notifiedCount: res.data.notified,
+          secondsLeft: 30,
+          locationDisplay,
+          onProceed,
+        });
+      } else {
+        // No other waiters — proceed immediately
+        onProceed();
+      }
+    } catch {
+      // If notification fails, proceed anyway
+      onProceed();
+    }
+  };
 
   const handleBillCreated = (bill: BillResponse) => {
     setBills((prev) => [bill, ...prev]);
@@ -338,6 +425,7 @@ export function BillsManagement() {
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
         onBillCreated={handleBillCreated}
+        onInitiateBill={initiateBillWithNotification}
       />
 
       {selectedBill && (
@@ -346,6 +434,16 @@ export function BillsManagement() {
           onOpenChange={setShowPaymentDialog}
           bill={selectedBill}
           onPaymentSuccess={handlePaymentSuccess}
+        />
+      )}
+
+      {/* Bill Countdown Banner */}
+      {billCountdown?.active && (
+        <BillCountdownBanner
+          notifiedCount={billCountdown.notifiedCount}
+          locationDisplay={billCountdown.locationDisplay}
+          onProceed={() => { billCountdown.onProceed(); setBillCountdown(null); }}
+          onDismiss={() => setBillCountdown(null)}
         />
       )}
     </div>

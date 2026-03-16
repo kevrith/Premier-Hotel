@@ -6,7 +6,10 @@ import { InventoryReports } from './Reports/InventoryReports';
 import { StaffPerformanceReports } from './Reports/StaffPerformanceReports';
 import { CustomerInsightsReports } from './Reports/CustomerInsightsReports';
 import { FinancialReports } from './Reports/FinancialReports';
-import { BarChart, DollarSign, Package, Users, MessageSquare, FileBarChart, TrendingUp } from 'lucide-react';
+import { ItemSummaryReport } from '@/components/Manager/Reports/ItemSummaryReport';
+import { VoidedItemsReport } from '@/components/Manager/Reports/VoidedItemsReport';
+import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClosingStock';
+import { BarChart, DollarSign, Package, Users, MessageSquare, FileBarChart, TrendingUp, ShoppingBag, XCircle, Archive } from 'lucide-react';
 
 export function AdvancedReporting() {
   return (
@@ -23,32 +26,46 @@ export function AdvancedReporting() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="financial" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="financial">
-                <TrendingUp className="h-4 w-4 mr-2" />
-                Financial
-              </TabsTrigger>
-              <TabsTrigger value="sales">
-                <DollarSign className="h-4 w-4 mr-2" />
-                Sales
-              </TabsTrigger>
-              <TabsTrigger value="inventory">
-                <Package className="h-4 w-4 mr-2" />
-                Inventory
-              </TabsTrigger>
-              <TabsTrigger value="staff">
-                <Users className="h-4 w-4 mr-2" />
-                Staff
-              </TabsTrigger>
-              <TabsTrigger value="customers">
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Customers
-              </TabsTrigger>
-              <TabsTrigger value="quickbooks">
-                <FileBarChart className="h-4 w-4 mr-2" />
-                QuickBooks
-              </TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto">
+              <TabsList className="grid w-full grid-cols-9 min-w-max">
+                <TabsTrigger value="financial">
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  Financial
+                </TabsTrigger>
+                <TabsTrigger value="sales">
+                  <DollarSign className="h-4 w-4 mr-2" />
+                  Sales
+                </TabsTrigger>
+                <TabsTrigger value="item-summary">
+                  <ShoppingBag className="h-4 w-4 mr-2" />
+                  Items
+                </TabsTrigger>
+                <TabsTrigger value="voids">
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Voids
+                </TabsTrigger>
+                <TabsTrigger value="inventory">
+                  <Package className="h-4 w-4 mr-2" />
+                  Inventory
+                </TabsTrigger>
+                <TabsTrigger value="closing-stock">
+                  <Archive className="h-4 w-4 mr-2" />
+                  Stock
+                </TabsTrigger>
+                <TabsTrigger value="staff">
+                  <Users className="h-4 w-4 mr-2" />
+                  Staff
+                </TabsTrigger>
+                <TabsTrigger value="customers">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Customers
+                </TabsTrigger>
+                <TabsTrigger value="quickbooks">
+                  <FileBarChart className="h-4 w-4 mr-2" />
+                  QuickBooks
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="financial" className="space-y-4">
               <FinancialReports />
@@ -58,8 +75,20 @@ export function AdvancedReporting() {
               <SalesReports />
             </TabsContent>
 
+            <TabsContent value="item-summary" className="space-y-4">
+              <ItemSummaryReport />
+            </TabsContent>
+
+            <TabsContent value="voids" className="space-y-4">
+              <VoidedItemsReport />
+            </TabsContent>
+
             <TabsContent value="inventory" className="space-y-4">
               <InventoryReports />
+            </TabsContent>
+
+            <TabsContent value="closing-stock" className="space-y-4">
+              <InventoryClosingStock />
             </TabsContent>
 
             <TabsContent value="staff" className="space-y-4">

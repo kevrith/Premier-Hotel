@@ -6,37 +6,33 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Download, 
-  Printer, 
-  TrendingUp, 
-  DollarSign, 
-  ShoppingCart, 
+import {
+  Download,
+  Printer,
+  TrendingUp,
+  DollarSign,
+  ShoppingCart,
   Clock,
-  BarChart3,
-  PieChart,
-  Users,
-  Calendar as CalendarIcon
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { format } from 'date-fns';
 import { financialReportsService, type DailySalesReport, type ReportFilters } from '@/lib/api/financial-reports';
 
 export function DailySalesReport() {
   const [report, setReport] = useState<DailySalesReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [exportFormat, setExportFormat] = useState<'pdf' | 'excel'>('pdf');
 
   useEffect(() => {
     loadReport();
-  }, [selectedDate]);
+  }, []);
 
-  const loadReport = async () => {
+  const loadReport = async (sd?: string, _ed?: string) => {
+    const start = sd ?? startDate;
     setIsLoading(true);
     try {
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      const data = await financialReportsService.getDailySalesReport(dateStr);
+      const data = await financialReportsService.getDailySalesReport(start);
       setReport(data);
       toast.success('Daily sales report loaded successfully');
     } catch (error: any) {
@@ -45,9 +41,8 @@ export function DailySalesReport() {
       const cachedData = localStorage.getItem('financial_reports_daily');
       if (cachedData) {
         const cache = JSON.parse(cachedData);
-        const dateStr = format(selectedDate, 'yyyy-MM-dd');
-        if (cache[dateStr]) {
-          setReport(cache[dateStr]);
+        if (cache[start]) {
+          setReport(cache[start]);
           toast.success('Using cached daily sales data');
         } else {
           toast.error('No cached data available for this date');
@@ -62,24 +57,23 @@ export function DailySalesReport() {
 
   const exportReport = async () => {
     try {
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const filters: ReportFilters = {
-        start_date: dateStr,
-        end_date: dateStr
+        start_date: startDate,
+        end_date: endDate
       };
-      
+
       const blob = await financialReportsService.exportReport('daily-sales', filters, exportFormat);
-      
+
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `daily-sales-report-${dateStr}.${exportFormat}`;
+      link.download = `daily-sales-report-${startDate}-to-${endDate}.${exportFormat}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       toast.success('Report exported successfully');
     } catch (error: any) {
       toast.error('Failed to export report');
@@ -93,31 +87,19 @@ export function DailySalesReport() {
     }).format(amount);
   };
 
-  if (!report) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-muted-foreground">Select a date to view daily sales report</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header Controls */}
       <Card>
-        <CardHeader className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <div>
-            <CardTitle>Daily Sales Report</CardTitle>
-            <CardDescription>
-              Sales performance for {format(selectedDate, 'MMMM d, yyyy')}
-            </CardDescription>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <CardHeader className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
+            <div>
+              <CardTitle>Daily Sales Report</CardTitle>
+              <CardDescription>
+                Sales performance for {startDate === endDate ? startDate : `${startDate} to ${endDate}`}
+              </CardDescription>
+            </div>
             <div className="flex gap-2">
-              <div className="border rounded-md p-2">
-                <CalendarIcon className="h-4 w-4 text-gray-500" />
-                <span className="ml-2 text-sm">{format(selectedDate, 'MMM d, yyyy')}</span>
-              </div>
               <Select value={exportFormat} onValueChange={(value: 'pdf' | 'excel') => setExportFormat(value)}>
                 <SelectTrigger className="w-[120px]">
                   <SelectValue placeholder="Export format" />
@@ -137,11 +119,82 @@ export function DailySalesReport() {
               </Button>
             </div>
           </div>
+          {/* Date Range Picker */}
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1">
+              <Label className="text-xs">From</Label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-36"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">To</Label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-36"
+              />
+            </div>
+            {/* Quick presets */}
+            <div className="flex gap-1">
+              {[
+                { label: 'Today', days: 0 },
+                { label: 'Yesterday', days: 1 },
+                { label: '7 days', days: 7 },
+                { label: '30 days', days: 30 },
+                { label: 'This month', days: -1 },
+              ].map(({ label, days }) => (
+                <Button
+                  key={label}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8"
+                  onClick={() => {
+                    const end = new Date();
+                    let start: Date;
+                    if (days === -1) {
+                      start = new Date(end.getFullYear(), end.getMonth(), 1);
+                    } else if (days === 1) {
+                      const yesterday = new Date(end);
+                      yesterday.setDate(yesterday.getDate() - 1);
+                      start = yesterday;
+                      end.setDate(end.getDate() - 1);
+                    } else {
+                      start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+                    }
+                    setStartDate(start.toISOString().split('T')[0]);
+                    setEndDate(end.toISOString().split('T')[0]);
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <Button size="sm" onClick={() => loadReport(startDate, endDate)}>
+              Apply
+            </Button>
+          </div>
         </CardHeader>
       </Card>
 
+      {isLoading && (
+        <div className="text-center py-8">
+          <p className="text-muted-foreground">Loading report...</p>
+        </div>
+      )}
+
+      {!isLoading && !report && (
+        <div className="text-center py-8">
+          <p className="text-muted-foreground">Select a date range and click Apply to view the daily sales report</p>
+        </div>
+      )}
+
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {report && <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -193,10 +246,10 @@ export function DailySalesReport() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </div>}
 
       {/* Detailed Tabs */}
-      <Tabs defaultValue="overview" className="space-y-4">
+      {report && <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="payments">Payment Methods</TabsTrigger>
@@ -323,7 +376,7 @@ export function DailySalesReport() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+      </Tabs>}
     </div>
   );
 }

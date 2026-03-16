@@ -1332,3 +1332,154 @@ async def get_audit_trail(
             status_code=500,
             detail=f"Failed to get audit trail: {str(e)}"
         )
+
+
+# =====================================================
+# ITEM-LEVEL VOID ENDPOINT
+# =====================================================
+
+from pydantic import BaseModel as _BaseModel
+
+class VoidItemRequest(_BaseModel):
+    item_index: int  # 0-based index of item in the items array
+    void_reason: str
+    quantity: int = 0  # 0 = void entire item; >0 = reduce by this qty
+
+@router.post("/{order_id}/void-item")
+async def void_order_item(
+    order_id: str,
+    req: VoidItemRequest,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Void a specific item in an order.
+    Requires manager or admin role.
+    Updates order totals and bill totals if a bill exists.
+    """
+    # Authorization check
+    user_role = current_user.get("role", "")
+    if user_role not in ["admin", "manager"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Only managers and admins can void order items"
+        )
+
+    # Fetch order
+    order_res = supabase.table("orders").select("*").eq("id", order_id).execute()
+    if not order_res.data:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order = order_res.data[0]
+    items = list(order.get("items") or [])
+
+    if req.item_index < 0 or req.item_index >= len(items):
+        raise HTTPException(status_code=400, detail=f"Item index {req.item_index} is out of range")
+
+    item = dict(items[req.item_index])
+
+    if item.get("voided"):
+        raise HTTPException(status_code=400, detail="Item is already voided")
+
+    original_price = float(item.get("price", 0))
+    original_qty = int(item.get("quantity", 1))
+
+    if req.quantity > 0 and req.quantity < original_qty:
+        # Partial void — reduce quantity
+        new_qty = original_qty - req.quantity
+        voided_amount = original_price * req.quantity
+        item["quantity"] = new_qty
+        item["total"] = original_price * new_qty
+        # Track voided portion
+        item["voided_quantity"] = item.get("voided_quantity", 0) + req.quantity
+        item["void_reason"] = req.void_reason
+        item["voided_by"] = current_user["id"]
+        item["voided_at"] = datetime.now(timezone.utc).isoformat()
+    else:
+        # Full void
+        voided_amount = float(item.get("total", original_price * original_qty))
+        item["voided"] = True
+        item["void_reason"] = req.void_reason
+        item["voided_by"] = current_user["id"]
+        item["voided_at"] = datetime.now(timezone.utc).isoformat()
+
+    items[req.item_index] = item
+
+    # Recalculate order totals (skip voided items)
+    active_items = [i for i in items if not i.get("voided")]
+    new_subtotal = sum(float(i.get("total", 0)) for i in active_items)
+
+    # Maintain same tax rate
+    old_subtotal = float(order.get("subtotal", 0)) or float(order.get("total_amount", 0)) / 1.16
+    old_total = float(order.get("total_amount", 0))
+    tax_rate = 0.16  # Default 16% VAT
+    if old_subtotal > 0:
+        tax_rate = (old_total - old_subtotal) / old_subtotal
+
+    new_tax = round(new_subtotal * tax_rate, 2)
+    new_total = round(new_subtotal + new_tax, 2)
+
+    update_data = {
+        "items": items,
+        "subtotal": new_subtotal,
+        "tax": new_tax,
+        "total_amount": new_total,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "notes": f"{order.get('notes', '')} | Item voided: {item['name']} - {req.void_reason}".strip(" |"),
+    }
+
+    supabase.table("orders").update(update_data).eq("id", order_id).execute()
+
+    # If order has a bill, update bill total
+    bill_id = order.get("bill_id")
+    if bill_id:
+        try:
+            # Recalculate bill total from all its orders
+            bo_res = supabase.table("bill_orders").select("order_id, order_amount").eq("bill_id", bill_id).execute()
+            bill_orders = bo_res.data or []
+
+            # Update order_amount for this order in bill_orders
+            supabase.table("bill_orders").update({
+                "order_amount": new_total
+            }).eq("bill_id", bill_id).eq("order_id", order_id).execute()
+
+            # Sum all orders in bill
+            new_bill_subtotal = 0.0
+            for bo in bill_orders:
+                if bo["order_id"] == order_id:
+                    new_bill_subtotal += new_total
+                else:
+                    new_bill_subtotal += float(bo.get("order_amount", 0))
+
+            new_bill_tax = round(new_bill_subtotal * tax_rate / (1 + tax_rate), 2)
+
+            supabase.table("bills").update({
+                "total_amount": round(new_bill_subtotal, 2),
+                "tax": new_bill_tax,
+                "subtotal": round(new_bill_subtotal - new_bill_tax, 2),
+            }).eq("id", bill_id).execute()
+        except Exception as e:
+            logging.warning(f"Failed to update bill after void: {e}")
+
+    # Record in void log (use notes on the order as fallback if no void_log table)
+    try:
+        supabase.table("void_log").insert({
+            "order_id": order_id,
+            "bill_id": bill_id,
+            "item_name": item["name"],
+            "item_index": req.item_index,
+            "void_reason": req.void_reason,
+            "voided_amount": voided_amount,
+            "voided_by": current_user["id"],
+            "voided_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception:
+        pass  # void_log table may not exist yet — that's OK
+
+    return {
+        "success": True,
+        "message": f"Item '{item['name']}' voided successfully",
+        "voided_amount": voided_amount,
+        "new_order_total": new_total,
+        "order_id": order_id,
+    }

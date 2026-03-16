@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  Search, Download, Printer, XCircle, Clock, 
+import {
+  Search, Download, Printer, XCircle, Clock,
   CheckCircle, AlertCircle, TrendingUp, Users, DollarSign,
-  ChefHat, Truck, Package, Eye, RefreshCw
+  ChefHat, Truck, Package, Eye, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { api } from '@/lib/api/client';
@@ -26,6 +28,7 @@ interface Order {
   priority: string;
   total_amount: number;
   items_count: number;
+  items: any[];
   created_at: string;
   updated_at: string;
 }
@@ -55,6 +58,113 @@ const priorityConfig = {
   urgent: { label: 'Urgent', color: 'bg-red-500 animate-pulse' },
 };
 
+interface VoidItemDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  orderId: string;
+  orderNumber: string;
+  items: any[];
+  onVoidSuccess: () => void;
+}
+
+function VoidItemDialog({ open, onOpenChange, orderId, orderNumber, items, onVoidSuccess }: VoidItemDialogProps) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [reason, setReason] = useState('');
+  const [processing, setProcessing] = useState(false);
+
+  const handleVoid = async () => {
+    if (selectedIndex === null || !reason.trim()) return;
+    setProcessing(true);
+    try {
+      await api.post(`/orders/${orderId}/void-item`, {
+        item_index: selectedIndex,
+        void_reason: reason,
+        quantity: 0, // full void
+      });
+      toast.success('Item voided successfully');
+      onVoidSuccess();
+      onOpenChange(false);
+      setSelectedIndex(null);
+      setReason('');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to void item');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-orange-600">
+            <AlertTriangle className="h-5 w-5" />
+            Void Order Item
+          </DialogTitle>
+          <DialogDescription>
+            Order #{orderNumber} — Select item to void and provide reason
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Select Item to Void</Label>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {items.map((item: any, idx: number) => (
+                <div
+                  key={idx}
+                  onClick={() => !item.voided && setSelectedIndex(idx)}
+                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                    item.voided ? 'opacity-40 cursor-not-allowed bg-gray-50' :
+                    selectedIndex === idx ? 'border-orange-500 bg-orange-50' :
+                    'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium">{item.name} {item.voided ? '(Already voided)' : ''}</span>
+                    <span>x{item.quantity} — KES {item.total?.toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Void Reason *</Label>
+            <Select onValueChange={setReason} value={reason}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select reason..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Customer changed mind">Customer changed mind</SelectItem>
+                <SelectItem value="Wrong item ordered">Wrong item ordered</SelectItem>
+                <SelectItem value="Out of stock">Out of stock</SelectItem>
+                <SelectItem value="Quality issue">Quality issue</SelectItem>
+                <SelectItem value="Duplicate order">Duplicate order</SelectItem>
+                <SelectItem value="Manager override">Manager override</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {selectedIndex !== null && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
+              <strong>Voiding:</strong> {items[selectedIndex]?.name} — KES {items[selectedIndex]?.total?.toLocaleString()}<br/>
+              <strong>Impact:</strong> Order total will be reduced by this amount
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            onClick={handleVoid}
+            disabled={selectedIndex === null || !reason || processing}
+          >
+            {processing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Voiding...</> : 'Confirm Void'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function OrderManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -63,29 +173,31 @@ export default function OrderManagement() {
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [voidDialogOrder, setVoidDialogOrder] = useState<Order | null>(null);
   
   const queryClient = useQueryClient();
 
-  const { data: orders = [], isLoading, refetch } = useQuery({
+  const { data: ordersRaw, isLoading, refetch } = useQuery({
     queryKey: ['manager-orders', statusFilter, typeFilter, dateFilter, searchTerm],
-    queryFn: async () => {
+    queryFn: async (): Promise<Order[]> => {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (typeFilter !== 'all') params.append('type', typeFilter);
       if (dateFilter !== 'all') params.append('date', dateFilter);
       if (searchTerm) params.append('search', searchTerm);
-      
-      const { data } = await api.get(`/orders/manager/manager?${params}`);
-      return data;
+
+      const response = await api.get<Order[]>(`/orders/manager/manager?${params}`);
+      return (response.data.data ?? []) as Order[];
     },
     refetchInterval: 10000,
   });
+  const orders: Order[] = ordersRaw ?? [];
 
-  const { data: stats } = useQuery<QuickStats>({
+  const { data: stats } = useQuery({
     queryKey: ['order-stats'],
-    queryFn: async () => {
-      const { data } = await api.get('/orders/manager/stats');
-      return data;
+    queryFn: async (): Promise<QuickStats> => {
+      const response = await api.get<QuickStats>('/orders/manager/stats');
+      return response.data.data as QuickStats;
     },
     refetchInterval: 30000,
   });
@@ -108,7 +220,7 @@ export default function OrderManagement() {
         filters: { status: statusFilter, type: typeFilter, date: dateFilter }
       }, { responseType: 'blob' });
       
-      const url = window.URL.createObjectURL(new Blob([data]));
+      const url = window.URL.createObjectURL(new Blob([data as unknown as BlobPart]));
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `orders-${Date.now()}.${format}`);
@@ -292,9 +404,20 @@ export default function OrderManagement() {
                               {format(new Date(order.created_at), 'HH:mm')}
                             </td>
                             <td className="p-2 sm:p-3">
-                              <Button size="sm" variant="ghost" onClick={() => setViewOrder(order)}>
-                                <Eye className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => setViewOrder(order)}>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                                  onClick={() => setVoidDialogOrder(order)}
+                                >
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  Void Item
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -353,6 +476,18 @@ export default function OrderManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Void Item Dialog */}
+      {voidDialogOrder && (
+        <VoidItemDialog
+          open={!!voidDialogOrder}
+          onOpenChange={(open) => !open && setVoidDialogOrder(null)}
+          orderId={voidDialogOrder.id}
+          orderNumber={voidDialogOrder.order_number}
+          items={voidDialogOrder.items || []}
+          onVoidSuccess={refetch}
+        />
+      )}
     </div>
   );
 }

@@ -327,6 +327,84 @@ class HousekeepingService {
     return response.data;
   }
 
+  async updateLostItem(itemId: string, data: Partial<LostAndFound>): Promise<LostAndFound> {
+    const response = await api.put<LostAndFound>(`/housekeeping/lost-and-found/${itemId}`, data);
+    return response.data;
+  }
+
+  async deleteLostItem(itemId: string): Promise<void> {
+    await api.delete(`/housekeeping/lost-and-found/${itemId}`);
+  }
+
+  async uploadLostItemPhotos(itemId: string, formData: FormData): Promise<void> {
+    await api.post(`/housekeeping/lost-and-found/${itemId}/photos`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+
+  // ============================================
+  // Inventory Aliases (for InventoryManagement component)
+  // ============================================
+
+  async getInventory(params?: Parameters<HousekeepingService['getSupplies']>[0]): Promise<HousekeepingSupply[]> {
+    return this.getSupplies(params);
+  }
+
+  async getUsageLogs(_params?: { limit?: number }): Promise<SupplyUsage[]> {
+    return [];
+  }
+
+  async logItemUsage(data: {
+    item_id: string;
+    quantity: number;
+    task_id?: string;
+    used_by?: string;
+    notes?: string;
+  }): Promise<SupplyUsage> {
+    return this.logSupplyUsage({
+      supply_id: data.item_id,
+      task_id: data.task_id,
+      quantity_used: data.quantity,
+      used_by: data.used_by,
+      notes: data.notes,
+    });
+  }
+
+  async restockItem(supplyId: string, data: {
+    quantity: number;
+    restocked_by?: string;
+    notes?: string;
+  }): Promise<HousekeepingSupply> {
+    const current = await api.get<HousekeepingSupply>(`/housekeeping/supplies/${supplyId}`);
+    const newStock = (current.data.current_stock || 0) + data.quantity;
+    return this.updateSupply(supplyId, { current_stock: newStock });
+  }
+
+  // ============================================
+  // Inspection Aliases (for RoomInspection component)
+  // ============================================
+
+  async submitInspection(data: Omit<RoomInspection, 'id' | 'inspection_date' | 'created_at'>): Promise<RoomInspection> {
+    return this.createInspection(data);
+  }
+
+  async uploadInspectionPhotos(inspectionId: string, formData: FormData): Promise<void> {
+    await api.post(`/housekeeping/inspections/${inspectionId}/photos`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+
+  async createMaintenanceIssue(data: {
+    room_id: string;
+    inspection_id?: string;
+    issue_type?: string;
+    description?: string;
+    priority?: string;
+    location?: string;
+  }): Promise<void> {
+    await api.post('/maintenance/issues', data);
+  }
+
   // ============================================
   // Statistics
   // ============================================

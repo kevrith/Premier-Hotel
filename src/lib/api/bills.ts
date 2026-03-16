@@ -122,6 +122,46 @@ export const billsApi = {
     const response = await api.post<BillResponse>(`/bills/${billId}/void`);
     return response.data;
   },
+
+  /**
+   * Initiate M-Pesa STK Push for a bill
+   */
+  initiateMpesaSTK: async (billId: string, phone: string, amount?: number): Promise<any> => {
+    const response = await api.post<any>('/bills/mpesa/stk-push', {
+      bill_id: billId,
+      phone_number: phone,
+      amount,
+    });
+    return (response.data as any)?.data ?? response.data;
+  },
+
+  /**
+   * Poll M-Pesa STK push status
+   */
+  getMpesaSTKStatus: async (checkoutRequestId: string): Promise<any> => {
+    const response = await api.get<any>(`/bills/mpesa/stk-status/${checkoutRequestId}`);
+    return (response.data as any)?.data ?? response.data;
+  },
+
+  /**
+   * Initialize Paystack transaction for a bill
+   */
+  initializePaystack: async (billId: string, email: string, amount?: number): Promise<any> => {
+    const response = await api.post<any>('/bills/paystack/initialize', {
+      bill_id: billId,
+      email,
+      amount,
+    });
+    return (response.data as any)?.data ?? response.data;
+  },
+
+  /**
+   * Verify Paystack payment by reference
+   */
+  verifyPaystack: async (reference: string): Promise<any> => {
+    const response = await api.get<any>(`/bills/paystack/verify/${reference}`);
+    return (response.data as any)?.data ?? response.data;
+  },
 };
 
 export default billsApi;

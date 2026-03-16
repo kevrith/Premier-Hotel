@@ -7,6 +7,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import axios from 'axios';
 import * as authApi from '@/lib/api/auth';
+import { cacheUser, cacheMenuItems } from '@/lib/db/localDatabase';
+import { api } from '@/lib/api/client';
 
 const API_BASE_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -112,6 +114,24 @@ const useAuthStore = create<AuthState>()(
             needsVerification: needsEmailVerification || needsPhoneVerification,
             verificationType: needsEmailVerification ? 'email' : needsPhoneVerification ? 'phone' : null,
           });
+
+          // Cache user and menu items for offline use (non-fatal)
+          try {
+            await cacheUser({
+              id: user.id,
+              email: user.email || '',
+              full_name: user.full_name || '',
+              role: user.role,
+              token: '', // httpOnly cookies — no JS-accessible token
+            });
+
+            // Cache menu in background
+            api.get('/menu/items').then(res => {
+              cacheMenuItems(res.data || []).catch(() => {});
+            }).catch(() => {});
+          } catch (e) {
+            // Caching failure is non-fatal
+          }
 
           return {
             success: true,

@@ -507,124 +507,184 @@ async def get_employee_sales_report(
     supabase: Client = Depends(get_supabase_admin)
 ):
     """
-    Get detailed employee sales performance report.
-    Returns sales metrics for each employee including total sales, orders, averages, etc.
+    Orders-first employee sales report.
+    Only shows employees who actually have orders in the period.
+    Chefs are excluded — they cook orders, not create them.
+    Customer orders attached to a waiter count for that waiter.
     """
     try:
-        # Default to last 30 days if no dates provided
         if not end_date:
             end_date = datetime.now().isoformat()
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        # Get all staff users (waiter, chef, etc.) from users table
-        users_query = supabase.table("users").select("id, full_name, email, role")
+        # ── Step 1: Fetch all orders in the period ────────────────────
+        orders_res = supabase.table("orders").select(
+            "id, total_amount, status, created_at, items, bill_id, "
+            "assigned_waiter_id, created_by_staff_id"
+        ).gte("created_at", start_date).lte("created_at", end_date).execute()
+        all_orders = orders_res.data or []
 
-        # Apply role filter
-        if role:
-            users_query = users_query.eq("role", role)
-        elif not employee_id:
-            # Default to showing only staff roles
-            users_query = users_query.in_("role", ["waiter", "chef", "manager", "staff"])
+        # ── Step 2: Collect staff IDs who have orders ─────────────────
+        # Priority: assigned_waiter_id first (customer order attached to waiter),
+        # fallback to created_by_staff_id (staff-created order)
+        staff_order_map: Dict[str, list] = {}  # staff_id -> [orders]
+        unattributed_orders = []
 
-        # Apply employee filter
+        for o in all_orders:
+            staff_id = o.get("assigned_waiter_id") or o.get("created_by_staff_id")
+            if staff_id:
+                staff_order_map.setdefault(staff_id, []).append(o)
+            else:
+                unattributed_orders.append(o)
+
+        # Filter by specific employee if requested
         if employee_id:
-            users_query = users_query.eq("id", employee_id)
+            staff_order_map = {k: v for k, v in staff_order_map.items() if k == employee_id}
 
-        users_result = users_query.execute()
-        employees = users_result.data
+        if not staff_order_map:
+            return {
+                "period": {"start": start_date, "end": end_date},
+                "total_employees": 0, "total_sales": 0, "total_orders": 0,
+                "unattributed_sales": sum(float(o.get("total_amount", 0)) for o in unattributed_orders),
+                "unattributed_orders": len(unattributed_orders),
+                "employees": []
+            }
 
-        # Build employee sales data
+        # ── Step 3: Look up user info for all active staff ────────────
+        staff_ids = list(staff_order_map.keys())
+        users_res = supabase.table("users").select(
+            "id, full_name, email, role, department"
+        ).in_("id", staff_ids).execute()
+        users_map = {u["id"]: u for u in (users_res.data or [])}
+
+        # ── Step 4: Build per-employee stats ──────────────────────────
+        today = datetime.now().date()
+        this_week_start = today - timedelta(days=today.weekday())
+        this_month_start = datetime(today.year, today.month, 1).date()
+
         employee_sales_list = []
 
-        for employee in employees:
-            emp_id = employee["id"]
-            emp_role = employee.get("role", "staff")
+        for staff_id, emp_orders in staff_order_map.items():
+            user = users_map.get(staff_id)
+            emp_role = (user.get("role") if user else None) or "staff"
 
-            # Sales are attributed to waiters/creators only (not chefs) to avoid double counting.
-            # Chefs get "orders_prepared" count instead.
+            # Skip chefs — they cook, not sell
             if emp_role == "chef":
-                # Chef: only get orders they prepared (no sales credit)
-                chef_orders = supabase.table("orders").select(
-                    "id, customer_id, total_amount, status, created_at, location, items"
-                ).eq("assigned_chef_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
+                continue
+            # Apply role filter if provided
+            if role and emp_role != role:
+                continue
 
-                emp_orders = chef_orders.data
-                # Chefs don't get sales credit - sales belong to the waiter who took the order
-                total_sales = 0
-            else:
-                # Waiter/manager/staff: get sales from orders they created or were assigned to
-                waiter_orders = supabase.table("orders").select(
-                    "id, customer_id, total_amount, status, created_at, location, items"
-                ).eq("assigned_waiter_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
-
-                created_orders = supabase.table("orders").select(
-                    "id, customer_id, total_amount, status, created_at, location, items"
-                ).eq("created_by_staff_id", emp_id).gte("created_at", start_date).lte("created_at", end_date).execute()
-
-                # Combine and deduplicate (waiter + creator, no chef)
-                emp_orders_dict = {o["id"]: o for o in waiter_orders.data}
-                emp_orders_dict.update({o["id"]: o for o in created_orders.data})
-                emp_orders = list(emp_orders_dict.values())
-                total_sales = sum(float(o.get("total_amount", 0)) for o in emp_orders)
-
-            # Extract order items from the JSON items array in each order
-            emp_order_items = []
-            for order in emp_orders:
-                order_items = order.get("items") or []
-                if isinstance(order_items, list):
-                    for item in order_items:
-                        emp_order_items.append({
-                            "menu_item_id": item.get("menu_item_id"),
-                            "quantity": item.get("quantity", 0),
-                            "price": item.get("price", 0),
-                            "name": item.get("name", "Unknown")
-                        })
-
+            total_sales = sum(float(o.get("total_amount", 0)) for o in emp_orders)
             total_orders = len(emp_orders)
             completed_orders = len([o for o in emp_orders if o.get("status") in ["delivered", "completed", "served"]])
 
-            total_items_sold = sum(oi.get("quantity", 0) for oi in emp_order_items)
+            # Items breakdown
+            emp_order_items = []
+            for order in emp_orders:
+                for item in (order.get("items") or []):
+                    if isinstance(item, dict):
+                        emp_order_items.append({
+                            "menu_item_id": item.get("menu_item_id"),
+                            "quantity": item.get("quantity", 0),
+                            "name": item.get("name", "Unknown")
+                        })
 
-            # Calculate averages
+            total_items_sold = sum(oi.get("quantity", 0) for oi in emp_order_items)
             avg_order_value = total_sales / total_orders if total_orders > 0 else 0
 
-            # Get time-based metrics
-            today = datetime.now().date()
-            this_week_start = today - timedelta(days=today.weekday())
-            this_month_start = datetime(today.year, today.month, 1).date()
+            # Time-based counts
+            def safe_date(ts):
+                try:
+                    return datetime.fromisoformat(ts.replace('Z', '+00:00')).date()
+                except Exception:
+                    return None
 
-            orders_today = len([o for o in emp_orders if datetime.fromisoformat(o["created_at"].replace('Z', '+00:00')).date() == today])
-            orders_this_week = len([o for o in emp_orders if datetime.fromisoformat(o["created_at"].replace('Z', '+00:00')).date() >= this_week_start])
-            orders_this_month = len([o for o in emp_orders if datetime.fromisoformat(o["created_at"].replace('Z', '+00:00')).date() >= this_month_start])
+            orders_today = sum(1 for o in emp_orders if safe_date(o.get("created_at", "")) == today)
+            orders_this_week = sum(1 for o in emp_orders if (safe_date(o.get("created_at", "")) or today) >= this_week_start)
+            orders_this_month = sum(1 for o in emp_orders if (safe_date(o.get("created_at", "")) or today) >= this_month_start)
 
-            # Find most popular item (using name from JSON items)
-            item_counts = {}
-            item_names = {}
+            # Top item
+            item_counts: Dict[str, int] = {}
+            item_names: Dict[str, str] = {}
             for oi in emp_order_items:
-                item_name = oi.get("name", "Unknown")
-                item_id = oi.get("menu_item_id") or item_name
-                if item_id:
-                    item_counts[item_id] = item_counts.get(item_id, 0) + oi.get("quantity", 0)
-                    item_names[item_id] = item_name
+                key = oi.get("menu_item_id") or oi.get("name", "Unknown")
+                item_counts[key] = item_counts.get(key, 0) + oi.get("quantity", 0)
+                item_names[key] = oi.get("name", "Unknown")
+            top_key = max(item_counts, key=lambda k: item_counts[k]) if item_counts else None
+            top_selling_item = item_names.get(top_key, "N/A") if top_key else "N/A"
 
-            top_item_id = max(item_counts.items(), key=lambda x: x[1])[0] if item_counts else None
-            top_selling_item = item_names.get(top_item_id, "N/A") if top_item_id else "N/A"
-
-            # Get first and last sale times
+            # First / last sale
+            sorted_orders = sorted(emp_orders, key=lambda x: x.get("created_at", ""))
             first_sale_time = "N/A"
             last_sale_time = "N/A"
-            if emp_orders:
-                sorted_orders = sorted(emp_orders, key=lambda x: x["created_at"])
-                first_sale_time = datetime.fromisoformat(sorted_orders[0]["created_at"].replace('Z', '+00:00')).strftime("%I:%M %p")
-                last_sale_time = datetime.fromisoformat(sorted_orders[-1]["created_at"].replace('Z', '+00:00')).strftime("%I:%M %p")
+            if sorted_orders:
+                try:
+                    first_sale_time = datetime.fromisoformat(sorted_orders[0]["created_at"].replace('Z', '+00:00')).strftime("%I:%M %p")
+                    last_sale_time = datetime.fromisoformat(sorted_orders[-1]["created_at"].replace('Z', '+00:00')).strftime("%I:%M %p")
+                except Exception:
+                    pass
+
+            # ── Payment breakdown ──────────────────────────────────────
+            bill_ids = list({o["bill_id"] for o in emp_orders if o.get("bill_id")})
+            payment_cash = payment_mpesa = payment_card = payment_room_charge = payment_other = 0.0
+            mpesa_transactions: list = []
+            split_bills: list = []
+
+            if bill_ids:
+                pay_res = supabase.table("payments").select(
+                    "id, bill_id, amount, payment_method, mpesa_code, mpesa_phone, "
+                    "payment_status, processed_by_waiter_id, created_at"
+                ).in_("bill_id", bill_ids).execute()
+                all_bill_payments = pay_res.data or []
+
+                bill_res = supabase.table("bills").select("id, bill_number, total_amount").in_("id", bill_ids).execute()
+                bills_map = {b["id"]: b for b in (bill_res.data or [])}
+
+                payments_by_bill: Dict[str, list] = {}
+                for p in all_bill_payments:
+                    payments_by_bill.setdefault(p["bill_id"], []).append(p)
+
+                for bid, bill_payments in payments_by_bill.items():
+                    bill_info = bills_map.get(bid, {})
+                    bill_number = bill_info.get("bill_number", "N/A")
+                    bill_total = float(bill_info.get("total_amount") or 0)
+                    processors = {p.get("processed_by_waiter_id") for p in bill_payments if p.get("processed_by_waiter_id")}
+                    if len(processors) > 1:
+                        split_bills.append({
+                            "bill_number": bill_number,
+                            "bill_id": bid,
+                            "your_amount": round(sum(float(p.get("amount") or 0) for p in bill_payments), 2),
+                            "total_amount": round(bill_total, 2),
+                            "split_count": len(processors)
+                        })
+                    for p in bill_payments:
+                        if p.get("payment_status") not in ("completed", "paid", None):
+                            continue
+                        amt = float(p.get("amount") or 0)
+                        method = (p.get("payment_method") or "cash").lower()
+                        if method == "mpesa":
+                            payment_mpesa += amt
+                            if p.get("mpesa_code"):
+                                mpesa_transactions.append({"mpesa_code": p["mpesa_code"], "amount": round(amt, 2), "phone": p.get("mpesa_phone", ""), "bill_number": bill_number, "date": p.get("created_at", "")})
+                        elif method in ("card", "credit_card", "debit_card"):
+                            payment_card += amt
+                        elif method in ("room_charge", "room charge"):
+                            payment_room_charge += amt
+                        elif method == "cash":
+                            payment_cash += amt
+                        else:
+                            payment_other += amt
+
+            total_collected = round(payment_cash + payment_mpesa + payment_card + payment_room_charge + payment_other, 2)
 
             employee_sales_list.append({
-                "employee_id": emp_id,
-                "employee_name": employee.get("full_name", "Unknown"),
-                "email": employee.get("email", ""),
-                "role": employee.get("role", "staff"),
-                "department": employee.get("department") or department or "Unassigned",
+                "employee_id": staff_id,
+                "employee_name": user.get("full_name", "Unknown") if user else "Unknown",
+                "email": user.get("email", "") if user else "",
+                "role": emp_role,
+                "department": (user.get("department") if user else None) or "Unassigned",
                 "total_sales": round(total_sales, 2),
                 "total_orders": total_orders,
                 "completed_orders": completed_orders,
@@ -636,23 +696,29 @@ async def get_employee_sales_report(
                 "top_selling_item": top_selling_item,
                 "first_sale_time": first_sale_time,
                 "last_sale_time": last_sale_time,
-                "completion_rate": round((completed_orders / total_orders * 100), 2) if total_orders > 0 else 0
+                "completion_rate": round(completed_orders / total_orders * 100, 2) if total_orders > 0 else 0,
+                "payment_summary": {
+                    "cash": round(payment_cash, 2),
+                    "mpesa": round(payment_mpesa, 2),
+                    "card": round(payment_card, 2),
+                    "room_charge": round(payment_room_charge, 2),
+                    "other": round(payment_other, 2),
+                    "total_collected": total_collected
+                },
+                "mpesa_transactions": sorted(mpesa_transactions, key=lambda x: x["date"], reverse=True),
+                "split_bills": split_bills
             })
 
-        # Sort by total sales descending
         employee_sales_list.sort(key=lambda x: x["total_sales"], reverse=True)
+        unattributed_sales = sum(float(o.get("total_amount", 0)) for o in unattributed_orders)
 
-        # Summary totals exclude chefs to avoid double counting
-        # (chef orders are the same orders waiters posted)
-        non_chef = [e for e in employee_sales_list if e["role"] != "chef"]
         return {
-            "period": {
-                "start": start_date,
-                "end": end_date
-            },
+            "period": {"start": start_date, "end": end_date},
             "total_employees": len(employee_sales_list),
-            "total_sales": sum(e["total_sales"] for e in non_chef),
-            "total_orders": sum(e["total_orders"] for e in non_chef),
+            "total_sales": round(sum(e["total_sales"] for e in employee_sales_list), 2),
+            "total_orders": sum(e["total_orders"] for e in employee_sales_list),
+            "unattributed_sales": round(unattributed_sales, 2),
+            "unattributed_orders": len(unattributed_orders),
             "employees": employee_sales_list
         }
 
@@ -1168,6 +1234,45 @@ async def get_employee_details(
             reverse=True
         )[:10]
 
+        # Build items_by_category — fetch categories from menu_items table
+        all_item_ids_emp = list(set(
+            k for k in items_sold_count.keys()
+            if not k.startswith("Unknown") and len(k) > 8  # UUIDs are longer
+        ))
+        menu_cat_map: Dict[str, str] = {}
+        if all_item_ids_emp:
+            try:
+                mc_result = supabase.table("menu_items").select("id, category").in_(
+                    "id", all_item_ids_emp
+                ).execute()
+                for mi in (mc_result.data or []):
+                    menu_cat_map[str(mi["id"])] = mi.get("category") or "Other"
+            except Exception:
+                pass
+
+        cat_buckets: Dict[str, Any] = {}
+        for item_key, data in items_sold_count.items():
+            cat = menu_cat_map.get(str(item_key)) or "Other"
+            cat_buckets.setdefault(cat, [])
+            cat_buckets[cat].append({
+                "name": data["name"],
+                "qty": data["quantity"],
+                "revenue": round(data["revenue"], 2)
+            })
+
+        items_by_category = sorted(
+            [
+                {
+                    "category": cat,
+                    "items": sorted(items, key=lambda x: x["revenue"], reverse=True),
+                    "total_qty": sum(i["qty"] for i in items),
+                    "total_revenue": round(sum(i["revenue"] for i in items), 2)
+                }
+                for cat, items in cat_buckets.items()
+            ],
+            key=lambda x: x["total_revenue"], reverse=True
+        )
+
         # Calculate performance metrics
         avg_order_value = total_sales / completed_orders if completed_orders > 0 else 0
         completion_rate = (completed_orders / total_orders * 100) if total_orders > 0 else 0
@@ -1251,6 +1356,7 @@ async def get_employee_details(
             },
             "transactions": transactions[:100],  # Limit to 100 most recent
             "top_items": top_items,
+            "items_by_category": items_by_category,
             "payment_methods": [
                 {"method": method, "total": round(total, 2), "percentage": round((total / total_sales * 100), 2) if total_sales > 0 else 0}
                 for method, total in payment_method_breakdown.items()
@@ -1267,4 +1373,281 @@ async def get_employee_details(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate employee details: {str(e)}"
+        )
+
+
+@router.get("/item-summary")
+async def get_item_summary_report(
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    current_user: dict = Depends(require_role(["admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """
+    Item Summary Sales Report.
+    Returns items sold grouped by category/department with quantity and revenue.
+    Excludes cancelled orders. Similar to QuickBooks POS Item Summary report.
+    """
+    try:
+        if not end_date:
+            end_date = datetime.now().isoformat()
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=1)).isoformat()
+
+        # Get all non-cancelled orders in date range
+        orders_result = supabase.table("orders").select(
+            "id, items, total_amount, status, created_at"
+        ).neq("status", "cancelled").gte("created_at", start_date).lte(
+            "created_at", end_date
+        ).execute()
+        orders = orders_result.data or []
+
+        # Collect menu_item_ids to fetch categories
+        all_item_ids = set()
+        for order in orders:
+            items = order.get("items") or []
+            if isinstance(items, list):
+                for item in items:
+                    mid = item.get("menu_item_id") or item.get("id")
+                    if mid:
+                        all_item_ids.add(str(mid))
+
+        # Fetch menu items with categories
+        menu_map = {}
+        if all_item_ids:
+            menu_result = supabase.table("menu_items").select(
+                "id, name, category"
+            ).in_("id", list(all_item_ids)).execute()
+            for mi in (menu_result.data or []):
+                menu_map[str(mi["id"])] = {
+                    "name": mi.get("name", "Unknown"),
+                    "category": mi.get("category") or "Other"
+                }
+
+        # Aggregate: category -> item_name -> {qty, revenue}
+        category_data: Dict[str, Dict[str, Any]] = {}
+        for order in orders:
+            items = order.get("items") or []
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                mid = str(item.get("menu_item_id") or item.get("id") or "")
+                item_name = item.get("name", "Unknown")
+                qty = int(item.get("quantity", 0))
+                price = float(item.get("price", 0))
+                revenue = price * qty
+
+                if mid and mid in menu_map:
+                    category = menu_map[mid].get("category") or "Other"
+                    item_name = menu_map[mid].get("name", item_name)
+                else:
+                    category = item.get("category") or "Other"
+
+                if category not in category_data:
+                    category_data[category] = {}
+                if item_name not in category_data[category]:
+                    category_data[category][item_name] = {"qty": 0, "revenue": 0.0}
+                category_data[category][item_name]["qty"] += qty
+                category_data[category][item_name]["revenue"] += revenue
+
+        # Format response
+        result = []
+        grand_qty = 0
+        grand_revenue = 0.0
+        for category, items_dict in sorted(category_data.items()):
+            cat_items = sorted(
+                [{"name": k, "qty": v["qty"], "revenue": round(v["revenue"], 2)}
+                 for k, v in items_dict.items()],
+                key=lambda x: x["revenue"], reverse=True
+            )
+            cat_qty = sum(i["qty"] for i in cat_items)
+            cat_revenue = sum(i["revenue"] for i in cat_items)
+            result.append({
+                "category": category,
+                "items": cat_items,
+                "total_qty": cat_qty,
+                "total_revenue": round(cat_revenue, 2)
+            })
+            grand_qty += cat_qty
+            grand_revenue += cat_revenue
+
+        result.sort(key=lambda x: x["total_revenue"], reverse=True)
+
+        return {
+            "period": {"start": start_date, "end": end_date},
+            "categories": result,
+            "grand_total_qty": grand_qty,
+            "grand_total_revenue": round(grand_revenue, 2)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate item summary: {str(e)}"
+        )
+
+
+@router.get("/void-report")
+async def get_void_report(
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    current_user: dict = Depends(require_role(["admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """
+    Voided / Cancelled Orders Report.
+    Shows all voids grouped by who voided them and which waiter owned the order.
+    """
+    try:
+        if not end_date:
+            end_date = datetime.now().isoformat()
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).isoformat()
+
+        # Get order_modifications of type 'void'
+        mods_result = supabase.table("order_modifications").select(
+            "id, order_id, modification_type, reason, amount, requested_by, approved_by, status, created_at"
+        ).eq("modification_type", "void").gte("created_at", start_date).lte(
+            "created_at", end_date
+        ).execute()
+        mods = mods_result.data or []
+
+        # Get cancelled orders (directly cancelled, not via modification)
+        cancelled_result = supabase.table("orders").select(
+            "id, order_number, items, total_amount, assigned_waiter_id, "
+            "created_by_staff_id, status, updated_at, notes"
+        ).eq("status", "cancelled").gte("updated_at", start_date).lte(
+            "updated_at", end_date
+        ).execute()
+        cancelled_orders = cancelled_result.data or []
+
+        # Collect staff IDs and order IDs
+        staff_ids = set()
+        mod_order_ids = [m["order_id"] for m in mods if m.get("order_id")]
+        for mod in mods:
+            for fld in ["requested_by", "approved_by"]:
+                if mod.get(fld):
+                    staff_ids.add(mod[fld])
+        for o in cancelled_orders:
+            for fld in ["assigned_waiter_id", "created_by_staff_id"]:
+                if o.get(fld):
+                    staff_ids.add(o[fld])
+
+        # Fetch orders for mods
+        orders_map: Dict[str, Any] = {}
+        if mod_order_ids:
+            ord_result = supabase.table("orders").select(
+                "id, order_number, items, total_amount, assigned_waiter_id, created_by_staff_id"
+            ).in_("id", mod_order_ids).execute()
+            for o in (ord_result.data or []):
+                orders_map[o["id"]] = o
+                for fld in ["assigned_waiter_id", "created_by_staff_id"]:
+                    if o.get(fld):
+                        staff_ids.add(o[fld])
+
+        # Fetch staff names
+        staff_map: Dict[str, Any] = {}
+        if staff_ids:
+            s_result = supabase.table("users").select("id, full_name, role").in_(
+                "id", list(staff_ids)
+            ).execute()
+            for s in (s_result.data or []):
+                staff_map[s["id"]] = {"name": s.get("full_name", "Unknown"), "role": s.get("role", "")}
+
+        def staff_name(uid):
+            return staff_map.get(uid, {}).get("name", "Unknown") if uid else "Unknown"
+
+        def items_summary(items_list):
+            if not isinstance(items_list, list) or not items_list:
+                return "Full Order"
+            return ", ".join(
+                f"{i.get('quantity', 1)}x {i.get('name', 'Item')}" for i in items_list
+            )
+
+        void_records = []
+
+        # From modifications
+        for mod in mods:
+            order = orders_map.get(mod.get("order_id"), {})
+            waiter_id = order.get("assigned_waiter_id") or order.get("created_by_staff_id")
+            items_list = order.get("items") or []
+            void_records.append({
+                "id": mod["id"],
+                "date": mod["created_at"],
+                "order_number": order.get("order_number", "N/A"),
+                "items": items_list if isinstance(items_list, list) else [],
+                "items_summary": items_summary(items_list),
+                "amount": round(float(mod.get("amount") or order.get("total_amount") or 0), 2),
+                "voided_by": staff_name(mod.get("requested_by")),
+                "voided_by_role": staff_map.get(mod.get("requested_by"), {}).get("role", ""),
+                "original_waiter": staff_name(waiter_id),
+                "reason": mod.get("reason") or "No reason given",
+                "status": mod.get("status", "approved"),
+                "type": "void_request"
+            })
+
+        # Directly cancelled orders
+        mod_order_id_set = set(mod_order_ids)
+        for order in cancelled_orders:
+            if order["id"] in mod_order_id_set:
+                continue
+            waiter_id = order.get("assigned_waiter_id") or order.get("created_by_staff_id")
+            items_list = order.get("items") or []
+            void_records.append({
+                "id": order["id"],
+                "date": order.get("updated_at"),
+                "order_number": order.get("order_number", "N/A"),
+                "items": items_list if isinstance(items_list, list) else [],
+                "items_summary": items_summary(items_list),
+                "amount": round(float(order.get("total_amount") or 0), 2),
+                "voided_by": "Manager/System",
+                "voided_by_role": "manager",
+                "original_waiter": staff_name(waiter_id),
+                "reason": order.get("notes") or "Order cancelled",
+                "status": "approved",
+                "type": "cancellation"
+            })
+
+        void_records.sort(key=lambda x: x.get("date") or "", reverse=True)
+
+        # Summary by voider
+        by_voider: Dict[str, Any] = {}
+        by_waiter: Dict[str, Any] = {}
+        for r in void_records:
+            v = r["voided_by"]
+            by_voider.setdefault(v, {"count": 0, "amount": 0.0})
+            by_voider[v]["count"] += 1
+            by_voider[v]["amount"] += r["amount"]
+            w = r["original_waiter"]
+            by_waiter.setdefault(w, {"count": 0, "amount": 0.0})
+            by_waiter[w]["count"] += 1
+            by_waiter[w]["amount"] += r["amount"]
+
+        return {
+            "period": {"start": start_date, "end": end_date},
+            "summary": {
+                "total_voids": len(void_records),
+                "total_voided_amount": round(sum(r["amount"] for r in void_records), 2)
+            },
+            "by_voider": sorted(
+                [{"name": k, "count": v["count"], "amount": round(v["amount"], 2)}
+                 for k, v in by_voider.items()],
+                key=lambda x: x["amount"], reverse=True
+            ),
+            "by_waiter": sorted(
+                [{"name": k, "count": v["count"], "amount": round(v["amount"], 2)}
+                 for k, v in by_waiter.items()],
+                key=lambda x: x["amount"], reverse=True
+            ),
+            "records": void_records
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate void report: {str(e)}"
         )

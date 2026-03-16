@@ -32,15 +32,21 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/api\..*/,
+            urlPattern: /^http:\/\/localhost:8000\/api\/v1\/menu/,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'menu-cache',
+              expiration: { maxEntries: 100, maxAgeSeconds: 24 * 60 * 60 },
+            },
+          },
+          {
+            urlPattern: /^http:\/\/localhost:8000\/api\/v1\/orders/,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 5 * 60 // 5 minutes
-              }
-            }
+              cacheName: 'orders-cache',
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 },
+              networkTimeoutSeconds: 5,
+            },
           },
           {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif)$/,

@@ -3,7 +3,7 @@
  * Comprehensive individual employee performance report with drill-down analytics
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,7 +35,13 @@ import {
   FileText,
   CheckCircle,
   XCircle,
+  ChevronDown,
+  ChevronRight,
+  Package,
+  Ban,
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { api } from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 import { reportsService, EmployeeDetailResponse } from '@/lib/api/reports';
 import { format } from 'date-fns';
@@ -55,11 +61,20 @@ export function EmployeeDetailReport({
 }: EmployeeDetailReportProps) {
   const [data, setData] = useState<EmployeeDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [startDate, setStartDate] = useState(
     new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]
   );
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [dateRange, setDateRange] = useState('30days');
+
+  // Void state
+  const [voidDialogOpen, setVoidDialogOpen] = useState(false);
+  const [voidingOrderId, setVoidingOrderId] = useState<string>('');
+  const [voidingOrderItems, setVoidingOrderItems] = useState<Array<{ name: string; quantity: number; price: number }>>([]);
+  const [voidItemIndex, setVoidItemIndex] = useState<string>('0');
+  const [voidReason, setVoidReason] = useState('');
+  const [voidLoading, setVoidLoading] = useState(false);
 
   useEffect(() => {
     if (open && employeeId) {
@@ -72,6 +87,9 @@ export function EmployeeDetailReport({
     try {
       const response = await reportsService.getEmployeeDetails(employeeId, startDate, endDate);
       setData(response);
+      if (response.items_by_category) {
+        setExpandedCategories(new Set(response.items_by_category.map((c) => c.category)));
+      }
     } catch (error: any) {
       console.error('Error loading employee details:', error);
       toast.error(error.message || 'Failed to load employee details');
@@ -111,34 +129,41 @@ export function EmployeeDetailReport({
   const handleExport = () => {
     if (!data) return;
 
-    // Create CSV content
-    const csvContent = [
-      ['Employee Performance Report'],
-      [''],
-      ['Employee', data.employee.name],
-      ['Email', data.employee.email],
-      ['Role', data.employee.role],
-      ['Department', data.employee.department],
-      ['Period', `${startDate} to ${endDate}`],
-      [''],
-      ['Performance Summary'],
-      ['Total Sales', `KES ${data.summary.total_sales.toLocaleString()}`],
-      ['Total Orders', data.summary.total_orders],
-      ['Completed Orders', data.summary.completed_orders],
-      ['Avg Order Value', `KES ${data.summary.avg_order_value.toLocaleString()}`],
-      ['Completion Rate', `${data.summary.completion_rate}%`],
-      ['Rank', `${data.summary.rank} of ${data.summary.total_peers}`],
-      ['Team Average', `KES ${data.summary.team_average.toLocaleString()}`],
-      ['Performance vs Average', `${data.summary.performance_vs_average}%`],
-      [''],
-      ['Top Items Sold'],
-      ['Item', 'Quantity', 'Revenue'],
-      ...data.top_items.map((item) => [item.name, item.quantity, item.revenue]),
-    ]
-      .map((row) => row.join(','))
-      .join('\n');
+    const rows: string[] = [
+      'Employee Performance Report',
+      '',
+      `Employee,${data.employee.name}`,
+      `Email,${data.employee.email}`,
+      `Role,${data.employee.role}`,
+      `Department,${data.employee.department}`,
+      `Period,${startDate} to ${endDate}`,
+      '',
+      'Performance Summary',
+      `Total Sales,KES ${data.summary.total_sales.toLocaleString()}`,
+      `Total Orders,${data.summary.total_orders}`,
+      `Completed Orders,${data.summary.completed_orders}`,
+      `Avg Order Value,KES ${data.summary.avg_order_value.toLocaleString()}`,
+      `Completion Rate,${data.summary.completion_rate}%`,
+      `Rank,${data.summary.rank} of ${data.summary.total_peers}`,
+      `Team Average,KES ${data.summary.team_average.toLocaleString()}`,
+      `Performance vs Average,${data.summary.performance_vs_average}%`,
+      '',
+      'Top Items Sold',
+      'Item,Quantity,Revenue',
+      ...data.top_items.map((item) => `${item.name},${item.quantity},${item.revenue}`),
+    ];
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    if (data.items_by_category?.length) {
+      rows.push('', 'Items Sold by Department', 'Department,Item,Qty,Revenue (KES)');
+      data.items_by_category.forEach((cat) => {
+        rows.push(`${cat.category} TOTAL,,${cat.total_qty},${cat.total_revenue}`);
+        cat.items.forEach((item) =>
+          rows.push(`  ${cat.category},${item.name},${item.qty},${item.revenue}`)
+        );
+      });
+    }
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -148,9 +173,49 @@ export function EmployeeDetailReport({
     toast.success('Report exported successfully');
   };
 
+  const toggleCategory = (cat: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  const openVoidDialog = (orderId: string, items: Array<{ name: string; quantity: number; price: number }>) => {
+    setVoidingOrderId(orderId);
+    setVoidingOrderItems(items);
+    setVoidItemIndex('0');
+    setVoidReason('');
+    setVoidDialogOpen(true);
+  };
+
+  const handleVoid = async () => {
+    if (!voidReason.trim()) {
+      toast.error('Please enter a void reason');
+      return;
+    }
+    setVoidLoading(true);
+    try {
+      await api.post(`/orders/${voidingOrderId}/void-item`, {
+        item_index: parseInt(voidItemIndex),
+        void_reason: voidReason,
+      });
+      toast.success('Item voided successfully');
+      setVoidDialogOpen(false);
+      fetchEmployeeDetails();
+    } catch (error: any) {
+      const msg = error?.response?.data?.detail || error.message || 'Failed to void item';
+      toast.error(msg);
+    } finally {
+      setVoidLoading(false);
+    }
+  };
+
   if (!open) return null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -379,7 +444,7 @@ export function EmployeeDetailReport({
 
             {/* Tabs for detailed views */}
             <Tabs defaultValue="transactions" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="transactions">
                   <FileText className="h-4 w-4 mr-2" />
                   Transactions
@@ -387,6 +452,10 @@ export function EmployeeDetailReport({
                 <TabsTrigger value="items">
                   <ShoppingCart className="h-4 w-4 mr-2" />
                   Top Items
+                </TabsTrigger>
+                <TabsTrigger value="items-by-dept">
+                  <Package className="h-4 w-4 mr-2" />
+                  Items Sold
                 </TabsTrigger>
                 <TabsTrigger value="payments">
                   <CreditCard className="h-4 w-4 mr-2" />
@@ -419,6 +488,7 @@ export function EmployeeDetailReport({
                             <TableHead>Payment</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -459,6 +529,19 @@ export function EmployeeDetailReport({
                               </TableCell>
                               <TableCell className="text-right font-semibold">
                                 KES {txn.total.toLocaleString()}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {txn.status !== 'voided' && txn.status !== 'cancelled' && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => openVoidDialog(txn.order_id, txn.items)}
+                                  >
+                                    <Ban className="h-4 w-4 mr-1" />
+                                    Void
+                                  </Button>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -507,6 +590,88 @@ export function EmployeeDetailReport({
                         </div>
                       ))}
                     </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Items Sold by Department Tab */}
+              <TabsContent value="items-by-dept">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Items Sold by Department</CardTitle>
+                    <CardDescription>
+                      All items served to customers, grouped by department
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {!data.items_by_category?.length ? (
+                      <div className="text-center py-10 text-muted-foreground">
+                        No items sold in this period.
+                      </div>
+                    ) : (
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-gray-800 text-white">
+                              <th className="text-left px-3 py-2 w-1/2">Department / Item Name</th>
+                              <th className="text-right px-3 py-2 w-24">Qty</th>
+                              <th className="text-right px-3 py-2">Revenue</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.items_by_category.map((cat, ci) => (
+                              <React.Fragment key={cat.category}>
+                                {/* Department header row */}
+                                <tr
+                                  className="bg-blue-50 hover:bg-blue-100 cursor-pointer select-none"
+                                  onClick={() => toggleCategory(cat.category)}
+                                >
+                                  <td className="px-3 py-2 font-bold flex items-center gap-1">
+                                    {expandedCategories.has(cat.category)
+                                      ? <ChevronDown className="h-4 w-4 text-blue-600 shrink-0" />
+                                      : <ChevronRight className="h-4 w-4 text-blue-600 shrink-0" />}
+                                    <span className="text-blue-900">{cat.category.toUpperCase()}</span>
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-bold text-blue-900">{cat.total_qty}</td>
+                                  <td className="px-3 py-2 text-right font-bold text-blue-900">
+                                    KES {cat.total_revenue.toLocaleString()}
+                                  </td>
+                                </tr>
+                                {/* Item rows */}
+                                {expandedCategories.has(cat.category) &&
+                                  cat.items.map((item, ii) => (
+                                    <tr
+                                      key={`${ci}-${ii}`}
+                                      className={ii % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                                    >
+                                      <td className="px-3 py-1.5 pl-8 text-gray-700">{item.name}</td>
+                                      <td className="px-3 py-1.5 text-right text-gray-700">{item.qty}</td>
+                                      <td className="px-3 py-1.5 text-right text-gray-700">
+                                        KES {item.revenue.toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </React.Fragment>
+                            ))}
+                            {/* Grand total row */}
+                            <tr className="bg-green-50 border-t-2 border-green-300">
+                              <td className="px-3 py-2 font-bold text-green-900">GRAND TOTAL</td>
+                              <td className="px-3 py-2 text-right font-bold text-green-900">
+                                {data.items_by_category.reduce((s, c) => s + c.total_qty, 0)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-bold text-green-900">
+                                KES {data.items_by_category
+                                  .reduce((s, c) => s + c.total_revenue, 0)
+                                  .toLocaleString()}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Click a department row to expand/collapse its items. Cancelled orders are excluded.
+                    </p>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -627,5 +792,58 @@ export function EmployeeDetailReport({
         )}
       </DialogContent>
     </Dialog>
+
+    {/* Void Dialog */}
+    <Dialog open={voidDialogOpen} onOpenChange={setVoidDialogOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600">
+            <Ban className="h-5 w-5" />
+            Void Order
+          </DialogTitle>
+          <DialogDescription>
+            Order: <span className="font-mono text-xs">{voidingOrderId.substring(0, 8)}...</span>
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label className="mb-2 block">Select Item to Void</Label>
+            <Select value={voidItemIndex} onValueChange={setVoidItemIndex}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {voidingOrderItems.map((item, idx) => (
+                  <SelectItem key={idx} value={String(idx)}>
+                    {item.quantity}x {item.name} — KES {item.price.toLocaleString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="mb-2 block">Void Reason <span className="text-red-500">*</span></Label>
+            <Input
+              placeholder="e.g. Wrong order, Customer complaint..."
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setVoidDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleVoid}
+              disabled={voidLoading || !voidReason.trim()}
+            >
+              {voidLoading ? 'Voiding...' : 'Confirm Void'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

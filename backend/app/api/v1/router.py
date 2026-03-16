@@ -3,7 +3,7 @@ API v1 Router - Combines all endpoint routers
 SECURITY: Using auth_secure for httpOnly cookie-based authentication
 """
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth_secure as auth, admin_enhanced as admin, rooms, bookings, menu, orders, bills, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector, customers, purchase_orders, order_payments, recipes, combined_checkout, test_bills, permissions, settings, financial_statements, manager_orders, system_health
+from app.api.v1.endpoints import auth_secure as auth, admin_enhanced as admin, rooms, bookings, menu, orders, bills, payments, reports, staff, housekeeping, service_requests, reviews, checkin_checkout, expenses, inventory, loyalty, analytics, notifications, emails, websocket, messages, quickbooks, quickbooks_connector, customers, purchase_orders, order_payments, recipes, combined_checkout, test_bills, permissions, settings, financial_statements, manager_orders, system_health, dashboard, stock
 
 api_router = APIRouter()
 
@@ -56,6 +56,12 @@ api_router.include_router(settings.router, prefix="/settings", tags=["Hotel Sett
 
 # System Health
 api_router.include_router(system_health.router, prefix="/system/health", tags=["System Health"])
+
+# Dashboard Summary
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+
+# Stock / Inventory Receiving
+api_router.include_router(stock.router, prefix="/stock", tags=["Stock Management"])
 
 # Test endpoints (remove in production)
 api_router.include_router(test_bills.router, prefix="/test", tags=["Testing"])

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +11,16 @@ import { SystemConfiguration } from './SystemConfiguration';
 import { ContentManagement } from './ContentManagement';
 import { AdvancedReporting } from './AdvancedReporting';
 import { DebugUserRole } from './DebugUserRole';
+import { reportsService } from '@/lib/api/reports';
+import api from '@/lib/api/client';
+
+// Lazy-loading wrapper: only mounts children once the tab has been activated
+function LazyTab({ active, children }: { active: boolean; children: ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { if (active) setMounted(true); }, [active]);
+  if (!mounted) return null;
+  return <>{children}</>;
+}
 
 export function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -30,17 +41,27 @@ export function AdminDashboard() {
   const fetchAdminStats = async () => {
     try {
       setIsLoading(true);
-      
-      // Mock data - in real app, fetch from Supabase
-      const mockStats = {
-        totalUsers: 1247,
-        activeBookings: 89,
-        monthlyRevenue: 125000,
-        systemHealth: 'excellent',
-        pendingActions: 3
-      };
 
-      setStats(mockStats);
+      // Fetch real data from the API
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const monthEnd = now.toISOString();
+
+      const [overview, staffRes] = await Promise.allSettled([
+        reportsService.getOverview(monthStart, monthEnd),
+        api.get('/staff/').catch(() => ({ data: [] })),
+      ]);
+
+      const overviewData = overview.status === 'fulfilled' ? overview.value : null;
+      const staffData = staffRes.status === 'fulfilled' ? (staffRes.value as any)?.data : [];
+
+      setStats({
+        totalUsers: Array.isArray(staffData) ? staffData.length : 0,
+        activeBookings: overviewData?.bookings?.confirmed ?? 0,
+        monthlyRevenue: overviewData?.revenue?.total ?? 0,
+        systemHealth: 'operational',
+        pendingActions: overviewData?.orders?.total ? overviewData.orders.total - overviewData.orders.completed : 0,
+      });
     } catch (error) {
       toast({
         title: "Error loading admin data",
@@ -178,19 +199,27 @@ export function AdminDashboard() {
         </TabsContent>
 
         <TabsContent value="users">
-          <UserManagement />
+          <LazyTab active={activeTab === 'users'}>
+            <UserManagement />
+          </LazyTab>
         </TabsContent>
 
         <TabsContent value="system">
-          <SystemConfiguration />
+          <LazyTab active={activeTab === 'system'}>
+            <SystemConfiguration />
+          </LazyTab>
         </TabsContent>
 
         <TabsContent value="content">
-          <ContentManagement />
+          <LazyTab active={activeTab === 'content'}>
+            <ContentManagement />
+          </LazyTab>
         </TabsContent>
 
         <TabsContent value="reports">
-          <AdvancedReporting />
+          <LazyTab active={activeTab === 'reports'}>
+            <AdvancedReporting />
+          </LazyTab>
         </TabsContent>
       </Tabs>
     </div>

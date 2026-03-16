@@ -12,7 +12,7 @@ import { Tag, Plus, Edit, Trash2, Calendar, Percent } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export function PromotionsManager() {
-  const [promotions, setPromotions] = useState([
+  const [promotions, setPromotions] = useState<any[]>([
     {
       id: '1',
       name: 'Summer Special',
@@ -52,7 +52,7 @@ export function PromotionsManager() {
   ]);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingPromo, setEditingPromo] = useState(null);
+  const [editingPromo, setEditingPromo] = useState<any>(null);
   const { toast } = useToast();
 
   const handleSavePromotion = (promoData: any) => {

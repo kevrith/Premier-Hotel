@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Download, FileText, Printer, Search, Eye, TrendingUp, TrendingDown } from 'lucide-react';
+import { Download, FileText, Printer, Search, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '@/lib/api/client';
 import { exportDailySalesReportToPDF, exportEmployeeSalesReportToPDF } from '@/utils/pdfExport';
 import { exportDailySalesReportToExcel, exportEmployeeSalesReportToExcel } from '@/utils/excelExport';
+import { EmployeeDetailReport } from '@/components/Admin/Reports/EmployeeDetailReport';
 
 interface EmployeeSales {
   employee_id: string;
@@ -21,20 +21,14 @@ interface EmployeeSales {
   completion_rate: number;
 }
 
-interface EmployeeDetail {
-  employee: any;
-  summary: any;
-  transactions: any[];
-  top_items: any[];
-  trends: any;
-}
 
 export const ComprehensiveSalesReports: React.FC = () => {
   const [reportType, setReportType] = useState<'summary' | 'employee' | 'daily'>('summary');
   const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [employeeData, setEmployeeData] = useState<EmployeeSales[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeDetail | null>(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [selectedEmployeeName, setSelectedEmployeeName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [loading, setLoading] = useState(false);
@@ -48,8 +42,8 @@ export const ComprehensiveSalesReports: React.FC = () => {
     setLoading(true);
     try {
       const params: any = {
-        start_date: startDate,
-        end_date: endDate,
+        start_date: startDate + 'T00:00:00',
+        end_date: endDate + 'T23:59:59',
       };
       if (roleFilter !== 'all') {
         params.role = roleFilter;
@@ -57,7 +51,7 @@ export const ComprehensiveSalesReports: React.FC = () => {
 
       // Use the employee-sales report endpoint which queries the correct table
       const response = await api.get('/reports/employee-sales', { params });
-      const data = response.data;
+      const data = (response.data as any)?.data ?? response.data;
 
       const employeeSales: EmployeeSales[] = (data.employees || []).map((emp: any) => ({
         employee_id: emp.employee_id,
@@ -77,19 +71,10 @@ export const ComprehensiveSalesReports: React.FC = () => {
     }
   };
 
-  const loadEmployeeDetail = async (employeeId: string) => {
-    setLoading(true);
-    try {
-      const response = await api.get(`/reports/employee/${employeeId}/details`, {
-        params: { start_date: startDate, end_date: endDate }
-      });
-      setSelectedEmployee(response.data);
-      setShowDetailDialog(true);
-    } catch (error) {
-      console.error('Failed to load employee details:', error);
-    } finally {
-      setLoading(false);
-    }
+  const openEmployeeDetail = (employeeId: string, employeeName: string) => {
+    setSelectedEmployeeId(employeeId);
+    setSelectedEmployeeName(employeeName);
+    setShowDetailDialog(true);
   };
 
   const handlePrint = () => {
@@ -296,7 +281,7 @@ export const ComprehensiveSalesReports: React.FC = () => {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => loadEmployeeDetail(emp.employee_id)}
+                          onClick={() => openEmployeeDetail(emp.employee_id, emp.employee_name)}
                         >
                           <Eye className="h-4 w-4 mr-1" />
                           Details
@@ -311,133 +296,14 @@ export const ComprehensiveSalesReports: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Employee Detail Dialog */}
-      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedEmployee?.employee.name} - Detailed Report
-            </DialogTitle>
-          </DialogHeader>
-
-          {selectedEmployee && (
-            <div className="space-y-6">
-              {/* Employee Info */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-sm text-muted-foreground">Role</p>
-                  <p className="font-medium capitalize">{selectedEmployee.employee.role}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-medium">{selectedEmployee.employee.email}</p>
-                </div>
-              </div>
-
-              {/* Performance Summary */}
-              <div className="grid gap-4 md:grid-cols-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold">
-                      KES {selectedEmployee.summary.total_sales.toLocaleString()}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Total Sales</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold">{selectedEmployee.summary.total_orders}</div>
-                    <p className="text-xs text-muted-foreground">Total Orders</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold">
-                      KES {selectedEmployee.summary.avg_order_value.toFixed(2)}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Avg Order Value</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold flex items-center gap-1">
-                      #{selectedEmployee.summary.rank}
-                      {selectedEmployee.summary.performance_vs_average > 0 ? (
-                        <TrendingUp className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <TrendingDown className="h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Rank ({selectedEmployee.summary.performance_vs_average.toFixed(1)}% vs avg)
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Top Items */}
-              <div>
-                <h3 className="font-semibold mb-3">Top Selling Items</h3>
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Item</TableHead>
-                        <TableHead className="text-right">Quantity</TableHead>
-                        <TableHead className="text-right">Revenue</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedEmployee.top_items.slice(0, 5).map((item, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell>{item.name}</TableCell>
-                          <TableCell className="text-right">{item.quantity}</TableCell>
-                          <TableCell className="text-right">
-                            KES {item.revenue.toLocaleString()}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-
-              {/* Recent Transactions */}
-              <div>
-                <h3 className="font-semibold mb-3">Recent Transactions</h3>
-                <div className="rounded-md border max-h-64 overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Order ID</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedEmployee.transactions.slice(0, 10).map((txn) => (
-                        <TableRow key={txn.order_id}>
-                          <TableCell>
-                            {format(new Date(txn.date), 'MMM dd, HH:mm')}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {txn.order_id.substring(0, 8)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            KES {txn.total.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="capitalize">{txn.status}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {selectedEmployeeId && (
+        <EmployeeDetailReport
+          employeeId={selectedEmployeeId}
+          employeeName={selectedEmployeeName}
+          open={showDetailDialog}
+          onClose={() => { setShowDetailDialog(false); setSelectedEmployeeId(null); }}
+        />
+      )}
     </div>
   );
 };

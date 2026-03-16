@@ -70,9 +70,9 @@ async def get_profit_loss_statement(
 
         # OPERATING EXPENSES
         try:
-            expenses = supabase.table("expenses").select("amount, category").gte(
-                "date", start_query
-            ).lte("date", end_query).execute()
+            expenses = supabase.table("expenses").select("amount, expense_type").gte(
+                "expense_date", start_query
+            ).lte("expense_date", end_query).execute()
             expense_data = expenses.data
         except Exception:
             expense_data = []
@@ -80,7 +80,7 @@ async def get_profit_loss_statement(
         # Categorize expenses
         expense_categories = {}
         for exp in expense_data:
-            category = exp.get("category", "Other")
+            category = exp.get("expense_type", "Other")
             amount = float(exp.get("amount", 0))
             expense_categories[category] = expense_categories.get(category, 0) + amount
 

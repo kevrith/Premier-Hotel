@@ -101,7 +101,7 @@ export function ContentManagement() {
     }
   };
 
-  const handleEditMenuItem = (item) => {
+  const handleEditMenuItem = (item: MenuItem) => {
     setEditingItem(item);
     setIsDialogOpen(true);
   };
@@ -163,7 +163,7 @@ export function ContentManagement() {
     }
   };
 
-  const handleEditRoom = (room) => {
+  const handleEditRoom = (room: Room) => {
     setEditingRoom(room);
     setIsRoomDialogOpen(true);
   };
@@ -338,15 +338,15 @@ export function ContentManagement() {
                   <TableBody>
                     {rooms.map((room) => (
                       <TableRow key={room.id}>
-                        <TableCell className="font-medium">{room.name}</TableCell>
+                        <TableCell className="font-medium">{room.room_number}</TableCell>
                         <TableCell>{room.room_number}</TableCell>
                         <TableCell>
                           <Badge variant="outline">{room.type}</Badge>
                         </TableCell>
-                        <TableCell>KES {room.price_per_night}</TableCell>
+                        <TableCell>KES {room.base_price}</TableCell>
                         <TableCell>
-                          <Badge variant={room.is_available ? 'default' : 'secondary'}>
-                            {room.is_available ? 'Available' : 'Unavailable'}
+                          <Badge variant={room.status === 'available' ? 'default' : 'secondary'}>
+                            {room.status === 'available' ? 'Available' : 'Unavailable'}
                           </Badge>
                         </TableCell>
                         <TableCell>
