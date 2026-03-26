@@ -17,9 +17,11 @@ REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
 COOKIE_SETTINGS = {
     "httponly": True,  # Prevents JavaScript access (XSS protection)
     "secure": settings.ENVIRONMENT == "production",  # HTTPS only in production
-    "samesite": "lax",  # CSRF protection (prevents cross-site requests)
-    "domain": None,  # Same domain only
-    "path": "/",  # Available for all paths
+    # "none" required for cross-domain (Vercel frontend → Render backend)
+    # "lax" is fine for same-domain (localhost dev)
+    "samesite": "none" if settings.ENVIRONMENT == "production" else "lax",
+    "domain": None,
+    "path": "/",
 }
 
 
