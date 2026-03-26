@@ -71,7 +71,7 @@ export const ordersApi = {
     if (params?.status) queryParams.append('status', params.status);
     if (params?.location_type) queryParams.append('location_type', params.location_type);
 
-    const response = await apiClient.get(`/orders?${queryParams.toString()}`);
+    const response = await apiClient.get(`/orders/?${queryParams.toString()}`);
     return response.data;
   },
 

@@ -229,7 +229,7 @@ const menuService = {
    * @returns {Promise} - List of all orders
    */
   getAllOrders: async (params = {}) => {
-    const response = await api.get('/orders', { params });
+    const response = await api.get('/orders/', { params });
     return response.data;
   },
 
