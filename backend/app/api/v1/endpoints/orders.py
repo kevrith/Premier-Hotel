@@ -59,7 +59,7 @@ async def generate_receipt_number(supabase_admin: Client) -> str:
 async def get_all_orders(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
-    status: Optional[str] = None,
+    status: Optional[str] = Query(None),
     location_type: Optional[str] = None,
     current_user: dict = Depends(require_staff),
     supabase: Client = Depends(get_supabase),
@@ -132,12 +132,15 @@ async def get_all_orders(
             if order.get("assigned_waiter_id") and order["assigned_waiter_id"] in staff_map:
                 order_dict["assigned_waiter"] = staff_map[order["assigned_waiter_id"]]
             orders_with_staff.append(order_dict)
-        
+
         return [OrderResponse(**order) for order in orders_with_staff]
 
+    except HTTPException:
+        raise
     except Exception as e:
+        logging.error(f"Error fetching orders: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=str(e),
         )
 

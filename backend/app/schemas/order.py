@@ -45,20 +45,20 @@ class OrderResponse(BaseModel):
     """Order response schema"""
     id: str
     order_number: str
-    customer_id: str
+    customer_id: Optional[str] = None
     location: str
     location_type: str
     status: str
-    items: List[Dict[str, Any]]
-    subtotal: Decimal
-    tax: Decimal
-    total_amount: Decimal
+    items: Optional[List[Dict[str, Any]]] = None
+    subtotal: Optional[Decimal] = None
+    tax: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
     assigned_waiter_id: Optional[str] = None
     assigned_chef_id: Optional[str] = None
     # Staff information (populated from users table)
     assigned_waiter: Optional[Dict[str, Any]] = None
     assigned_chef: Optional[Dict[str, Any]] = None
-    priority: str
+    priority: Optional[str] = None
     special_instructions: Optional[str] = None
     notes: Optional[str] = None
     estimated_ready_time: Optional[datetime] = None
