@@ -103,7 +103,7 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <GoogleOAuthProvider clientId={googleClientId || ''}>
+        <GoogleOAuthProvider clientId={googleClientId || 'disabled'}>
           <BrowserRouter>
             <AuthProvider>
               <OfflineProvider>
@@ -251,10 +251,13 @@ const App = () => {
           </OfflineProvider>
         </AuthProvider>
       </BrowserRouter>
-        </GoogleOAuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
+
+  return googleClientId && !googleClientId.includes('00000000')
+    ? <GoogleOAuthProvider clientId={googleClientId}>{appContent}</GoogleOAuthProvider>
+    : appContent;
 };
 
 export default App;
