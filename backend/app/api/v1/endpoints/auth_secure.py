@@ -285,7 +285,7 @@ async def login(
         logging.error(f"Login error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Login failed: {str(e)}",
+            detail="Login failed. Please try again.",
         )
 
 
