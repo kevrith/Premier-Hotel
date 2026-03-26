@@ -9,13 +9,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Hotel, Menu, X, User, LogOut, Calendar, Bell, LayoutDashboard } from "lucide-react";
+import { Hotel, Menu, X, User, LogOut, Calendar, Bell, LayoutDashboard, Download } from "lucide-react";
 import { useState } from "react";
 import NotificationBell from "./NotificationBell";
+import { useInstallPWA } from "@/hooks/useInstallPWA";
 
 export function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { canInstall, install } = useInstallPWA();
 
   const navigation = [
     { name: "Home", href: "/" },
@@ -73,6 +75,19 @@ export function Navbar() {
           {/* Right Side Actions */}
           <div className="flex items-center space-x-1 sm:space-x-3">
             <ThemeToggle />
+
+            {/* Install App button — only shows when browser supports it */}
+            {canInstall && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={install}
+                className="hidden sm:flex items-center gap-1.5 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+              >
+                <Download className="h-4 w-4" />
+                Install App
+              </Button>
+            )}
 
             {isAuthenticated && user ? (
               <>
@@ -150,15 +165,24 @@ export function Navbar() {
           <div className="lg:hidden border-t border-border bg-background/95 backdrop-blur-lg">
             <div className="px-2 pt-2 pb-3 space-y-1 safe-area-bottom">
               {navigation.map((item) => (
-                <Link 
-                  key={item.name} 
-                  to={item.href} 
-                  className="block px-3 py-3 text-base font-medium text-muted-foreground hover:text-foreground transition-colors touch-button" 
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  className="block px-3 py-3 text-base font-medium text-muted-foreground hover:text-foreground transition-colors touch-button"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {item.name}
                 </Link>
               ))}
+              {canInstall && (
+                <button
+                  onClick={() => { install(); setIsMobileMenuOpen(false); }}
+                  className="flex items-center gap-2 w-full px-3 py-3 text-base font-medium text-blue-600 hover:text-blue-700 transition-colors touch-button"
+                >
+                  <Download className="h-4 w-4" />
+                  Install App
+                </button>
+              )}
               {isAuthenticated && user && (
                 <>
                   <Link 

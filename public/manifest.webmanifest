@@ -1,42 +1,51 @@
 {
-  "name": "Premier Hotel - Luxury Hotel Management",
+  "name": "Premier Hotel Management",
   "short_name": "Premier Hotel",
-  "description": "Experience luxury accommodation and fine dining at Premier Hotel",
+  "description": "Luxury hotel management — rooms, orders, and staff from anywhere",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#1E40AF",
   "theme_color": "#1E40AF",
   "orientation": "portrait-primary",
   "categories": ["hospitality", "business"],
   "prefer_related_applications": false,
-  "display_override": ["window-controls-overlay", "standalone"],
-  "edge_side_panel": {
-    "preferred_width": 400
-  },
   "icons": [
     {
       "src": "/icons/icon-72x72.png",
       "sizes": "72x72",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-96x96.png",
       "sizes": "96x96",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "screenshots": [
