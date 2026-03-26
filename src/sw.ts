@@ -169,13 +169,15 @@ registerRoute(
   )
 );
 
+// ── On activate: immediately claim all open tabs ──────────────────────────────
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 // ── Listen for messages from the app ─────────────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
-  }
-  if (event.data?.type === 'CLIENTS_CLAIM') {
-    self.clients.claim();
   }
 });
 

@@ -12,7 +12,7 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       // Suppress the "use generateSW" warning since we intentionally use injectManifest
       devOptions: {
         enabled: true,

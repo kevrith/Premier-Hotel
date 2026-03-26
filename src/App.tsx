@@ -18,6 +18,7 @@ import { MobileNavigation } from "./components/MobileNavigation";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { OfflineSessionBanner } from "./components/OfflineSessionBanner";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -247,6 +248,9 @@ const App = () => {
 
             {/* Mobile Bottom Navigation */}
             <MobileNavigation />
+
+            {/* PWA update banner — appears when a new version is deployed */}
+            <PWAUpdatePrompt />
                 </AppErrorBoundary>
           </OfflineProvider>
         </AuthProvider>
