@@ -88,7 +88,16 @@ apiClient.interceptors.response.use(
 
     // Handle different error status codes
     switch (status) {
-      case 401:
+      case 401: {
+        // Skip refresh logic for auth-check endpoints — let them fail silently
+        const skipRefreshEndpoints = ['/auth/me', '/auth/refresh', '/auth/login', '/auth/register'];
+        const requestUrl = originalRequest?.url || '';
+        const shouldSkipRefresh = skipRefreshEndpoints.some(ep => requestUrl.includes(ep));
+
+        if (shouldSkipRefresh) {
+          return Promise.reject(error);
+        }
+
         // Unauthorized - Token expired or invalid
         if (!originalRequest._retry) {
           originalRequest._retry = true;
@@ -120,6 +129,7 @@ apiClient.interceptors.response.use(
         window.location.href = '/login';
         toast.error('Session expired. Please login again.');
         break;
+      }
 
       case 403:
         // Forbidden - User doesn't have permission
