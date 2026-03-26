@@ -12,7 +12,7 @@ from app.schemas.room import (
     AvailabilityCheck,
     AvailabilityResponse,
 )
-from app.middleware.auth_secure import get_current_user, require_admin, require_manager_or_admin
+from app.middleware.auth_secure import get_current_user, get_current_user_optional, require_admin, require_manager_or_admin
 from datetime import date
 
 router = APIRouter()
@@ -26,15 +26,22 @@ async def get_rooms(
     room_status: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
     supabase: Client = Depends(get_supabase_admin),
 ):
     """
-    Get all rooms with optional filters
-
-    - Supports pagination, type filtering, status filtering, and price range
+    Get all rooms with optional filters.
+    Staff (manager/waiter/cleaner/chef) only see rooms in their branch.
+    Admin and owner see all rooms.
     """
     try:
         query = supabase.table("rooms").select("*")
+
+        # Branch isolation: non-admin/owner staff see only their branch's rooms
+        if current_user and current_user.get("role") not in ("admin", "owner"):
+            branch_id = current_user.get("branch_id")
+            if branch_id:
+                query = query.eq("branch_id", branch_id)
 
         # Apply filters
         if room_type:
@@ -230,6 +237,10 @@ async def create_room(
         # Convert Decimal fields to float
         if 'base_price' in room_dict and isinstance(room_dict['base_price'], Decimal):
             room_dict['base_price'] = float(room_dict['base_price'])
+
+        # Stamp the creating user's branch (admin keeps whatever branch_id is set)
+        if not room_dict.get("branch_id") and current_user.get("branch_id"):
+            room_dict["branch_id"] = current_user["branch_id"]
 
         response = supabase.table("rooms").insert(room_dict).execute()
 

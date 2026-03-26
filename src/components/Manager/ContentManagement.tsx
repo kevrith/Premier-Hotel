@@ -345,8 +345,15 @@ export function ContentManagement() {
                         </TableCell>
                         <TableCell>KES {room.base_price}</TableCell>
                         <TableCell>
-                          <Badge variant={room.status === 'available' ? 'default' : 'secondary'}>
-                            {room.status === 'available' ? 'Available' : 'Unavailable'}
+                          <Badge variant={
+                            room.status === 'available' ? 'default' :
+                            room.status === 'occupied' ? 'secondary' :
+                            room.status === 'maintenance' ? 'destructive' : 'outline'
+                          }>
+                            {room.status === 'available' ? 'Available' :
+                             room.status === 'occupied' ? 'Occupied' :
+                             room.status === 'maintenance' ? 'Maintenance' :
+                             room.status === 'reserved' ? 'Reserved' : room.status}
                           </Badge>
                         </TableCell>
                         <TableCell>

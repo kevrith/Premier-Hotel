@@ -36,11 +36,38 @@ class LinenMovement(BaseModel):
     notes: Optional[str] = None
 
 
+class CreateLinenItem(BaseModel):
+    item_name: str
+    category: str = "linen"  # linen, towel, pillow, blanket, mattress, curtain, other
+    total_quantity: int = 0
+    unit: str = "piece"
+    reorder_level: int = 5
+    notes: Optional[str] = None
+
+
 class UpdateLinenItem(BaseModel):
+    item_name: Optional[str] = None
+    category: Optional[str] = None
     total_quantity: Optional[int] = None
     in_use_quantity: Optional[int] = None
     in_laundry_quantity: Optional[int] = None
     damaged_quantity: Optional[int] = None
+    reorder_level: Optional[int] = None
+    unit: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class HeadcountEntry(BaseModel):
+    item_id: str
+    total_quantity: int
+    in_use_quantity: int = 0
+    in_laundry_quantity: int = 0
+    damaged_quantity: int = 0
+    notes: Optional[str] = None
+
+
+class SubmitHeadcount(BaseModel):
+    items: List[HeadcountEntry]
     notes: Optional[str] = None
 
 
@@ -141,6 +168,75 @@ async def update_maintenance_flag(
 
 
 # ─── Linen Inventory ─────────────────────────────────────────────────────────
+
+@router.post("/linen")
+async def create_linen_item(
+    data: CreateLinenItem,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """Admin/Manager creates a new linen inventory item"""
+    if current_user.get("role") not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Manager access required")
+    payload = data.dict()
+    result = supabase.table("room_linen_inventory").insert(payload).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to create linen item")
+    return result.data[0]
+
+
+@router.delete("/linen/{item_id}")
+async def delete_linen_item(
+    item_id: str,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """Admin/Manager deletes a linen item"""
+    if current_user.get("role") not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Manager access required")
+    result = supabase.table("room_linen_inventory").delete().eq("id", item_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"success": True}
+
+
+@router.post("/linen/headcount")
+async def submit_headcount(
+    data: SubmitHeadcount,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Cleaner submits a physical headcount — updates actual quantities for each item.
+    Any staff role can perform a headcount.
+    """
+    updated = []
+    for entry in data.items:
+        update = {
+            "total_quantity": entry.total_quantity,
+            "in_use_quantity": entry.in_use_quantity,
+            "in_laundry_quantity": entry.in_laundry_quantity,
+            "damaged_quantity": entry.damaged_quantity,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if entry.notes:
+            update["notes"] = entry.notes
+        result = supabase.table("room_linen_inventory").update(update).eq("id", entry.item_id).execute()
+        if result.data:
+            updated.append(result.data[0])
+
+    # Log the headcount as a single linen movement note
+    if data.notes or len(updated) > 0:
+        supabase.table("linen_movements").insert({
+            "linen_item_id": data.items[0].item_id if data.items else None,
+            "moved_by": current_user["id"],
+            "movement_type": "returned",  # closest category — headcount is a reconciliation
+            "quantity": 0,
+            "notes": f"[HEADCOUNT] {data.notes or 'Physical count updated'} — {len(updated)} items reconciled",
+        }).execute()
+
+    return {"updated": len(updated), "items": updated}
+
 
 @router.get("/linen")
 async def list_linen_inventory(

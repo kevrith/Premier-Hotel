@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Bell, X, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,22 +22,29 @@ interface Notification {
 export function NotificationCenter() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const failuresRef = useRef(0);
 
   const fetchNotifications = async () => {
     try {
       const response = await apiClient.get('/notifications/');
+      failuresRef.current = 0; // reset on success
       setNotifications(response.data.slice(0, 10));
       setUnreadCount(response.data.filter((n: any) => !n.read).length);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
+    } catch {
+      failuresRef.current += 1;
+      // Silently fail after first error — backend may be temporarily unavailable
     }
   };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(() => {
+      // Skip poll if consecutive failures — backend is likely down
+      if (failuresRef.current >= 3) return;
+      fetchNotifications();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const markAsRead = async (id: string) => {
     try {

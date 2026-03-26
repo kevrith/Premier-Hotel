@@ -223,10 +223,10 @@ export const ItemSummaryReport: React.FC = () => {
                             {expandedCategories.has(cat.category)
                               ? <ChevronDown className="h-4 w-4 text-blue-600 shrink-0" />
                               : <ChevronRight className="h-4 w-4 text-blue-600 shrink-0" />}
-                            <span className="text-blue-900">{cat.category.toUpperCase()}</span>
+                            <span className="text-blue-500">{cat.category.toUpperCase()}</span>
                           </td>
-                          <td className="px-3 py-2 text-right font-bold text-blue-900">{cat.total_qty}</td>
-                          <td className="px-3 py-2 text-right font-bold text-blue-900">
+                          <td className="px-3 py-2 text-right font-bold text-blue-500">{cat.total_qty}</td>
+                          <td className="px-3 py-2 text-right font-bold text-blue-500">
                             {fmtCurrency(cat.total_revenue)}
                           </td>
                         </tr>
@@ -236,11 +236,11 @@ export const ItemSummaryReport: React.FC = () => {
                           cat.items.map((item, ii) => (
                             <tr
                               key={`${ci}-${ii}`}
-                              className={ii % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                              className={`border-t border-border ${ii % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}
                             >
-                              <td className="px-3 py-1.5 pl-8 text-gray-700">{item.name}</td>
-                              <td className="px-3 py-1.5 text-right text-gray-700">{item.qty}</td>
-                              <td className="px-3 py-1.5 text-right text-gray-700">
+                              <td className="px-3 py-1.5 pl-8 text-foreground">{item.name}</td>
+                              <td className="px-3 py-1.5 text-right text-foreground">{item.qty}</td>
+                              <td className="px-3 py-1.5 text-right text-foreground">
                                 {fmtCurrency(item.revenue)}
                               </td>
                             </tr>
@@ -249,10 +249,10 @@ export const ItemSummaryReport: React.FC = () => {
                     ))}
 
                     {/* Grand total */}
-                    <tr className="bg-green-50 border-t-2 border-green-300">
-                      <td className="px-3 py-2 font-bold text-green-900">GRAND TOTAL</td>
-                      <td className="px-3 py-2 text-right font-bold text-green-900">{data.grand_total_qty}</td>
-                      <td className="px-3 py-2 text-right font-bold text-green-900">
+                    <tr className="bg-green-500/10 border-t-2 border-green-500/30">
+                      <td className="px-3 py-2 font-bold text-green-500">GRAND TOTAL</td>
+                      <td className="px-3 py-2 text-right font-bold text-green-500">{data.grand_total_qty}</td>
+                      <td className="px-3 py-2 text-right font-bold text-green-500">
                         {fmtCurrency(data.grand_total_revenue)}
                       </td>
                     </tr>

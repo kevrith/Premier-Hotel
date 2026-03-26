@@ -19,6 +19,8 @@ from app.schemas.payment import (
     PaymentStatusQuery
 )
 from app.services.mpesa import MpesaService
+from app.services.paystack import PaystackService
+from app.services.paypal import PayPalService
 from supabase import Client
 
 router = APIRouter()
@@ -120,8 +122,23 @@ async def initiate_payment(
                 detail="Phone number is required for M-Pesa payments"
             )
 
-        # Initialize M-Pesa service
-        mpesa_service = MpesaService()
+        # Load M-Pesa config from DB (falls back to env vars if not configured)
+        try:
+            cfg_res = supabase.table("hotel_settings").select("setting_value").eq("setting_key", "payment_config").maybe_single().execute()
+            db_cfg = cfg_res.data["setting_value"] if cfg_res.data else {}
+        except Exception:
+            db_cfg = {}
+
+        mpesa_override = {
+            "consumer_key":    db_cfg.get("mpesa_consumer_key", ""),
+            "consumer_secret": db_cfg.get("mpesa_consumer_secret", ""),
+            "shortcode":       db_cfg.get("mpesa_shortcode", ""),
+            "passkey":         db_cfg.get("mpesa_passkey", ""),
+            "callback_url":    db_cfg.get("mpesa_callback_url", ""),
+            "environment":     db_cfg.get("mpesa_environment", ""),
+        }
+        # Initialize M-Pesa service with DB config (non-empty values override env vars)
+        mpesa_service = MpesaService(config_override={k: v for k, v in mpesa_override.items() if v})
 
         # Initiate STK push
         stk_response = await mpesa_service.stk_push(
@@ -143,13 +160,94 @@ async def initiate_payment(
         payment_data["status"] = "processing"
 
     elif payment.payment_method == "cash":
-        # Cash payments remain pending until staff confirms
         payment_data["status"] = "pending"
 
     elif payment.payment_method == "card":
-        # Card payments would integrate with a payment gateway
-        # For now, mark as pending
-        payment_data["status"] = "pending"
+        # Physical card terminal — reference recorded, mark as completed immediately
+        payment_data["status"] = "completed"
+        payment_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+    elif payment.payment_method == "paystack":
+        if not payment.email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is required for Paystack payments",
+            )
+        # Load Paystack credentials from DB settings
+        try:
+            if 'db_cfg' not in dir():
+                cfg_res = supabase.table("hotel_settings").select("setting_value").eq("setting_key", "payment_config").maybe_single().execute()
+                db_cfg = cfg_res.data["setting_value"] if cfg_res.data else {}
+        except Exception:
+            db_cfg = {}
+        paystack_override = {k: v for k, v in {
+            "secret_key":    db_cfg.get("paystack_secret_key", ""),
+            "webhook_secret": db_cfg.get("paystack_webhook_secret", ""),
+        }.items() if v}
+        import uuid as _uuid
+        reference = f"PST-{payment.reference_type.upper()}-{payment.reference_id}-{_uuid.uuid4().hex[:8]}"
+        paystack_svc = PaystackService(config_override=paystack_override)
+        ps_response = await paystack_svc.initialize_transaction(
+            email=payment.email,
+            amount=float(payment.amount),
+            reference=reference,
+            metadata={
+                "reference_type": payment.reference_type,
+                "reference_id": payment.reference_id,
+            },
+        )
+        if not ps_response.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ps_response.get("message", "Failed to initialize Paystack payment"),
+            )
+        payment_data["status"] = "processing"
+        payment_data["metadata"] = {
+            "paystack_reference": ps_response["reference"],
+            "paystack_authorization_url": ps_response["authorization_url"],
+            "paystack_access_code": ps_response.get("access_code"),
+        }
+
+    elif payment.payment_method == "paypal":
+        if not payment.return_url or not payment.cancel_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="return_url and cancel_url are required for PayPal payments",
+            )
+        # Load PayPal credentials from DB settings
+        try:
+            if 'db_cfg' not in dir():
+                cfg_res = supabase.table("hotel_settings").select("setting_value").eq("setting_key", "payment_config").maybe_single().execute()
+                db_cfg = cfg_res.data["setting_value"] if cfg_res.data else {}
+        except Exception:
+            db_cfg = {}
+        paypal_override = {k: v for k, v in {
+            "client_id": db_cfg.get("paypal_client_id", ""),
+            "secret":    db_cfg.get("paypal_secret", ""),
+            "mode":      db_cfg.get("paypal_mode", ""),
+        }.items() if v}
+        paypal_svc = PayPalService(config_override=paypal_override)
+        # PayPal does not support KES — convert using configured rate (default 130 KES/USD)
+        paypal_currency = db_cfg.get("paypal_currency", "USD")
+        kes_rate = float(db_cfg.get("paypal_kes_rate", 130))  # KES per 1 USD
+        usd_amount = round(float(payment.amount) / kes_rate, 2)
+        pp_response = await paypal_svc.create_order(
+            amount=usd_amount,
+            currency=paypal_currency,
+            reference=f"PP-{payment.reference_type.upper()}-{payment.reference_id}",
+            return_url=payment.return_url,
+            cancel_url=payment.cancel_url,
+        )
+        if not pp_response.get("success"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=pp_response.get("message", "Failed to create PayPal order"),
+            )
+        payment_data["status"] = "processing"
+        payment_data["metadata"] = {
+            "paypal_order_id": pp_response["order_id"],
+            "paypal_approval_url": pp_response.get("approval_url"),
+        }
 
     # Insert payment record
     result = supabase.table("payments").insert(payment_data).execute()
@@ -161,6 +259,15 @@ async def initiate_payment(
         )
 
     payment_record = result.data[0]
+
+    # Surface redirect URLs from metadata so the frontend can redirect immediately
+    meta = payment_record.get("metadata") or {}
+    if payment.payment_method == "paystack":
+        payment_record["paystack_authorization_url"] = meta.get("paystack_authorization_url")
+        payment_record["paystack_reference"] = meta.get("paystack_reference")
+    elif payment.payment_method == "paypal":
+        payment_record["paypal_order_id"] = meta.get("paypal_order_id")
+        payment_record["paypal_approval_url"] = meta.get("paypal_approval_url")
 
     return PaymentResponse(**payment_record)
 
@@ -295,7 +402,7 @@ async def get_payment_status(
         payment.get("mpesa_checkout_request_id")):
 
         mpesa_service = MpesaService()
-        mpesa_status = await mpesa_service.query_payment_status(
+        mpesa_status = await mpesa_service.query_stk_status(
             payment["mpesa_checkout_request_id"]
         )
 
@@ -475,3 +582,119 @@ async def cancel_payment(
         )
 
     return PaymentResponse(**result.data[0])
+
+
+# ── Paystack webhook ──────────────────────────────────────────────────────────
+
+@router.post("/paystack/webhook")
+async def paystack_webhook(
+    request: Request,
+    x_paystack_signature: Optional[str] = Header(None, alias="X-Paystack-Signature"),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """Handle Paystack payment webhook (charge.success event)."""
+    body_bytes = await request.body()
+    try:
+        wh_cfg = supabase.table("hotel_settings").select("setting_value").eq("setting_key", "payment_config").maybe_single().execute()
+        wh_db = wh_cfg.data["setting_value"] if wh_cfg.data else {}
+    except Exception:
+        wh_db = {}
+    paystack_svc = PaystackService(config_override={k: v for k, v in {
+        "secret_key": wh_db.get("paystack_secret_key", ""),
+        "webhook_secret": wh_db.get("paystack_webhook_secret", ""),
+    }.items() if v})
+
+    if not paystack_svc.verify_webhook_signature(body_bytes, x_paystack_signature or ""):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Paystack signature")
+
+    import json
+    event = json.loads(body_bytes.decode("utf-8"))
+    if event.get("event") != "charge.success":
+        return {"status": "ignored"}
+
+    data = event.get("data", {})
+    reference = data.get("reference")
+    if not reference:
+        return {"status": "error", "message": "No reference"}
+
+    res = supabase.table("payments").select("*").filter(
+        "metadata->>paystack_reference", "eq", reference
+    ).maybe_single().execute()
+
+    if not res.data:
+        return {"status": "error", "message": "Payment not found"}
+
+    payment_record = res.data
+    update_data = {
+        "status": "completed",
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "metadata": {**payment_record.get("metadata", {}), "paystack_paid_at": data.get("paid_at")},
+    }
+    supabase.table("payments").update(update_data).eq("id", payment_record["id"]).execute()
+
+    if payment_record["reference_type"] == "booking":
+        supabase.table("bookings").update({"payment_status": "paid"}).eq("id", payment_record["reference_id"]).execute()
+    elif payment_record["reference_type"] == "order":
+        supabase.table("orders").update({"payment_status": "paid"}).eq("id", payment_record["reference_id"]).execute()
+
+    return {"status": "success"}
+
+
+# ── PayPal capture (called after buyer approves) ──────────────────────────────
+
+@router.post("/paypal/capture")
+async def paypal_capture(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase),
+):
+    """Capture a PayPal order after buyer approval.
+    Expects JSON body: { "order_id": "..." }
+    """
+    import json
+    body = await request.body()
+    data = json.loads(body.decode("utf-8"))
+    order_id = data.get("order_id")
+    if not order_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="order_id required")
+
+    res = supabase.table("payments").select("*").filter(
+        "metadata->>paypal_order_id", "eq", order_id
+    ).maybe_single().execute()
+
+    if not res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found")
+
+    # Load credentials from DB settings same as initiation
+    try:
+        cfg_res = supabase.table("hotel_settings").select("setting_value").eq("setting_key", "payment_config").maybe_single().execute()
+        db_cfg = cfg_res.data["setting_value"] if cfg_res.data else {}
+    except Exception:
+        db_cfg = {}
+    paypal_override = {k: v for k, v in {
+        "client_id": db_cfg.get("paypal_client_id", ""),
+        "secret":    db_cfg.get("paypal_secret", ""),
+        "mode":      db_cfg.get("paypal_mode", ""),
+    }.items() if v}
+    paypal_svc = PayPalService(config_override=paypal_override)
+    capture = await paypal_svc.capture_order(order_id)
+    if not capture.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=capture.get("message", "Capture failed"),
+        )
+
+    payment_record = res.data
+    update_data = {
+        "status": "completed",
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "metadata": {**payment_record.get("metadata", {}), "paypal_capture_id": capture.get("capture_id")},
+    }
+    supabase.table("payments").update(update_data).eq("id", payment_record["id"]).execute()
+
+    if payment_record["reference_type"] == "booking":
+        supabase.table("bookings").update({"payment_status": "paid"}).eq("id", payment_record["reference_id"]).execute()
+    elif payment_record["reference_type"] == "order":
+        supabase.table("orders").update({"payment_status": "paid"}).eq("id", payment_record["reference_id"]).execute()
+
+    return {"status": "success", "capture_id": capture.get("capture_id")}

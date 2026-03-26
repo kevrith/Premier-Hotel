@@ -37,14 +37,14 @@ export function StaffDeleteDialog({ open, onOpenChange, user, onSuccess }: Staff
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-600">
             <AlertTriangle className="h-5 w-5" />
-            Remove Staff Member
+            Delete Staff Member
           </DialogTitle>
           <DialogDescription>
-            Are you sure you want to remove <strong>{user?.full_name}</strong> from the staff? 
-            This action will deactivate their account and they will no longer be able to access the system.
+            Are you sure you want to permanently delete <strong>{user?.full_name}</strong>?
+            This will remove their account from the database. Their historical orders and records will remain but will no longer be linked to this account. This cannot be undone.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="flex gap-2 pt-4">
           <Button
             variant="destructive"
@@ -52,7 +52,7 @@ export function StaffDeleteDialog({ open, onOpenChange, user, onSuccess }: Staff
             disabled={isLoading}
             className="flex-1"
           >
-            {isLoading ? 'Removing...' : 'Remove Staff'}
+            {isLoading ? 'Deleting...' : 'Permanently Delete'}
           </Button>
           <Button
             variant="outline"

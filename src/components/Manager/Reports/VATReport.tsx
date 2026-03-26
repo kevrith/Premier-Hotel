@@ -77,9 +77,9 @@ export const VATReport: React.FC = () => {
                   <TableCell>Total Sales (Excl. VAT)</TableCell>
                   <TableCell className="text-right">KES {output_vat.total_sales_excl_vat.toLocaleString()}</TableCell>
                 </TableRow>
-                <TableRow className="font-bold bg-green-50">
+                <TableRow className="font-bold bg-green-500/10">
                   <TableCell>Output VAT @ {(vat_rate * 100).toFixed(0)}%</TableCell>
-                  <TableCell className="text-right text-green-600">KES {output_vat.output_vat.toLocaleString()}</TableCell>
+                  <TableCell className="text-right text-green-500">KES {output_vat.output_vat.toLocaleString()}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -101,9 +101,9 @@ export const VATReport: React.FC = () => {
                   <TableCell>Total Purchases (Excl. VAT)</TableCell>
                   <TableCell className="text-right">KES {input_vat.total_purchases_excl_vat.toLocaleString()}</TableCell>
                 </TableRow>
-                <TableRow className="font-bold bg-blue-50">
+                <TableRow className="font-bold bg-blue-500/10">
                   <TableCell>Input VAT @ {(vat_rate * 100).toFixed(0)}%</TableCell>
-                  <TableCell className="text-right text-blue-600">KES {input_vat.input_vat.toLocaleString()}</TableCell>
+                  <TableCell className="text-right text-blue-500">KES {input_vat.input_vat.toLocaleString()}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -111,16 +111,16 @@ export const VATReport: React.FC = () => {
 
           {/* Net VAT Payable */}
           <div className="border-t-2 pt-4">
-            <Card className={net_vat_payable >= 0 ? 'bg-red-50' : 'bg-green-50'}>
+            <Card className={net_vat_payable >= 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-green-500/10 border-green-500/30'}>
               <CardContent className="pt-6">
                 <div className="flex justify-between items-center">
                   <div>
-                    <h3 className="font-bold text-xl">NET VAT PAYABLE TO KRA</h3>
+                    <h3 className="font-bold text-xl text-foreground">NET VAT PAYABLE TO KRA</h3>
                     <p className="text-sm text-muted-foreground mt-1">
                       {net_vat_payable >= 0 ? 'Amount to pay' : 'VAT Refund due'}
                     </p>
                   </div>
-                  <div className={`text-2xl font-bold ${net_vat_payable >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  <div className={`text-2xl font-bold ${net_vat_payable >= 0 ? 'text-red-500' : 'text-green-500'}`}>
                     KES {Math.abs(net_vat_payable).toLocaleString()}
                   </div>
                 </div>
@@ -129,11 +129,11 @@ export const VATReport: React.FC = () => {
           </div>
 
           {/* Important Notice */}
-          <div className="flex items-start gap-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+          <div className="flex items-start gap-2 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+            <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
             <div className="text-sm">
-              <p className="font-semibold text-yellow-900">Important:</p>
-              <p className="text-yellow-800">
+              <p className="font-semibold text-yellow-500">Important:</p>
+              <p className="text-muted-foreground">
                 This report is for internal use. Please consult with your accountant before filing VAT returns with KRA.
                 VAT returns must be filed by the 20th of the following month.
               </p>

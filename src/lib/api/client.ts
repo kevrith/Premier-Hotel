@@ -1,48 +1,38 @@
 /**
  * API Client with Axios
- * Provides a configured axios instance with interceptors for authentication,
- * error handling, and request/response logging.
- *
- * @module api/client
+ * Offline-aware: queues mutations when offline, serves GETs from IndexedDB cache.
  */
 
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from 'axios';
 import { toast } from 'react-hot-toast';
 import type { ApiResponse } from '@/types';
+import { db, dbHelpers } from '@/db/schema';
 
-/**
- * Extended Axios config with metadata for request tracking
- */
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 interface RequestConfigWithMetadata extends InternalAxiosRequestConfig {
-  metadata?: {
-    startTime: Date;
-  };
+  metadata?: { startTime: Date };
   _retry?: boolean;
+  _offlineQueued?: boolean; // marks requests we queued offline
 }
 
-/**
- * Auth storage structure
- */
 interface AuthStorage {
-  state: {
-    token?: string;
-    refreshToken?: string;
-  };
+  state: { token?: string; refreshToken?: string };
   version: number;
 }
 
-/**
- * API Base URL - auto-detects the server from the current hostname.
- * If the app is opened via a local network IP (e.g. 192.168.1.5:5173),
- * API calls automatically go to that same IP on port 8000 — no config needed.
- */
+// ── API Base URL ──────────────────────────────────────────────────────────────
+
 const getApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
-  // Explicit env override (non-localhost) takes priority
   if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
     return envUrl;
   }
-  // Auto-detect: use the same hostname the browser is currently on
   const host = window.location.hostname;
   if (host !== 'localhost' && host !== '127.0.0.1') {
     return `http://${host}:8000/api/v1`;
@@ -50,27 +40,108 @@ const getApiBaseUrl = (): string => {
   return envUrl || 'http://localhost:8000/api/v1';
 };
 
-const API_BASE_URL = getApiBaseUrl();
+export const API_BASE_URL = getApiBaseUrl();
 
-/**
- * Create axios instance with default configuration
- */
+// ── Axios instance ────────────────────────────────────────────────────────────
+
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30 seconds
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: true, // Send cookies with requests (for cookie-based auth)
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 });
 
+// ── Offline helpers ───────────────────────────────────────────────────────────
+
+const MUTATION_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+
+function isMutation(method?: string): boolean {
+  return MUTATION_METHODS.has((method ?? '').toLowerCase());
+}
+
+/** Map a URL path to a logical entity type used by the sync processor */
+function urlToEntityType(url: string): string {
+  if (url.includes('/orders'))       return 'order';
+  if (url.includes('/bookings'))     return 'booking';
+  if (url.includes('/housekeeping')) return 'room_status';
+  if (url.includes('/rooms'))        return 'room_status';
+  if (url.includes('/payments'))     return 'payment';
+  if (url.includes('/menu'))         return 'menu_item';
+  return 'generic';
+}
+
+/** Higher priority = synced first (1 = critical) */
+function urlToPriority(url: string): number {
+  if (url.includes('/orders'))   return 1;
+  if (url.includes('/payments')) return 1;
+  if (url.includes('/bookings')) return 2;
+  if (url.includes('/housekeeping') || url.includes('/rooms')) return 3;
+  return 5;
+}
+
+/** Build an HTTP method → sync action mapping */
+function methodToAction(method: string): string {
+  const m = method.toLowerCase();
+  if (m === 'post')   return 'create';
+  if (m === 'delete') return 'delete';
+  return 'update'; // put / patch
+}
+
 /**
- * Request interceptor - Add auth token to requests
- * Automatically attaches JWT token from localStorage to all requests
+ * Queue a failed mutation into IndexedDB so it can be replayed later.
+ * Stores the full request details (url, method, body) so the sync
+ * processor knows exactly what to re-send.
  */
+async function queueOfflineMutation(config: RequestConfigWithMetadata): Promise<void> {
+  const url    = config.url ?? '';
+  const method = (config.method ?? 'post').toLowerCase();
+  let   body   = config.data;
+
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch { /* keep as string */ }
+  }
+
+  await db.pendingSync.add({
+    action:     methodToAction(method),
+    entityType: urlToEntityType(url),
+    data: {
+      ...body,
+      _url:    url,   // stored so the sync processor can re-issue the exact call
+      _method: method,
+    },
+    timestamp:  new Date().toISOString(),
+    priority:   urlToPriority(url),
+    retryCount: 0,
+  });
+}
+
+/**
+ * Try to serve a GET response from the IndexedDB generic cache.
+ * Returns null if nothing is cached or the entry is expired.
+ */
+async function getCachedGet(url: string): Promise<any | null> {
+  try {
+    return await dbHelpers.getCachedData(url);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Store a successful GET response in the generic IndexedDB cache.
+ * TTL defaults to 30 minutes; pass expiresInMinutes to override.
+ */
+async function cacheGetResponse(url: string, data: any, expiresInMinutes = 30): Promise<void> {
+  try {
+    await dbHelpers.setCachedData(url, data, expiresInMinutes);
+  } catch { /* non-fatal */ }
+}
+
+// ── Request interceptor ───────────────────────────────────────────────────────
+
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
-    // Get token from localStorage
+    // Attach JWT
     const authStorage = localStorage.getItem('auth-storage');
     if (authStorage) {
       try {
@@ -78,130 +149,156 @@ apiClient.interceptors.request.use(
         if (parsed.state?.token) {
           config.headers.Authorization = `Bearer ${parsed.state.token}`;
         }
-      } catch (error) {
-        console.error('Error parsing auth storage:', error);
-      }
+      } catch { /* ignore */ }
     }
 
-    // Add request timestamp for debugging
-    const configWithMetadata = config as RequestConfigWithMetadata;
-    configWithMetadata.metadata = { startTime: new Date() };
-
+    const c = config as RequestConfigWithMetadata;
+    c.metadata = { startTime: new Date() };
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-/**
- * Response interceptor - Handle errors globally
- * Handles token refresh, error toasts, and request logging
- */
+// ── Response interceptor ──────────────────────────────────────────────────────
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse): AxiosResponse => {
-    // Log request duration in development
     const config = response.config as RequestConfigWithMetadata;
+
+    // Log timing in development
     if (import.meta.env.DEV && config.metadata) {
-      const duration = new Date().getTime() - config.metadata.startTime.getTime();
-      const method = config.method?.toUpperCase() || 'UNKNOWN';
-      console.log(`API ${method} ${config.url} - ${duration}ms`);
+      const ms = Date.now() - config.metadata.startTime.getTime();
+      console.log(`API ${(config.method ?? '').toUpperCase()} ${config.url} - ${ms}ms`);
+    }
+
+    // Cache successful GET responses for offline fallback
+    if ((config.method ?? '').toLowerCase() === 'get' && config.url) {
+      const ttl = config.url.includes('/menu') ? 24 * 60
+                : config.url.includes('/rooms') ? 60
+                : 30;
+      cacheGetResponse(config.url, response.data, ttl);
     }
 
     return response;
   },
+
   async (error) => {
     const originalRequest = error.config as RequestConfigWithMetadata;
 
-    // Handle network errors
+    // ── Network / offline error (no HTTP response received) ──────────────────
     if (!error.response) {
-      // If offline, silently reject - the offline indicator tells the user
-      if (!navigator.onLine) {
-        return Promise.reject(error);
+      const method = (originalRequest?.method ?? '').toLowerCase();
+      const url    = originalRequest?.url ?? '';
+
+      // MUTATIONS offline → queue & return synthetic 202 so the UI doesn't crash
+      if (isMutation(method) && !originalRequest?._offlineQueued) {
+        try {
+          await queueOfflineMutation(originalRequest);
+          originalRequest._offlineQueued = true;
+
+          // Dispatch event so the OfflineBanner updates its count
+          window.dispatchEvent(new CustomEvent('offline:queued', { detail: { url, method } }));
+
+          if (!navigator.onLine) {
+            toast(`Saved offline — will sync when connected`, { icon: '📶' });
+          }
+
+          // Return a synthetic Axios-like response
+          return Promise.resolve({
+            data: {
+              offline: true,
+              queued:  true,
+              tempId:  `offline_${Date.now()}`,
+              message: 'Action saved offline. Will sync automatically when connected.',
+            },
+            status:     202,
+            statusText: 'Queued Offline',
+            headers:    {},
+            config:     originalRequest,
+            request:    error.request,
+          } as AxiosResponse);
+        } catch (queueError) {
+          console.error('[Offline] Failed to queue mutation:', queueError);
+        }
       }
-      // Actually online but got no response - genuine network error
+
+      // GETs offline → try IndexedDB cache
+      if (method === 'get' && url) {
+        const cached = await getCachedGet(url);
+        if (cached) {
+          return Promise.resolve({
+            data:       cached,
+            status:     200,
+            statusText: 'OK (Cached)',
+            headers:    {},
+            config:     originalRequest,
+            request:    error.request,
+          } as AxiosResponse);
+        }
+      }
+
+      // Still offline but nothing cached — show a non-intrusive message
+      if (!navigator.onLine) {
+        return Promise.reject(error); // OfflineBanner already tells the user
+      }
+
       toast.error('Network error. Please check your connection.');
       return Promise.reject(error);
     }
 
+    // ── HTTP error responses ──────────────────────────────────────────────────
     const { status, data } = error.response;
 
-    // Handle different error status codes
     switch (status) {
       case 401:
-        // Don't force logout when offline
-        if (!navigator.onLine) {
-          return Promise.reject(error);
-        }
+        if (!navigator.onLine) return Promise.reject(error);
 
-        // Unauthorized - Token expired or invalid
         if (!originalRequest._retry) {
           originalRequest._retry = true;
-
           try {
-            // Try to refresh token via cookie-based auth
-            await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
-              withCredentials: true,
-            });
-
-            // Retry original request
+            await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
             return apiClient(originalRequest);
-          } catch (refreshError) {
-            // Only force redirect when online
-            if (navigator.onLine) {
-              localStorage.removeItem('auth-storage');
-              window.location.href = '/login';
+          } catch (refreshError: any) {
+            if (refreshError.response) {
+              window.dispatchEvent(new CustomEvent('auth:session-expired'));
               toast.error('Session expired. Please login again.');
             }
             return Promise.reject(refreshError);
           }
         }
-
-        // If retry failed or already retried, logout (only when online)
-        if (navigator.onLine) {
-          localStorage.removeItem('auth-storage');
-          window.location.href = '/login';
+        if (error.response) {
+          window.dispatchEvent(new CustomEvent('auth:session-expired'));
           toast.error('Session expired. Please login again.');
         }
         break;
 
       case 403:
-        // Forbidden - User doesn't have permission
         toast.error('You do not have permission to perform this action.');
         break;
 
       case 404:
-        // Not found
         toast.error(data?.message || 'Resource not found.');
         break;
 
       case 422:
-        // Validation error
         if (data?.errors) {
-          // Display validation errors
-          Object.values<string[]>(data.errors).forEach((errorArray) => {
-            errorArray.forEach((msg) => toast.error(msg));
-          });
+          Object.values<string[]>(data.errors).forEach(arr =>
+            arr.forEach(msg => toast.error(msg))
+          );
         } else {
           toast.error(data?.message || 'Validation error.');
         }
         break;
 
       case 429:
-        // Too many requests
         toast.error('Too many requests. Please try again later.');
         break;
 
-      case 500:
-      case 502:
-      case 503:
-      case 504:
-        // Server errors
+      case 500: case 502: case 503: case 504:
         toast.error('Server error. Please try again later.');
         break;
 
       default:
-        // Generic error
         toast.error(data?.message || 'An error occurred. Please try again.');
     }
 
@@ -209,85 +306,29 @@ apiClient.interceptors.response.use(
   }
 );
 
-/**
- * API helper methods with TypeScript generics for type-safe requests
- */
+// ── Helper methods ────────────────────────────────────────────────────────────
+
 export const api = {
-  /**
-   * GET request
-   * @template T - The expected response data type
-   * @param url - The endpoint URL
-   * @param config - Optional Axios config
-   * @returns Promise with typed response
-   */
-  get: <T = any>(url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> => {
-    return apiClient.get<ApiResponse<T>>(url, config);
-  },
+  get: <T = any>(url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> =>
+    apiClient.get<ApiResponse<T>>(url, config),
 
-  /**
-   * POST request
-   * @template T - The expected response data type
-   * @param url - The endpoint URL
-   * @param data - Request payload
-   * @param config - Optional Axios config
-   * @returns Promise with typed response
-   */
-  post: <T = any>(url: string, data?: any, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> => {
-    return apiClient.post<ApiResponse<T>>(url, data, config);
-  },
+  post: <T = any>(url: string, data?: any, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> =>
+    apiClient.post<ApiResponse<T>>(url, data, config),
 
-  /**
-   * PUT request
-   * @template T - The expected response data type
-   * @param url - The endpoint URL
-   * @param data - Request payload
-   * @param config - Optional Axios config
-   * @returns Promise with typed response
-   */
-  put: <T = any>(url: string, data?: any, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> => {
-    return apiClient.put<ApiResponse<T>>(url, data, config);
-  },
+  put: <T = any>(url: string, data?: any, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> =>
+    apiClient.put<ApiResponse<T>>(url, data, config),
 
-  /**
-   * PATCH request
-   * @template T - The expected response data type
-   * @param url - The endpoint URL
-   * @param data - Request payload
-   * @param config - Optional Axios config
-   * @returns Promise with typed response
-   */
-  patch: <T = any>(url: string, data?: any, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> => {
-    return apiClient.patch<ApiResponse<T>>(url, data, config);
-  },
+  patch: <T = any>(url: string, data?: any, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> =>
+    apiClient.patch<ApiResponse<T>>(url, data, config),
 
-  /**
-   * DELETE request
-   * @template T - The expected response data type
-   * @param url - The endpoint URL
-   * @param config - Optional Axios config
-   * @returns Promise with typed response
-   */
-  delete: <T = any>(url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> => {
-    return apiClient.delete<ApiResponse<T>>(url, config);
-  },
+  delete: <T = any>(url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> =>
+    apiClient.delete<ApiResponse<T>>(url, config),
 
-  /**
-   * Upload file (multipart/form-data)
-   * @template T - The expected response data type
-   * @param url - The endpoint URL
-   * @param formData - FormData object with files
-   * @param config - Optional Axios config
-   * @returns Promise with typed response
-   */
-  upload: <T = any>(url: string, formData: FormData, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> => {
-    return apiClient.post<ApiResponse<T>>(url, formData, {
+  upload: <T = any>(url: string, formData: FormData, config: AxiosRequestConfig = {}): Promise<AxiosResponse<ApiResponse<T>>> =>
+    apiClient.post<ApiResponse<T>>(url, formData, {
       ...config,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        ...config.headers,
-      },
-    });
-  },
+      headers: { 'Content-Type': 'multipart/form-data', ...config.headers },
+    }),
 };
 
 export default apiClient;

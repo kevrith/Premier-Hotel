@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle, XCircle, Upload, Eye, Download, AlertCircle } from 'lucide-react';
+import apiClient from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -40,9 +41,10 @@ export function IDVerification({
   const handleApprove = async () => {
     setLoading(true);
     try {
-      // TODO: Call API to approve ID verification
-      // await checkinCheckoutService.verifyID(registrationId, { verified: true, notes: verificationNotes });
-
+      await apiClient.patch(`/checkin/registrations/${registrationId}/verify`, {
+        verified: true,
+        notes: verificationNotes,
+      });
       setVerificationStatus('approved');
       toast.success('ID verification approved');
       onVerificationComplete?.(true);
@@ -61,9 +63,10 @@ export function IDVerification({
 
     setLoading(true);
     try {
-      // TODO: Call API to reject ID verification
-      // await checkinCheckoutService.verifyID(registrationId, { verified: false, notes: rejectionReason });
-
+      await apiClient.patch(`/checkin/registrations/${registrationId}/verify`, {
+        verified: false,
+        notes: rejectionReason,
+      });
       setVerificationStatus('rejected');
       toast.success('ID verification rejected');
       onVerificationComplete?.(false);

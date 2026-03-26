@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { bookingService } from '@/lib/api/services/bookingService';
+import apiClient from '@/lib/api/client';
 import toast from 'react-hot-toast';
 
 interface ReceiptItem {
@@ -32,9 +33,10 @@ interface ReceiptData {
 interface ReceiptDisplayProps {
   receiptData: ReceiptData;
   showActions?: boolean;
+  guestEmail?: string;
 }
 
-export function ReceiptDisplay({ receiptData, showActions = true }: ReceiptDisplayProps) {
+export function ReceiptDisplay({ receiptData, showActions = true, guestEmail }: ReceiptDisplayProps) {
   const handleDownload = async () => {
     try {
       await bookingService.downloadReceipt(receiptData.bookingId);
@@ -49,11 +51,27 @@ export function ReceiptDisplay({ receiptData, showActions = true }: ReceiptDispl
   };
 
   const handleEmailReceipt = async () => {
+    const email = guestEmail || window.prompt('Enter email address to send receipt:');
+    if (!email) return;
     try {
-      // TODO: Implement email receipt functionality
-      toast.success('Receipt sent to your email');
+      await apiClient.post('/emails/queue', {
+        to_email: email,
+        email_type: 'payment_receipt',
+        data: {
+          booking_id: receiptData.bookingId,
+          receipt_number: receiptData.receiptNumber,
+          guest_name: receiptData.guestName,
+          room_number: receiptData.roomNumber,
+          check_in_date: receiptData.checkInDate,
+          check_out_date: receiptData.checkOutDate,
+          total_amount: receiptData.total,
+          payment_method: receiptData.paymentMethod || 'N/A',
+          items: receiptData.items,
+        },
+      });
+      toast.success(`Receipt sent to ${email}`);
     } catch (error) {
-      toast.error('Failed to send receipt');
+      toast.error('Failed to send receipt email');
     }
   };
 

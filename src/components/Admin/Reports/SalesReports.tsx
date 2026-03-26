@@ -62,129 +62,137 @@ export function SalesReports() {
     fetchAllData();
   }, [dateRange]);
 
+  // Build start/end date strings from the dateRange selector
+  const getDateStrings = () => {
+    const now = new Date();
+    const end = now.toISOString().split('T')[0];
+    let start: string;
+    switch (dateRange) {
+      case 'today':
+        start = end;
+        break;
+      case 'week': {
+        const d = new Date(now);
+        d.setDate(d.getDate() - 7);
+        start = d.toISOString().split('T')[0];
+        break;
+      }
+      case 'month': {
+        const d = new Date(now);
+        d.setDate(d.getDate() - 30);
+        start = d.toISOString().split('T')[0];
+        break;
+      }
+      case 'year': {
+        const d = new Date(now);
+        d.setFullYear(d.getFullYear() - 1);
+        start = d.toISOString().split('T')[0];
+        break;
+      }
+      default:
+        start = end;
+    }
+    return { start, end };
+  };
+
   const fetchAllData = async () => {
     try {
       setIsLoading(true);
-      const dateRangeData = reportsService.getDateRange(dateRange as 'today' | 'week' | 'month' | 'year');
+      const { start, end } = getDateStrings();
 
-      // Fetch all data in parallel
-      const [revenueData, ordersData, bookingsData, menuItemsResponse] = await Promise.all([
-        reportsService.getRevenueAnalytics(dateRangeData.start, dateRangeData.end, 'day'),
-        reportsService.getOrdersStats(dateRangeData.start, dateRangeData.end),
-        reportsService.getBookingsStats(dateRangeData.start, dateRangeData.end),
-        apiClient.get('/menu/items')
+      // Primary source: employee-sales (fast, reliable — same endpoint used by ComprehensiveSalesReports)
+      const [empResponse, bookingsData] = await Promise.all([
+        apiClient.get('/reports/employee-sales', {
+          params: { start_date: start + 'T00:00:00', end_date: end + 'T23:59:59' }
+        }),
+        reportsService.getBookingsStats(start + 'T00:00:00', end + 'T23:59:59').catch(() => null),
       ]);
 
-      // Transform revenue data
-      const transformedSales = revenueData.data.map((item: any) => ({
-        date: item.date,
-        revenue: item.total,
-        orders: item.count,
-        avgOrderValue: item.count > 0 ? item.total / item.count : 0,
-        bookings: item.bookings || 0,
-        mpesa: item.mpesa || 0,
-        cash: item.cash || 0,
-        card: item.card || 0
-      }));
+      const empData = (empResponse.data as any)?.data ?? empResponse.data;
+      const employees: any[] = empData.employees || [];
+      setBookingsStats(bookingsData as any);
 
-      setSalesData(transformedSales);
-      setOrdersStats(ordersData);
-      setBookingsStats(bookingsData);
+      // Aggregate KPIs from employee data
+      const totalSales = empData.total_sales || employees.reduce((s: number, e: any) => s + (e.total_sales || 0), 0);
+      const totalOrderCount = empData.total_orders || employees.reduce((s: number, e: any) => s + (e.total_orders || 0), 0);
 
-      // Build menu item lookup
-      const menuItems = menuItemsResponse.data || [];
-      const menuItemMap = new Map(menuItems.map((item: any) => [item.id, item]));
+      // Synthesise a single "daily" entry so the table shows something useful
+      setSalesData([{
+        date: `${start} to ${end}`,
+        revenue: totalSales,
+        orders: totalOrderCount,
+        avgOrderValue: totalOrderCount > 0 ? totalSales / totalOrderCount : 0,
+        bookings: bookingsData?.summary?.total_bookings || 0,
+        mpesa: employees.reduce((s: number, e: any) => s + (e.payment_mpesa || 0), 0),
+        cash: employees.reduce((s: number, e: any) => s + (e.payment_cash || 0), 0),
+        card: employees.reduce((s: number, e: any) => s + (e.payment_card || 0), 0),
+      }]);
 
-      // Calculate category sales from orders stats
+      // Mock ordersStats shape so completion_rate renders
+      setOrdersStats({
+        period: { start, end },
+        summary: {
+          total_orders: totalOrderCount,
+          total_revenue: totalSales,
+          average_order_value: totalOrderCount > 0 ? totalSales / totalOrderCount : 0,
+          completion_rate: employees.reduce((s: number, e: any) => s + (e.completion_rate || 0), 0) / (employees.length || 1),
+        },
+        by_status: {},
+        by_location: {},
+        top_items: [],
+      } as any);
+
+      // Category breakdown: bookings + F&B
+      const bookingRevenue = bookingsData?.summary?.total_revenue || 0;
+      const grandTotal = totalSales + bookingRevenue;
       const categoryData: CategorySales[] = [];
-      const totalOrdersRevenue = ordersData.summary.total_revenue;
-      const totalBookingsRevenue = bookingsStats?.summary.total_revenue || 0;
-      const grandTotal = totalOrdersRevenue + totalBookingsRevenue;
-
-      // Add bookings as a category
-      if (totalBookingsRevenue > 0) {
+      if (bookingRevenue > 0) {
         categoryData.push({
           category: 'Room Bookings',
-          revenue: totalBookingsRevenue,
-          orders: bookingsData.summary.total_bookings,
-          percentage: grandTotal > 0 ? Math.round((totalBookingsRevenue / grandTotal) * 100) : 0
+          revenue: bookingRevenue,
+          orders: bookingsData?.summary?.total_bookings || 0,
+          percentage: grandTotal > 0 ? Math.round((bookingRevenue / grandTotal) * 100) : 0,
         });
       }
-
-      // Add orders by location as categories (Restaurant, Bar, Room Service)
-      if (ordersData.by_location) {
-        const locationRevenue = Object.entries(ordersData.by_location).map(([location, count]) => {
-          // Estimate revenue by location (proportional to order count)
-          const avgValue = ordersData.summary.average_order_value;
-          const estRevenue = (count as number) * avgValue;
-          return {
-            category: location || 'Restaurant',
-            revenue: estRevenue,
-            orders: count as number,
-            percentage: grandTotal > 0 ? Math.round((estRevenue / grandTotal) * 100) : 0
-          };
-        });
-        categoryData.push(...locationRevenue);
-      }
-
-      // If no location data, show orders as single category
-      if (categoryData.length <= 1 && totalOrdersRevenue > 0) {
+      if (totalSales > 0) {
         categoryData.push({
-          category: 'Food & Beverage Orders',
-          revenue: totalOrdersRevenue,
-          orders: ordersData.summary.total_orders,
-          percentage: grandTotal > 0 ? Math.round((totalOrdersRevenue / grandTotal) * 100) : 0
+          category: 'Food & Beverage',
+          revenue: totalSales,
+          orders: totalOrderCount,
+          percentage: grandTotal > 0 ? Math.round((totalSales / grandTotal) * 100) : 100,
         });
       }
+      setCategorySales(categoryData);
 
-      setCategorySales(categoryData.sort((a, b) => b.revenue - a.revenue));
-
-      // Build top items from orders stats
-      const topItemsData: TopItem[] = (ordersData.top_items || []).map((item: any) => {
-        const menuItem = menuItemMap.get(item.menu_item_id) as any;
-        return {
-          item: menuItem?.name || 'Unknown Item',
-          itemId: item.menu_item_id,
-          revenue: (menuItem?.price || 0) * item.quantity,
-          orders: item.quantity,
-          category: menuItem?.category || 'Food'
-        };
-      });
-
-      setTopItems(topItemsData);
-
-      // Calculate payment methods from revenue data
-      const paymentTotals = revenueData.data.reduce((acc: any, day: any) => {
-        acc.mpesa += day.mpesa || 0;
-        acc.cash += day.cash || 0;
-        acc.card += day.card || 0;
-        return acc;
-      }, { mpesa: 0, cash: 0, card: 0 });
-
-      const totalPayments = paymentTotals.mpesa + paymentTotals.cash + paymentTotals.card;
-
-      const paymentMethodsData: PaymentMethod[] = [
-        {
-          method: 'M-Pesa',
-          revenue: paymentTotals.mpesa,
-          orders: Math.round(paymentTotals.mpesa / (revenueData.summary.average_transaction || 1)),
-          percentage: totalPayments > 0 ? Math.round((paymentTotals.mpesa / totalPayments) * 100) : 0
-        },
-        {
-          method: 'Cash',
-          revenue: paymentTotals.cash,
-          orders: Math.round(paymentTotals.cash / (revenueData.summary.average_transaction || 1)),
-          percentage: totalPayments > 0 ? Math.round((paymentTotals.cash / totalPayments) * 100) : 0
-        },
-        {
-          method: 'Credit Card',
-          revenue: paymentTotals.card,
-          orders: Math.round(paymentTotals.card / (revenueData.summary.average_transaction || 1)),
-          percentage: totalPayments > 0 ? Math.round((paymentTotals.card / totalPayments) * 100) : 0
+      // Top items: aggregate from all employee order items
+      const itemMap: Record<string, { name: string; qty: number; revenue: number; category: string }> = {};
+      for (const emp of employees) {
+        for (const oi of (emp.top_items || emp.order_items || [])) {
+          const key = oi.menu_item_id || oi.name || 'unknown';
+          if (!itemMap[key]) itemMap[key] = { name: oi.name || key, qty: 0, revenue: 0, category: oi.category || 'Food' };
+          itemMap[key].qty += oi.quantity || 0;
+          itemMap[key].revenue += oi.revenue || 0;
         }
-      ].filter(m => m.revenue > 0).sort((a, b) => b.revenue - a.revenue);
+      }
+      setTopItems(
+        Object.entries(itemMap)
+          .sort((a, b) => b[1].qty - a[1].qty)
+          .slice(0, 10)
+          .map(([id, v]) => ({ item: v.name, itemId: id, revenue: v.revenue, orders: v.qty, category: v.category }))
+      );
 
-      setPaymentMethods(paymentMethodsData);
+      // Payment methods
+      const mpesa = employees.reduce((s: number, e: any) => s + (e.payment_mpesa || 0), 0);
+      const cash  = employees.reduce((s: number, e: any) => s + (e.payment_cash  || 0), 0);
+      const card  = employees.reduce((s: number, e: any) => s + (e.payment_card  || 0), 0);
+      const other = employees.reduce((s: number, e: any) => s + (e.payment_other || 0), 0);
+      const totalPaid = mpesa + cash + card + other;
+      setPaymentMethods([
+        { method: 'M-Pesa',      revenue: mpesa,  orders: 0, percentage: totalPaid > 0 ? Math.round(mpesa  / totalPaid * 100) : 0 },
+        { method: 'Cash',        revenue: cash,   orders: 0, percentage: totalPaid > 0 ? Math.round(cash   / totalPaid * 100) : 0 },
+        { method: 'Credit Card', revenue: card,   orders: 0, percentage: totalPaid > 0 ? Math.round(card   / totalPaid * 100) : 0 },
+        { method: 'Other',       revenue: other,  orders: 0, percentage: totalPaid > 0 ? Math.round(other  / totalPaid * 100) : 0 },
+      ].filter(m => m.revenue > 0).sort((a, b) => b.revenue - a.revenue));
 
     } catch (error) {
       console.error('Error fetching sales data:', error);

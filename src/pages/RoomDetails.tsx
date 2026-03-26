@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { api } from '@/lib/api/client';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -263,25 +264,16 @@ export default function RoomDetails() {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
   useEffect(() => {
-    // Fetch room details from API
     const fetchRoom = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/v1/rooms/${id}`);
-        if (response.ok) {
-          const data = await response.json();
-          setRoom(data);
-        } else {
-          navigate('/rooms');
-        }
+        const response = await api.get(`/rooms/${id}`);
+        setRoom(response.data);
       } catch (error) {
         console.error('Error fetching room:', error);
         navigate('/rooms');
       }
     };
-    
-    if (id) {
-      fetchRoom();
-    }
+    if (id) fetchRoom();
   }, [id, navigate]);
 
   if (!room) {

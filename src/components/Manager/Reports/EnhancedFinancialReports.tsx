@@ -77,8 +77,9 @@ export const EnhancedFinancialReports: React.FC = () => {
     }
   };
 
-  const totalRevenue = Array.isArray(revenueData) ? revenueData.reduce((sum, item) => sum + (item.amount || 0), 0) : 0;
-  const totalOrders = Array.isArray(revenueData) ? revenueData.length : 0;
+  const revenueItems = (revenueData as any)?.data ?? (Array.isArray(revenueData) ? revenueData : []);
+  const totalRevenue = (revenueData as any)?.summary?.total_revenue ?? revenueItems.reduce((sum: number, item: any) => sum + (item.total || item.amount || 0), 0);
+  const totalOrders = (revenueData as any)?.summary?.total_transactions ?? revenueItems.length;
 
   return (
     <div className="space-y-6">

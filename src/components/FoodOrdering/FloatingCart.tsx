@@ -136,7 +136,7 @@ export function FloatingCart({
           toast.success('Order placed successfully! Pay on delivery.');
           onClearCart();
           setIsExpanded(false);
-          navigate('/orders');
+          navigate('/my-orders');
         }
       }
     } catch (error) {

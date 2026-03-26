@@ -1,4 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, Component, ReactNode } from "react";
+
+// Catches errors from context providers during Vite HMR without crashing the whole app
+class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: any) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: false }; } // auto-recover
+  componentDidCatch() { this.setState({ hasError: false }); } // retry on next render
+  render() { return this.props.children; }
+}
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
@@ -6,7 +14,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider } from "./contexts/AuthContext";
 import { OfflineProvider } from "./contexts/OfflineContext";
-import { SocketProvider } from "./contexts/SocketContext";
 import { MobileNavigation } from "./components/MobileNavigation";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { OfflineSessionBanner } from "./components/OfflineSessionBanner";
@@ -60,6 +67,8 @@ import PreArrivalRegistration from "./pages/PreArrivalRegistration";
 
 // Customer Payment Page (Public)
 import CustomerPayment from "./pages/CustomerPayment";
+import PayPalReturn from "./pages/PayPalReturn";
+import PayPalCancel from "./pages/PayPalCancel";
 
 // Initialize i18n
 import "./i18n/config";
@@ -98,7 +107,7 @@ const App = () => {
           <BrowserRouter>
             <AuthProvider>
               <OfflineProvider>
-                <SocketProvider>
+                <AppErrorBoundary>
             <OfflineBanner />
             <OfflineSessionBanner />
             <Routes>
@@ -203,6 +212,10 @@ const App = () => {
               </Route>
 
               {/* Error Routes */}
+              {/* PayPal redirect landing pages — public, no auth needed */}
+              <Route path="/payment/paypal/return" element={<PayPalReturn />} />
+              <Route path="/payment/paypal/cancel" element={<PayPalCancel />} />
+
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
@@ -234,7 +247,7 @@ const App = () => {
 
             {/* Mobile Bottom Navigation */}
             <MobileNavigation />
-            </SocketProvider>
+                </AppErrorBoundary>
           </OfflineProvider>
         </AuthProvider>
       </BrowserRouter>

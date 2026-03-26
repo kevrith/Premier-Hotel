@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useAuthStore from '@/stores/authStore.secure';
+import { useDataPreCache } from '@/hooks/useDataPreCache';
 
 interface User {
   id: string;
@@ -48,8 +50,32 @@ export function AuthProvider({ children }) {
     clearError
   } = useAuthStore();
 
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Pre-cache critical data for offline use once the user is authenticated
+  useDataPreCache(user?.id, role);
+
+  // Listen for session-expired events from the API interceptor
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      // If we're in an offline session, don't log out — the interceptor
+      // can fire spuriously when the backend is temporarily unreachable.
+      const state = useAuthStore.getState();
+      if (state.isOfflineSession) return;
+
+      // Only act if currently on a page other than /login to avoid loops
+      if (window.location.pathname === '/login') return;
+
+      storeLogout().then(() => {
+        navigate('/login', { replace: true });
+      });
+    };
+
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
+  }, [storeLogout, navigate]);
 
   // Check authentication on mount - only after hydration and only once
   useEffect(() => {
@@ -59,10 +85,17 @@ export function AuthProvider({ children }) {
     const initAuth = async () => {
       setHasInitialized(true);
       try {
-        // For cookie-based auth, just check if we can get current user
-        await checkAuth();
+        // For cookie-based auth, just check if we can get current user.
+        // Race against a 10-second safety timeout so a slow/unreachable backend
+        // never leaves the app stuck on the loading spinner indefinitely.
+        await Promise.race([
+          checkAuth(),
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error('Auth check timed out')), 10000)
+          ),
+        ]);
       } catch (error) {
-        // Silently handle - user is not authenticated
+        // Silently handle - user is not authenticated or backend is unavailable
         console.debug('Auth initialization: user not authenticated');
       } finally {
         setIsLoading(false);
@@ -153,10 +186,30 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+const AUTH_FALLBACK: AuthContextType = {
+  user: null,
+  userRole: null,
+  role: null,
+  isAuthenticated: false,
+  isLoading: true,
+  isOfflineSession: false,
+  error: null,
+  login: async () => ({ success: false, error: 'Not ready' }),
+  logout: () => {},
+  register: async () => ({ success: false, error: 'Not ready' }),
+  updateProfile: async () => ({ success: false, error: 'Not ready' }),
+  clearError: () => {},
+};
+
 export function useAuth() {
   const context = useContext(AuthContext);
+  // During Vite HMR a module reload can briefly detach the context reference.
+  // Return safe defaults rather than crashing the whole component tree.
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('useAuth: context undefined — returning fallback (likely HMR transition)');
+    }
+    return AUTH_FALLBACK;
   }
   return context;
 }

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import roomService from '@/lib/api/services/roomService';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'react-hot-toast';
 
 // Mock room data
@@ -96,8 +97,8 @@ const amenityIcons = {
 };
 
 export default function Rooms() {
-  const [rooms, setRooms] = useState(mockRooms);
-  const [filteredRooms, setFilteredRooms] = useState(mockRooms);
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [filteredRooms, setFilteredRooms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     roomType: 'all',
@@ -110,26 +111,30 @@ export default function Rooms() {
 
   // Fetch rooms from API
   useEffect(() => {
+    let cancelled = false;
     const fetchRooms = async () => {
       try {
         setLoading(true);
-        const response = await roomService.getAllRooms();
+        const raw = await roomService.getAllRooms();
+        const response: any[] = (raw as any) || [];
+        if (cancelled) return;
         if (response && response.length > 0) {
           setRooms(response);
         } else {
-          // Fallback to mock data if no rooms in database
           setRooms(mockRooms);
         }
       } catch (error) {
+        if (cancelled) return;
         console.error('Error fetching rooms:', error);
         toast.error('Failed to load rooms, showing sample data');
         setRooms(mockRooms);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchRooms();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -300,18 +305,38 @@ export default function Rooms() {
           <div className="lg:col-span-3">
             <div className="mb-6 flex items-center justify-between">
               <p className="text-muted-foreground">
-                {filteredRooms.length} room{filteredRooms.length !== 1 ? 's' : ''} available
+                {loading ? 'Loading rooms...' : `${filteredRooms.length} room${filteredRooms.length !== 1 ? 's' : ''} available`}
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredRooms.map((room) => (
+              {loading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-lg border bg-card overflow-hidden">
+                    <Skeleton className="h-48 w-full rounded-none" />
+                    <div className="p-4 space-y-3">
+                      <Skeleton className="h-6 w-3/4" />
+                      <Skeleton className="h-4 w-full" />
+                      <div className="flex gap-2 pt-1">
+                        <Skeleton className="h-6 w-6 rounded-full" />
+                        <Skeleton className="h-6 w-6 rounded-full" />
+                        <Skeleton className="h-6 w-6 rounded-full" />
+                      </div>
+                      <div className="flex justify-between pt-2">
+                        <Skeleton className="h-7 w-28" />
+                        <Skeleton className="h-9 w-24" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : filteredRooms.map((room) => (
                 <Card key={room.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                   {/* Room Image */}
                   <div className="relative h-48 overflow-hidden">
                     <img
-                      src={room.images[0]}
+                      src={room.images?.[0]}
                       alt={room.type}
+                      loading="lazy"
                       className="w-full h-full object-cover"
                     />
                     <Badge className="absolute top-2 right-2 bg-green-500">
@@ -382,7 +407,7 @@ export default function Rooms() {
               ))}
             </div>
 
-            {filteredRooms.length === 0 && (
+            {!loading && filteredRooms.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">
                   No rooms found matching your criteria. Try adjusting the filters.

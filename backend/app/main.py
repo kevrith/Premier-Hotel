@@ -40,7 +40,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # allow_origin_regex covers all hotel LAN devices without manual IP config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_origin_regex=r'https?://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?',
     allow_credentials=True,
     allow_methods=["*"],
@@ -153,20 +153,19 @@ _keepalive_task: asyncio.Task = None
 
 async def _db_keepalive():
     """
-    Ping the database every 4 minutes to prevent Supabase free-tier cold starts.
-    Cold starts cause 10-15 second delays on the first query after idle.
+    Ping the database every 3 minutes to prevent Supabase free-tier cold starts.
+    Pings BOTH the regular and admin clients so all endpoints stay warm.
     """
-    from app.core.supabase import get_supabase_admin
-    import concurrent.futures
+    from app.core.supabase import get_supabase, get_supabase_admin
     while True:
-        await asyncio.sleep(240)  # 4 minutes
+        await asyncio.sleep(180)  # 3 minutes
         try:
             def _ping():
-                sb = get_supabase_admin()
-                sb.table("users").select("id").limit(1).execute()
+                get_supabase().table("users").select("id").limit(1).execute()
+                get_supabase_admin().table("users").select("id").limit(1).execute()
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _ping)
-            logger.debug("DB keepalive ping sent")
+            logger.debug("DB keepalive ping sent (both clients)")
         except Exception as e:
             logger.warning(f"DB keepalive ping failed: {e}")
 
@@ -185,13 +184,17 @@ async def startup():
     # await init_db()
     logger.warning("⚠️  AsyncPG pool disabled (Supabase restriction) - App fully functional with Supabase client")
 
-    # Warm up the DB connection on startup (avoids cold-start delay on first user request)
+    # Warm up BOTH Supabase clients on startup so the first real user request
+    # doesn't hit a cold connection. Regular client handles most endpoints;
+    # admin client handles reports, admin ops, etc.
     try:
+        from app.core.supabase import get_supabase
         def _warmup():
+            get_supabase().table("users").select("id").limit(1).execute()
             get_supabase_admin().table("users").select("id").limit(1).execute()
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _warmup)
-        logger.info("✅ Database connection warmed up")
+        logger.info("✅ Both Supabase clients warmed up")
     except Exception as e:
         logger.warning(f"DB warmup failed (non-fatal): {e}")
 

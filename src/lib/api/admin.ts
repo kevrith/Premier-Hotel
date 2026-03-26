@@ -3,53 +3,17 @@
  * Handles all administrative operations (user management, etc.)
  */
 
-import axios from 'axios';
+import apiClient from './client';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-
-// Configure axios instance with cookie-based auth
-const api = axios.create({
-  baseURL: `${API_URL}/admin`,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: true, // Send cookies with requests
-});
-
-// Add request interceptor to include auth token
-api.interceptors.request.use(
-  (config) => {
-    // Get token from localStorage
-    const authStorage = localStorage.getItem('auth-storage');
-    if (authStorage) {
-      try {
-        const parsed = JSON.parse(authStorage);
-        if (parsed.state?.token) {
-          config.headers.Authorization = `Bearer ${parsed.state.token}`;
-        }
-      } catch (error) {
-        console.error('Error parsing auth storage:', error);
-      }
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Add response interceptor for error handling
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Redirect to login on 401
-      localStorage.removeItem('auth-storage');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
+// All requests go through the offline-aware apiClient.
+// Paths must include the /admin prefix since apiClient's baseURL is /api/v1.
+const api = {
+  get:    (path: string, config?: any) => apiClient.get(`/admin${path}`, config),
+  post:   (path: string, data?: any, config?: any) => apiClient.post(`/admin${path}`, data, config),
+  put:    (path: string, data?: any, config?: any) => apiClient.put(`/admin${path}`, data, config),
+  patch:  (path: string, data?: any, config?: any) => apiClient.patch(`/admin${path}`, data, config),
+  delete: (path: string, config?: any) => apiClient.delete(`/admin${path}`, config),
+};
 
 // ============================================
 // Types

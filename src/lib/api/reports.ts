@@ -223,7 +223,7 @@ class ReportsService {
     params.append('group_by', groupBy);
 
     const response = await api.get<RevenueAnalytics>(`/reports/revenue?${params.toString()}`);
-    return (response.data as any)?.data ?? response.data;
+    return response.data;
   }
 
   /**

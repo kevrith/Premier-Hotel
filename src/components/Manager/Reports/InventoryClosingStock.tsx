@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Download, AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Printer, Download, AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '@/lib/api/client';
 import * as XLSX from 'xlsx';
@@ -188,6 +188,8 @@ export const InventoryClosingStock: React.FC = () => {
   );
 
   const { summary } = data;
+  const today = new Date().toISOString().split('T')[0];
+  const isHistorical = asOfDate !== today;
 
   return (
     <div className="space-y-6">
@@ -198,6 +200,9 @@ export const InventoryClosingStock: React.FC = () => {
               <CardTitle>Inventory Closing Stock Report</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 Stock position as of {format(new Date(asOfDate), 'MMM dd, yyyy')}
+                {data.has_stocktake && (
+                  <span className="ml-2 text-emerald-600 font-medium">· Based on physical stock take</span>
+                )}
               </p>
             </div>
             <div className="flex flex-wrap gap-2 items-center">
@@ -220,6 +225,22 @@ export const InventoryClosingStock: React.FC = () => {
         </CardHeader>
 
         <CardContent>
+          {/* Historical data banner */}
+          {isHistorical && (
+            <div className={`mb-4 flex items-start gap-2 rounded-lg px-4 py-3 text-sm border
+              ${data.has_stocktake
+                ? 'bg-emerald-500/10 border-emerald-200 text-emerald-800 dark:text-emerald-300'
+                : 'bg-amber-500/10 border-amber-200 text-amber-800 dark:text-amber-300'}`}>
+              <Info className="h-4 w-4 mt-0.5 shrink-0" />
+              <div>
+                {data.has_stocktake
+                  ? <>Quantities are from the <strong>physical stock take</strong> submitted on {format(new Date(asOfDate), 'dd/MM/yyyy')} — exact counts.</>
+                  : <>No stock take was submitted for this date. Quantities are <strong>reconstructed</strong> from current stock by reversing all sales, receipts, and adjustments that occurred after {format(new Date(asOfDate), 'dd/MM/yyyy')}. For exact historical values, ensure daily stock takes are submitted.</>
+                }
+              </div>
+            </div>
+          )}
+
           {/* Summary Cards */}
           <div className="grid gap-4 md:grid-cols-4 mb-6">
             <Card>
@@ -276,7 +297,7 @@ export const InventoryClosingStock: React.FC = () => {
                             {expandedDepts.has(dept.department)
                               ? <ChevronDown className="h-4 w-4 text-indigo-600 shrink-0" />
                               : <ChevronRight className="h-4 w-4 text-indigo-600 shrink-0" />}
-                            <span className="text-indigo-900">{dept.department.toUpperCase()}</span>
+                            <span className="text-indigo-400">{dept.department.toUpperCase()}</span>
                             {dept.low_stock > 0 && (
                               <Badge className="ml-2 text-xs bg-yellow-500">{dept.low_stock} low</Badge>
                             )}
@@ -284,14 +305,14 @@ export const InventoryClosingStock: React.FC = () => {
                               <Badge className="ml-1 text-xs" variant="destructive">{dept.out_of_stock} out</Badge>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right font-bold text-indigo-900">
+                          <td className="px-3 py-2 text-right font-bold text-indigo-400">
                             {dept.total_qty.toFixed(2)}
                           </td>
-                          <td className="px-3 py-2 text-indigo-700 text-xs">{dept.items.length} items</td>
-                          <td className="px-3 py-2 text-right font-bold text-indigo-900">
+                          <td className="px-3 py-2 text-indigo-400 text-xs">{dept.items.length} items</td>
+                          <td className="px-3 py-2 text-right font-bold text-indigo-400">
                             KES {dept.total_value.toLocaleString()}
                           </td>
-                          <td className="px-3 py-2 text-center text-xs text-indigo-700">
+                          <td className="px-3 py-2 text-center text-xs text-indigo-400">
                             {dept.items.length} SKUs
                           </td>
                         </tr>
@@ -301,19 +322,19 @@ export const InventoryClosingStock: React.FC = () => {
                           dept.items.map((item, ii) => (
                             <tr
                               key={item.item_id}
-                              className={ii % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                              className={`border-t border-border ${ii % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}
                             >
-                              <td className="px-3 py-1.5 pl-8 text-gray-700">
+                              <td className="px-3 py-1.5 pl-8 text-foreground">
                                 <span className="font-medium">{item.name}</span>
                                 {item.sku && (
                                   <span className="ml-2 text-xs text-muted-foreground font-mono">{item.sku}</span>
                                 )}
                               </td>
-                              <td className="px-3 py-1.5 text-right font-semibold text-gray-800">
+                              <td className="px-3 py-1.5 text-right font-semibold text-foreground">
                                 {item.closing_quantity.toFixed(2)}
                               </td>
                               <td className="px-3 py-1.5 text-gray-500 text-xs">{item.unit}</td>
-                              <td className="px-3 py-1.5 text-right text-gray-700">
+                              <td className="px-3 py-1.5 text-right text-foreground">
                                 KES {item.closing_value.toLocaleString()}
                               </td>
                               <td className="px-3 py-1.5 text-center">
@@ -342,15 +363,15 @@ export const InventoryClosingStock: React.FC = () => {
                     ))}
 
                     {/* Grand total */}
-                    <tr className="bg-green-50 border-t-2 border-green-300">
-                      <td className="px-3 py-2 font-bold text-green-900">
+                    <tr className="bg-green-500/10 border-t-2 border-green-500/30">
+                      <td className="px-3 py-2 font-bold text-green-500">
                         GRAND TOTAL — {deptSummaries.length} departments
                       </td>
-                      <td className="px-3 py-2 text-right font-bold text-green-900">
+                      <td className="px-3 py-2 text-right font-bold text-green-500">
                         {deptSummaries.reduce((s, d) => s + d.total_qty, 0).toFixed(2)}
                       </td>
-                      <td className="px-3 py-2 text-xs text-green-700">{summary.total_items} items</td>
-                      <td className="px-3 py-2 text-right font-bold text-green-900">
+                      <td className="px-3 py-2 text-xs text-green-500">{summary.total_items} items</td>
+                      <td className="px-3 py-2 text-right font-bold text-green-500">
                         KES {summary.total_value.toLocaleString()}
                       </td>
                       <td className="px-3 py-2"></td>

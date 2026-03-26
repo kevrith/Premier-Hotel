@@ -11,15 +11,25 @@ from app.core.config import settings
 class MpesaService:
     """M-Pesa payment service using Daraja API"""
 
-    def __init__(self):
-        self.consumer_key = getattr(settings, 'MPESA_CONSUMER_KEY', '')
-        self.consumer_secret = getattr(settings, 'MPESA_CONSUMER_SECRET', '')
-        self.shortcode = getattr(settings, 'MPESA_SHORTCODE', '')
-        self.passkey = getattr(settings, 'MPESA_PASSKEY', '')
-        self.callback_url = getattr(settings, 'MPESA_CALLBACK_URL', '')
+    def __init__(self, config_override: dict = None):
+        """
+        Initialise the M-Pesa service.
 
-        # Determine environment (sandbox or production)
-        self.environment = getattr(settings, 'MPESA_ENVIRONMENT', 'sandbox')
+        config_override: dict with any of the keys below.  Values present in
+        the override take priority over environment variables so the admin panel
+        can configure credentials at runtime without restarting the server.
+
+        Keys: consumer_key, consumer_secret, shortcode, passkey,
+              callback_url, environment
+        """
+        cfg = config_override or {}
+
+        self.consumer_key    = cfg.get('consumer_key')    or getattr(settings, 'MPESA_CONSUMER_KEY', '')
+        self.consumer_secret = cfg.get('consumer_secret') or getattr(settings, 'MPESA_CONSUMER_SECRET', '')
+        self.shortcode       = cfg.get('shortcode')       or getattr(settings, 'MPESA_SHORTCODE', '')
+        self.passkey         = cfg.get('passkey')         or getattr(settings, 'MPESA_PASSKEY', '')
+        self.callback_url    = cfg.get('callback_url')    or getattr(settings, 'MPESA_CALLBACK_URL', '')
+        self.environment     = cfg.get('environment')     or getattr(settings, 'MPESA_ENVIRONMENT', 'sandbox')
 
         if self.environment == 'sandbox':
             self.base_url = 'https://sandbox.safaricom.co.ke'

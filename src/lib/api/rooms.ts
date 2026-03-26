@@ -3,18 +3,17 @@
  * Handles all room-related operations
  */
 
-import axios from 'axios';
+import apiClient from './client';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-
-// Configure axios instance with cookie-based auth
-const api = axios.create({
-  baseURL: `${API_URL}/rooms`,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: true, // Send cookies with requests
-});
+// All requests go through the offline-aware apiClient.
+// Paths must include the /rooms prefix since apiClient's baseURL is /api/v1.
+const api = {
+  get:    (path: string, config?: any) => apiClient.get(`/rooms${path}`, config),
+  post:   (path: string, data?: any, config?: any) => apiClient.post(`/rooms${path}`, data, config),
+  put:    (path: string, data?: any, config?: any) => apiClient.put(`/rooms${path}`, data, config),
+  patch:  (path: string, data?: any, config?: any) => apiClient.patch(`/rooms${path}`, data, config),
+  delete: (path: string, config?: any) => apiClient.delete(`/rooms${path}`, config),
+};
 
 // ============================================
 // Types

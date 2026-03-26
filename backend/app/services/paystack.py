@@ -13,8 +13,10 @@ class PaystackService:
 
     BASE_URL = "https://api.paystack.co"
 
-    def __init__(self):
-        self.secret_key = getattr(settings, 'PAYSTACK_SECRET_KEY', '')
+    def __init__(self, config_override: dict = None):
+        cfg = config_override or {}
+        self.secret_key = cfg.get('secret_key') or getattr(settings, 'PAYSTACK_SECRET_KEY', '')
+        self.webhook_secret = cfg.get('webhook_secret') or getattr(settings, 'PAYSTACK_WEBHOOK_SECRET', '')
 
     def _headers(self) -> Dict[str, str]:
         return {
@@ -86,11 +88,12 @@ class PaystackService:
 
     def verify_webhook_signature(self, payload: bytes, signature: str) -> bool:
         """Verify Paystack webhook HMAC-SHA512 signature."""
-        if not self.secret_key:
+        key = self.webhook_secret or self.secret_key
+        if not key:
             return False
         try:
             expected = hmac.new(
-                self.secret_key.encode("utf-8"), payload, hashlib.sha512
+                key.encode("utf-8"), payload, hashlib.sha512
             ).hexdigest()
             return hmac.compare_digest(expected, signature)
         except Exception:

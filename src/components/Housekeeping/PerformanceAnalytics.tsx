@@ -25,7 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { housekeepingService } from '@/lib/api/housekeeping';
+import { housekeepingService, type PerformanceAnalytics as PerfData } from '@/lib/api/housekeeping';
 
 interface PerformanceMetrics {
   avg_cleaning_time: number;
@@ -78,101 +78,28 @@ export function PerformanceAnalytics() {
   const loadAnalytics = async () => {
     setIsLoading(true);
     try {
-      // Calculate date range
       const endDate = new Date();
       const startDate = new Date();
+      if (dateRange === '7days') startDate.setDate(startDate.getDate() - 7);
+      else if (dateRange === '30days') startDate.setDate(startDate.getDate() - 30);
+      else if (dateRange === '90days') startDate.setDate(startDate.getDate() - 90);
 
-      switch (dateRange) {
-        case '7days':
-          startDate.setDate(startDate.getDate() - 7);
-          break;
-        case '30days':
-          startDate.setDate(startDate.getDate() - 30);
-          break;
-        case '90days':
-          startDate.setDate(startDate.getDate() - 90);
-          break;
-      }
-
-      // Load all analytics data
-      const stats = await housekeepingService.getStats({
+      const data: PerfData = await housekeepingService.getPerformanceAnalytics({
         from_date: startDate.toISOString().split('T')[0],
-        to_date: endDate.toISOString().split('T')[0]
+        to_date: endDate.toISOString().split('T')[0],
       });
 
-      // Mock data - replace with actual API calls
       setMetrics({
-        avg_cleaning_time: 45,
-        avg_quality_score: 4.3,
-        tasks_completed: 156,
-        completion_rate: 94,
-        on_time_rate: 89,
-        guest_satisfaction: 4.6
+        avg_cleaning_time: data.metrics.avg_cleaning_time,
+        avg_quality_score: data.metrics.avg_quality_score,
+        tasks_completed: data.metrics.tasks_completed,
+        completion_rate: data.metrics.completion_rate,
+        on_time_rate: data.metrics.on_time_rate,
+        guest_satisfaction: 0, // not yet tracked
       });
-
-      setStaffPerformance([
-        {
-          staff_id: '1',
-          staff_name: 'Maria Garcia',
-          tasks_completed: 42,
-          avg_time: 38,
-          avg_quality: 4.7,
-          completion_rate: 98,
-          rooms_cleaned: 38
-        },
-        {
-          staff_id: '2',
-          staff_name: 'John Smith',
-          tasks_completed: 39,
-          avg_time: 42,
-          avg_quality: 4.5,
-          completion_rate: 95,
-          rooms_cleaned: 35
-        },
-        {
-          staff_id: '3',
-          staff_name: 'Ana Rodriguez',
-          tasks_completed: 45,
-          avg_time: 40,
-          avg_quality: 4.6,
-          completion_rate: 96,
-          rooms_cleaned: 41
-        }
-      ]);
-
-      setTimeAnalytics([
-        {
-          room_type: 'Standard',
-          avg_time: 35,
-          min_time: 28,
-          max_time: 45,
-          sample_size: 42
-        },
-        {
-          room_type: 'Deluxe',
-          avg_time: 42,
-          min_time: 35,
-          max_time: 52,
-          sample_size: 28
-        },
-        {
-          room_type: 'Suite',
-          avg_time: 60,
-          min_time: 48,
-          max_time: 75,
-          sample_size: 15
-        }
-      ]);
-
-      setQualityTrends([
-        { date: '2025-12-20', avg_score: 4.2, inspections: 18, passed: 16, failed: 2 },
-        { date: '2025-12-21', avg_score: 4.5, inspections: 22, passed: 21, failed: 1 },
-        { date: '2025-12-22', avg_score: 4.3, inspections: 20, passed: 19, failed: 1 },
-        { date: '2025-12-23', avg_score: 4.6, inspections: 25, passed: 24, failed: 1 },
-        { date: '2025-12-24', avg_score: 4.4, inspections: 19, passed: 17, failed: 2 },
-        { date: '2025-12-25', avg_score: 4.7, inspections: 16, passed: 16, failed: 0 },
-        { date: '2025-12-26', avg_score: 4.5, inspections: 21, passed: 20, failed: 1 }
-      ]);
+      setStaffPerformance(data.staff_performance);
+      setTimeAnalytics(data.time_analytics);
+      setQualityTrends(data.quality_trends);
     } catch (error) {
       console.error('Failed to load analytics:', error);
       toast.error('Failed to load analytics');

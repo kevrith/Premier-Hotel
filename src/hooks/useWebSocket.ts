@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import useAuthStore from '@/stores/authStore';
+import { api } from '@/lib/api/client';
 
 export interface WebSocketMessage {
   type: string;
@@ -73,29 +74,20 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const getToken = useCallback(async (): Promise<string | null> => {
     // For cookie-based auth, get a WebSocket-specific token from the API
     try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/ws-token', {
-        method: 'GET',
-        credentials: 'include', // Include cookies for authentication
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
+      const response = await api.get('/auth/ws-token');
+      if (response.status === 200) {
+        const data = response.data as any;
         console.log('[WebSocket] Got WebSocket token from API');
         return data.ws_token;
-      } else {
-        console.log('[WebSocket] Failed to get WebSocket token, status:', response.status);
-        // Check if it's an auth error
-        if (response.status === 401) {
-          console.log('[WebSocket] Authentication required - user may need to login again');
-        }
-        return null;
       }
-    } catch (error) {
-      console.error('[WebSocket] Error getting WebSocket token:', error);
+      console.log('[WebSocket] Failed to get WebSocket token, status:', response.status);
+      return null;
+    } catch (error: any) {
+      if (error?.response?.status === 401) {
+        console.log('[WebSocket] Authentication required - user may need to login again');
+      } else {
+        console.error('[WebSocket] Error getting WebSocket token:', error);
+      }
       return null;
     }
   }, []);
@@ -135,11 +127,13 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
 
       // Create WebSocket connection with token as query parameter
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname === 'localhost'
-        ? 'localhost:8000'
-        : window.location.host;
+      // Use VITE_WS_URL env var if set, otherwise derive from API base URL, otherwise fall back to same host
+      const wsBase = import.meta.env.VITE_WS_URL
+        || (import.meta.env.VITE_API_BASE_URL
+            ? import.meta.env.VITE_API_BASE_URL.replace(/^https?/, protocol.replace(':', '')).replace('/api/v1', '')
+            : `${protocol}//${window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host}`);
 
-      const wsUrl = `${protocol}//${host}/api/v1/ws?token=${encodeURIComponent(authToken)}`;
+      const wsUrl = `${wsBase}/api/v1/ws?token=${encodeURIComponent(authToken)}`;
       
       console.log('[WebSocket] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
       console.log('[WebSocket] Available cookies:', document.cookie);

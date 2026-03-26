@@ -1,47 +1,58 @@
 /**
  * Hook to track online/offline status and pending sync queue size
  */
-import { useState, useEffect } from 'react';
-import { db } from '@/lib/db/localDatabase';
-import { syncPendingActions } from '@/lib/db/syncService';
+import { useState, useEffect, useRef } from 'react';
+import { db } from '@/db/schema';
+import OfflineService from '@/services/offlineService';
+import apiClient from '@/lib/api/client';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 export function useOfflineStatus() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const syncingRef = useRef(false);
 
-  const pendingCount = useLiveQuery(() => db.pendingActions.count(), []) ?? 0;
+  // Live count from pendingSync table — updates instantly when items are queued/removed
+  const pendingCount = useLiveQuery(() => db.pendingSync.count(), []) ?? 0;
+
+  const runSync = async () => {
+    if (syncingRef.current || !navigator.onLine) return;
+    syncingRef.current = true;
+    setIsSyncing(true);
+    try {
+      await OfflineService.processSyncQueue(apiClient);
+      setLastSynced(new Date());
+    } finally {
+      syncingRef.current = false;
+      setIsSyncing(false);
+    }
+  };
 
   useEffect(() => {
-    const handleOnline = async () => {
+    const handleOnline = () => {
       setIsOnline(true);
-      if (pendingCount > 0) {
-        setIsSyncing(true);
-        await syncPendingActions();
-        setIsSyncing(false);
-        setLastSynced(new Date());
-      }
+      runSync();
     };
-
     const handleOffline = () => setIsOnline(false);
+
+    // Also trigger sync whenever the client queues a new item and we're already online
+    const handleQueued = () => {
+      if (navigator.onLine) runSync();
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('offline:queued', handleQueued);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('offline:queued', handleQueued);
     };
-  }, [pendingCount]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const manualSync = async () => {
-    if (!isOnline) return;
-    setIsSyncing(true);
-    await syncPendingActions();
-    setIsSyncing(false);
-    setLastSynced(new Date());
-  };
+  const manualSync = () => runSync();
 
   return { isOnline, isSyncing, pendingCount, lastSynced, manualSync };
 }

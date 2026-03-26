@@ -301,7 +301,10 @@ export class OfflineService {
   }
 
   /**
-   * Process sync queue with conflict detection
+   * Process sync queue — replays each queued mutation against the live API.
+   * Items that used _url (queued by the API client interceptor) are re-issued
+   * on their exact original endpoint. Older items without _url fall back to
+   * the entity-type → endpoint map.
    */
   static async processSyncQueue(apiClient: any): Promise<{
     success: number;
@@ -309,18 +312,14 @@ export class OfflineService {
     conflicts: number;
   }> {
     const queue = await this.getSyncQueue();
-    let success = 0;
-    let failed = 0;
-    let conflicts = 0;
+    let success = 0, failed = 0, conflicts = 0;
 
     for (const item of queue) {
       try {
-        // Attempt to sync with server
         const result = await this.syncItem(item, apiClient);
 
         if (result.conflict) {
           conflicts++;
-          // Log conflict for manual resolution
           await dbHelpers.logConflict(
             item.entityType,
             item.data.id || item.data.orderId || item.data.roomId,
@@ -329,20 +328,15 @@ export class OfflineService {
           );
         } else {
           success++;
-          // Remove from queue
           await db.pendingSync.delete(item.id!);
         }
       } catch (error: any) {
         failed++;
-        // Update retry count
-        await db.pendingSync.update(item.id!, {
-          retryCount: (item.retryCount || 0) + 1,
-          lastError: error.message
-        });
+        const retries = (item.retryCount || 0) + 1;
+        await db.pendingSync.update(item.id!, { retryCount: retries, lastError: error.message });
 
-        // Remove if max retries reached
-        if ((item.retryCount || 0) >= 3) {
-          console.error(`Max retries reached for item ${item.id}, removing from queue`);
+        if (retries >= 5) {
+          console.error(`Max retries reached for item ${item.id}, dropping from queue`);
           await db.pendingSync.delete(item.id!);
         }
       }
@@ -352,7 +346,9 @@ export class OfflineService {
   }
 
   /**
-   * Sync individual item with conflict detection
+   * Sync a single queued item.
+   * Priority: use the stored _url/_method if present (set by client.ts),
+   * otherwise fall back to entity-type routing.
    */
   private static async syncItem(item: any, apiClient: any): Promise<{
     success: boolean;
@@ -361,58 +357,66 @@ export class OfflineService {
   }> {
     const { action, entityType, data } = item;
 
-    // Construct API endpoint
+    // If the client stored the exact URL, replay it directly
+    if (data._url && data._method) {
+      const { _url: url, _method: method, ...payload } = data;
+      switch (method) {
+        case 'post':   await apiClient.post(url, payload);   break;
+        case 'put':    await apiClient.put(url, payload);    break;
+        case 'patch':  await apiClient.patch(url, payload);  break;
+        case 'delete': await apiClient.delete(url);          break;
+      }
+      return { success: true };
+    }
+
+    // Legacy items: derive endpoint from entity type
     const endpoint = this.getApiEndpoint(entityType);
+    const entityId = data.id || data.orderId || data.roomId;
 
-    try {
-      let response;
+    switch (action) {
+      case 'create':
+        await apiClient.post(endpoint, data);
+        break;
 
-      switch (action) {
-        case 'create':
-          response = await apiClient.post(endpoint, data);
-          break;
-
-        case 'update':
-          // Check for conflicts by comparing timestamps
-          const currentData = await apiClient.get(`${endpoint}/${data.id || data.orderId || data.roomId}`);
-
-          if (currentData && currentData.updated_at > data.timestamp) {
-            // Conflict detected
-            return {
-              success: false,
-              conflict: true,
-              serverVersion: currentData
-            };
+      case 'update': {
+        // Light conflict check: compare server's updated_at with local timestamp
+        try {
+          const res = await apiClient.get(`${endpoint}/${entityId}`);
+          const serverData = res.data?.data ?? res.data;
+          if (serverData?.updated_at && serverData.updated_at > item.timestamp) {
+            return { success: false, conflict: true, serverVersion: serverData };
           }
+        } catch { /* server unreachable — skip conflict check */ }
 
-          response = await apiClient.put(`${endpoint}/${data.id || data.orderId || data.roomId}`, data);
-          break;
-
-        case 'delete':
-          response = await apiClient.delete(`${endpoint}/${data.id}`);
-          break;
-
-        default:
-          throw new Error(`Unknown action: ${action}`);
+        await apiClient.patch(`${endpoint}/${entityId}`, data);
+        break;
       }
 
-      return { success: true };
-    } catch (error) {
-      throw error;
+      case 'delete':
+        await apiClient.delete(`${endpoint}/${entityId}`);
+        break;
+
+      default:
+        throw new Error(`Unknown sync action: ${action}`);
     }
+
+    return { success: true };
   }
 
   /**
-   * Get API endpoint for entity type
+   * Entity type → API endpoint mapping.
+   * Paths are relative to the Axios baseURL (e.g. /orders not /api/v1/orders).
    */
   private static getApiEndpoint(entityType: string): string {
-    const endpoints: Record<string, string> = {
-      'order': '/api/orders',
-      'booking': '/api/bookings',
-      'room_status': '/api/rooms/status',
-      'staff_activity': '/api/staff/activities'
+    const map: Record<string, string> = {
+      order:          '/orders',
+      booking:        '/bookings',
+      room_status:    '/housekeeping/tasks',
+      payment:        '/payments',
+      staff_activity: '/staff/activities',
+      menu_item:      '/menu/items',
     };
-    return endpoints[entityType] || `/api/${entityType}`;
+    return map[entityType] ?? `/${entityType}s`;
   }
 
   // ==================== CONFLICT RESOLUTION ====================

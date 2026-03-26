@@ -3,18 +3,17 @@
  * Handles all menu-related operations
  */
 
-import axios from 'axios';
+import apiClient from './client';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
-
-// Configure axios instance with cookie-based auth
-const api = axios.create({
-  baseURL: `${API_URL}/menu`,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: true, // Send cookies with requests
-});
+// All requests go through the offline-aware apiClient.
+// Paths must include the /menu prefix since apiClient's baseURL is /api/v1.
+const api = {
+  get:    (path: string, config?: any) => apiClient.get(`/menu${path}`, config),
+  post:   (path: string, data?: any, config?: any) => apiClient.post(`/menu${path}`, data, config),
+  put:    (path: string, data?: any, config?: any) => apiClient.put(`/menu${path}`, data, config),
+  patch:  (path: string, data?: any, config?: any) => apiClient.patch(`/menu${path}`, data, config),
+  delete: (path: string, config?: any) => apiClient.delete(`/menu${path}`, config),
+};
 
 // ============================================
 // Types

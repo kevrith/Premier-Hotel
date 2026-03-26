@@ -34,6 +34,7 @@ import { AlertsPage } from '@/components/Owner/AlertsPage';
 import { ExportPage } from '@/components/Owner/ExportPage';
 import { StockPage } from '@/components/Owner/StockPage';
 import { SystemHealth } from '@/components/Manager/SystemHealth';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ const Sidebar = ({ active, onChange, collapsed, onToggle }: {
       </div>
       {!collapsed && (
         <div className="min-w-0">
-          <p className="font-bold text-sm leading-tight truncate">Premier Hotels</p>
+          <p className="font-bold text-sm leading-tight truncate">Premier Hotel</p>
           <p className="text-xs text-slate-400 truncate">Enterprise Portal</p>
         </div>
       )}
@@ -233,6 +234,7 @@ const StatusBadge = ({ status }: { status: string }) => {
     active: { label: 'Active', cls: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
     inactive: { label: 'Inactive', cls: 'bg-slate-500/10 text-slate-500 border-slate-500/20' },
     under_renovation: { label: 'Renovation', cls: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
+    closed: { label: 'Closed', cls: 'bg-rose-500/10 text-rose-600 border-rose-500/20' },
   };
   const s = cfg[status] || { label: status, cls: 'bg-muted text-muted-foreground border-border' };
   return (
@@ -549,10 +551,37 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
     setSaving(false);
   };
 
-  const deleteBranch = async (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    try { await api.delete(`/owner/branches/${id}`); toast.success('Branch deleted'); load(); }
-    catch { toast.error('Delete failed'); }
+  const closeBranch = async (id: string, name: string) => {
+    if (!confirm(`Close "${name}"?\n\nThe branch will be marked as closed and all staff will be unassigned. All historical data (orders, bookings, rooms) is preserved for reporting.`)) return;
+    try {
+      await api.delete(`/owner/branches/${id}`);
+      toast.success(`"${name}" closed. Historical data preserved.`);
+      load();
+    } catch {
+      toast.error('Failed to close branch');
+    }
+  };
+
+  const purgeBranch = async (id: string, name: string) => {
+    const input = window.prompt(
+      `⚠️ PERMANENT DATA PURGE\n\n` +
+      `This will PERMANENTLY DELETE everything for "${name}":\n` +
+      `rooms, orders, bookings, staff accounts, budgets.\n\n` +
+      `This is irreversible and may violate accounting compliance rules.\n\n` +
+      `Type the branch name exactly to confirm:`
+    );
+    if (input === null) return; // cancelled
+    if (input.trim() !== name.trim()) {
+      toast.error('Branch name did not match. Purge cancelled.');
+      return;
+    }
+    try {
+      await api.post(`/owner/branches/${id}/purge?confirm_name=${encodeURIComponent(name)}`);
+      toast.success(`Branch "${name}" and all its data permanently deleted`);
+      load();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Purge failed');
+    }
   };
 
   const filtered = branches.filter(b =>
@@ -564,6 +593,7 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
     active: branches.filter(b => b.status === 'active').length,
     inactive: branches.filter(b => b.status === 'inactive').length,
     renovation: branches.filter(b => b.status === 'under_renovation').length,
+    closed: branches.filter(b => b.status === 'closed').length,
   };
 
   return (
@@ -574,17 +604,20 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
           <h2 className="text-xl font-bold">Branch Management</h2>
           <p className="text-sm text-muted-foreground">Manage all your hotel locations and properties</p>
         </div>
-        <Button onClick={openCreate} className="gap-2 shadow-sm">
-          <Plus className="h-4 w-4" />Add Branch
-        </Button>
+        {isOwner && (
+          <Button onClick={openCreate} className="gap-2 shadow-sm">
+            <Plus className="h-4 w-4" />Add Branch
+          </Button>
+        )}
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {[
           { label: 'Active', count: stats.active, icon: CheckCircle2, cls: 'text-emerald-500 bg-emerald-500/10' },
           { label: 'Inactive', count: stats.inactive, icon: Clock, cls: 'text-slate-500 bg-slate-500/10' },
           { label: 'Renovation', count: stats.renovation, icon: Settings, cls: 'text-amber-500 bg-amber-500/10' },
+          { label: 'Closed', count: stats.closed, icon: X, cls: 'text-rose-500 bg-rose-500/10' },
         ].map(s => (
           <Card key={s.label} className="border-0 shadow-sm">
             <CardContent className="p-4 flex items-center gap-3">
@@ -651,8 +684,21 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(b)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
+                    {isOwner && b.status !== 'closed' && (
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8 text-amber-500 hover:text-amber-600"
+                        title="Close branch (preserves data)"
+                        onClick={() => closeBranch(b.id, b.name)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     {isOwner && (
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => deleteBranch(b.id, b.name)}>
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"
+                        title="Permanently purge all branch data"
+                        onClick={() => purgeBranch(b.id, b.name)}
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
@@ -691,6 +737,7 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="inactive">Inactive</SelectItem>
                     <SelectItem value="under_renovation">Under Renovation</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1128,6 +1175,8 @@ export default function OwnerDashboard() {
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Live
             </div>
+
+            <ThemeToggle />
 
             <Button variant="ghost" size="icon" className="relative h-8 w-8" onClick={loadOverview} disabled={overviewLoading}>
               <RefreshCw className={`h-4 w-4 ${overviewLoading ? 'animate-spin' : ''}`} />

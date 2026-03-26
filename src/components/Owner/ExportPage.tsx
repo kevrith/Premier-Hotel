@@ -35,7 +35,7 @@ const PLExport = () => {
     setLoading(true);
     try {
       const [finRes, ovRes] = await Promise.all([
-        api.get('/owner/financials', { params: { start_date: start, end_date: end } }),
+        api.get('/owner/consolidated-financials', { params: { start_date: start, end_date: end } }),
         api.get('/owner/overview', { params: { start_date: start, end_date: end } }),
       ]);
       const fin = finRes.data;

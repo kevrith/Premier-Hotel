@@ -52,6 +52,9 @@ import { orderPaymentsApi, OrderPaymentRequest } from '@/lib/api/orderPayments';
 import { combinedCheckoutApi, CombinedCheckoutRequest } from '@/lib/api/combinedCheckout';
 import { Textarea } from '@/components/ui/textarea';
 import { Smartphone, Banknote } from 'lucide-react';
+import { tablesAPI, RestaurantTable } from '@/lib/api/tables';
+import { useAcceptedPaymentMethods } from '@/hooks/useAcceptedPaymentMethods';
+import { paymentService } from '@/lib/api/payments';
 
 export default function WaiterDashboard() {
   const navigate = useNavigate();
@@ -82,10 +85,12 @@ export default function WaiterDashboard() {
   const [newOrderForm, setNewOrderForm] = useState({
     type: 'table' as 'table' | 'room',
     location: '',
+    locationMode: 'select' as 'select' | 'type',
     guests: 2,
     customerName: '',
     customerPhone: ''
   });
+  const [availableTables, setAvailableTables] = useState<RestaurantTable[]>([]);
 
   // Table transfer dialog
   const [showTransferDialog, setShowTransferDialog] = useState(false);
@@ -143,6 +148,25 @@ export default function WaiterDashboard() {
       loadOrders();
     }
   }, [isAuthenticated, role, setAllOrders]);
+
+  // Load restaurant tables for the new-order dialog
+  useEffect(() => {
+    async function loadTables() {
+      try {
+        const data = await tablesAPI.getAll();
+        // Show tables assigned to this waiter OR unassigned tables; hide tables assigned to other waiters
+        const filtered = data.filter(
+          (t) => !t.assigned_waiter_id || t.assigned_waiter_id === user?.id
+        );
+        setAvailableTables(filtered);
+      } catch (err) {
+        console.error('Failed to load tables for order dialog:', err);
+      }
+    }
+    if (isAuthenticated) {
+      loadTables();
+    }
+  }, [isAuthenticated, user?.id]);
 
   // Sound notification setup
   useEffect(() => {
@@ -236,7 +260,7 @@ export default function WaiterDashboard() {
     // Store order context and navigate to menu
     const orderContext = {
       location_type: locationType,
-      location: locationType === 'table' ? `Table ${location}` : `Room ${location}`,
+      location: locationType === 'table' ? location : `Room ${location}`,
       customer_name: newOrderForm.customerName,
       customer_phone: newOrderForm.customerPhone
     };
@@ -252,6 +276,7 @@ export default function WaiterDashboard() {
     setNewOrderForm({
       type: 'table',
       location: '',
+      locationMode: 'select',
       guests: 2,
       customerName: '',
       customerPhone: ''
@@ -355,6 +380,17 @@ export default function WaiterDashboard() {
   const tableOrders = orders.filter(o => o.location_type === 'table');
   const roomOrders = orders.filter(o => o.location_type === 'room');
 
+  // Bar/drink categories — orders with only these items never go to kitchen
+  const BAR_CATEGORIES = new Set([
+    'drinks', 'beverages', 'beverage', 'bar', 'alcohol', 'cocktails',
+    'cocktail', 'spirits', 'spirit', 'beer', 'wine', 'wines',
+    'soda', 'juice', 'juices', 'water', 'soft drinks', 'soft drink',
+  ]);
+  const isBarOrder = (order: Order) =>
+    Array.isArray(order.items) &&
+    order.items.length > 0 &&
+    order.items.every(i => BAR_CATEGORIES.has((i.category || '').toLowerCase().trim()));
+
   // Orders needing attention (ready for pickup)
   const needsAttention = orders.filter(o => o.status === 'ready');
   const activeOrders = orders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status));
@@ -365,6 +401,7 @@ export default function WaiterDashboard() {
     const isPending = order.status === 'pending' || order.status === 'confirmed';
     const isPreparing = order.status === 'preparing';
     const isServed = order.status === 'served';
+    const isBar = isBarOrder(order);
     const isMyOrder = !order.assigned_waiter_id || order.assigned_waiter_id === user?.id;
     const isOtherWaiterOrder = role === 'waiter' && order.assigned_waiter_id && order.assigned_waiter_id !== user?.id;
 
@@ -446,7 +483,7 @@ export default function WaiterDashboard() {
                 <Button
                   className="flex-1"
                   onClick={() => handleStatusUpdate(order.id, 'served')}
-                  disabled={updating === order.id || isOtherWaiterOrder}
+                  disabled={updating === order.id || !!isOtherWaiterOrder}
                 >
                   {updating === order.id ? (
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -462,7 +499,7 @@ export default function WaiterDashboard() {
                     className="flex-1"
                     variant="default"
                     onClick={() => handlePaymentClick(order)}
-                    disabled={updating === order.id || isOtherWaiterOrder}
+                    disabled={updating === order.id || !!isOtherWaiterOrder}
                   >
                     <CreditCard className="h-4 w-4 mr-2" />
                     {isOtherWaiterOrder ? 'Not Your Order' : 'Process Payment'}
@@ -484,14 +521,30 @@ export default function WaiterDashboard() {
                 </>
               )}
               {(isPending || isPreparing) && (
-                <Button
-                  className="flex-1"
-                  variant="outline"
-                  disabled
-                >
-                  <Clock className="h-4 w-4 mr-2" />
-                  {isPreparing ? 'In Kitchen' : 'Pending'}
-                </Button>
+                isBar && isPending ? (
+                  // Bar orders pending — waiter picks from bar and serves directly
+                  <Button
+                    className="flex-1"
+                    onClick={() => handleStatusUpdate(order.id, 'served')}
+                    disabled={updating === order.id || !!isOtherWaiterOrder}
+                  >
+                    {updating === order.id ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Utensils className="h-4 w-4 mr-2" />
+                    )}
+                    {isOtherWaiterOrder ? 'Not Your Order' : 'Serve (Bar)'}
+                  </Button>
+                ) : (
+                  <Button
+                    className="flex-1"
+                    variant="outline"
+                    disabled
+                  >
+                    <Clock className="h-4 w-4 mr-2" />
+                    {isPreparing ? (isBar ? 'At Bar' : 'In Kitchen') : 'Pending'}
+                  </Button>
+                )
               )}
             </div>
             <Button
@@ -591,12 +644,12 @@ export default function WaiterDashboard() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">In Kitchen</CardTitle>
+              <CardTitle className="text-sm font-medium">In Preparation</CardTitle>
               <Clock className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{activeOrders.length}</div>
-              <p className="text-xs text-muted-foreground">Being prepared</p>
+              <p className="text-xs text-muted-foreground">In kitchen or at bar</p>
             </CardContent>
           </Card>
 
@@ -758,7 +811,7 @@ export default function WaiterDashboard() {
                   <div className="pb-8">
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                       <Clock className="h-5 w-5 text-blue-500" />
-                      In Kitchen
+                      In Preparation
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pb-8">
                       {roomOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).map(order => (
@@ -811,12 +864,67 @@ export default function WaiterDashboard() {
             </div>
 
             <div className="space-y-2">
-              <Label>{newOrderForm.type === 'table' ? 'Table Number' : 'Room Number'}</Label>
-              <Input
-                placeholder={newOrderForm.type === 'table' ? 'e.g., 12' : 'e.g., 305'}
-                value={newOrderForm.location}
-                onChange={(e) => setNewOrderForm({ ...newOrderForm, location: e.target.value })}
-              />
+              {newOrderForm.type === 'table' ? (
+                <>
+                  <Label>Table</Label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={newOrderForm.locationMode}
+                      onValueChange={(v: 'select' | 'type') =>
+                        setNewOrderForm((f) => ({ ...f, locationMode: v, location: '' }))
+                      }
+                    >
+                      <SelectTrigger className="w-[140px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="select">Select table</SelectItem>
+                        <SelectItem value="type">Type manually</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {newOrderForm.locationMode === 'select' ? (
+                      <Select
+                        value={newOrderForm.location}
+                        onValueChange={(v) => setNewOrderForm((f) => ({ ...f, location: v }))}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Choose a table…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableTables.map((t) => (
+                            <SelectItem key={t.id} value={t.name}>
+                              {t.name}{t.section ? ` (${t.section})` : ''}
+                            </SelectItem>
+                          ))}
+                          {availableTables.length === 0 && (
+                            <SelectItem value="" disabled>
+                              No tables available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        className="flex-1"
+                        placeholder="e.g. Walk-in, Outside, Balcony…"
+                        value={newOrderForm.location}
+                        onChange={(e) =>
+                          setNewOrderForm((f) => ({ ...f, location: e.target.value }))
+                        }
+                      />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Label>Room Number</Label>
+                  <Input
+                    placeholder="e.g., 305"
+                    value={newOrderForm.location}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, location: e.target.value })}
+                  />
+                </>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -909,6 +1017,7 @@ export default function WaiterDashboard() {
 
           <PaymentMethodSelector
             totalAmount={selectedOrderForPayment?.total_amount || 0}
+            orderId={selectedOrderForPayment?.id}
             onPaymentComplete={handlePaymentComplete}
             onCancel={() => setShowPaymentDialog(false)}
             isRoomService={selectedOrderForPayment?.location_type === 'room'}
@@ -929,22 +1038,26 @@ export default function WaiterDashboard() {
 }
 
 // Payment Method Selector Component
-function PaymentMethodSelector({ 
-  totalAmount, 
-  onPaymentComplete, 
+function PaymentMethodSelector({
+  totalAmount,
+  orderId,
+  onPaymentComplete,
   onCancel,
   isRoomService = false,
   roomNumber
-}: { 
+}: {
   totalAmount: number;
+  orderId?: string;
   onPaymentComplete: (method: string, amount: number, mpesaPhone?: string, cardRef?: string, notes?: string, roomNumber?: string) => void;
   onCancel: () => void;
   isRoomService?: boolean;
   roomNumber?: string;
 }) {
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card' | 'room_charge'>(
+  const { isEnabled } = useAcceptedPaymentMethods();
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mpesa' | 'card' | 'room_charge' | 'paystack' | 'paypal'>(
     isRoomService ? 'room_charge' : 'cash'
   );
+  const [paystackEmail, setPaystackEmail] = useState('');
   const [amount, setAmount] = useState(() => totalAmount.toString());
   
   // Update amount when totalAmount prop changes
@@ -979,11 +1092,52 @@ function PaymentMethodSelector({
       return;
     }
 
+    // Paystack / PayPal — initiate via payment service (redirect flow)
+    if (paymentMethod === 'paystack' || paymentMethod === 'paypal') {
+      if (paymentMethod === 'paystack' && !paystackEmail) {
+        toast.error('Please enter customer email for Paystack');
+        return;
+      }
+      if (!orderId) {
+        toast.error('Order ID missing');
+        return;
+      }
+      setProcessing(true);
+      try {
+        const pd = {
+          payment_method: paymentMethod as 'paystack' | 'paypal',
+          amount: paymentAmount,
+          reference_type: 'order' as const,
+          reference_id: orderId,
+          description: `Order payment`,
+          ...(paymentMethod === 'paystack' ? { email: paystackEmail } : {
+            return_url: `${window.location.origin}/payment/paypal/return`,
+            cancel_url: `${window.location.origin}/payment/paypal/cancel`,
+          }),
+        };
+        const payment = await paymentService.initiatePayment(pd);
+        if (paymentMethod === 'paystack' && payment.paystack_authorization_url) {
+          toast.success('Redirecting to Paystack…');
+          window.location.href = payment.paystack_authorization_url;
+        } else if (paymentMethod === 'paypal' && payment.paypal_approval_url) {
+          toast.success('Redirecting to PayPal…');
+          window.location.href = payment.paypal_approval_url;
+        } else {
+          toast.error('Could not get payment redirect URL');
+        }
+      } catch {
+        toast.error('Failed to initiate online payment');
+      } finally {
+        setProcessing(false);
+      }
+      return;
+    }
+
     const validPaymentMethods = ['cash', 'mpesa', 'card', 'room_charge'] as const;
     const isValidMethod = (method: string): method is typeof validPaymentMethods[number] => {
       return validPaymentMethods.includes(method as any);
     };
-    
+
     if (!isValidMethod(paymentMethod)) {
       toast.error('Invalid payment method selected');
       return;
@@ -1019,34 +1173,48 @@ function PaymentMethodSelector({
 
       {/* Payment Method Tabs */}
       <Tabs value={paymentMethod} onValueChange={(value) => {
-        const validMethods = ['cash', 'mpesa', 'card', 'room_charge'] as const;
-        const isValidMethod = (method: string): method is typeof validMethods[number] => {
-          return validMethods.includes(method as any);
-        };
-        
-        if (isValidMethod(value)) {
-          setPaymentMethod(value);
+        const validMethods = ['cash', 'mpesa', 'card', 'room_charge', 'paystack', 'paypal'] as const;
+        if (validMethods.includes(value as any)) {
+          setPaymentMethod(value as typeof validMethods[number]);
         }
       }}>
-        <TabsList className={`grid w-full ${isRoomService ? 'grid-cols-4' : 'grid-cols-3'}`}>
+        <TabsList className="flex flex-wrap gap-1 h-auto">
           {isRoomService && (
             <TabsTrigger value="room_charge" className="flex items-center gap-1">
               <Receipt className="h-3 w-3" />
               Room
             </TabsTrigger>
           )}
-          <TabsTrigger value="cash" className="flex items-center gap-1">
-            <Banknote className="h-3 w-3" />
-            Cash
-          </TabsTrigger>
-          <TabsTrigger value="mpesa" className="flex items-center gap-1">
-            <Smartphone className="h-3 w-3" />
-            M-Pesa
-          </TabsTrigger>
-          <TabsTrigger value="card" className="flex items-center gap-1">
-            <CreditCard className="h-3 w-3" />
-            Card
-          </TabsTrigger>
+          {isEnabled('cash') && (
+            <TabsTrigger value="cash" className="flex items-center gap-1">
+              <Banknote className="h-3 w-3" />
+              Cash
+            </TabsTrigger>
+          )}
+          {isEnabled('mpesa') && (
+            <TabsTrigger value="mpesa" className="flex items-center gap-1">
+              <Smartphone className="h-3 w-3" />
+              M-Pesa
+            </TabsTrigger>
+          )}
+          {isEnabled('card') && (
+            <TabsTrigger value="card" className="flex items-center gap-1">
+              <CreditCard className="h-3 w-3" />
+              Card
+            </TabsTrigger>
+          )}
+          {isEnabled('paystack') && (
+            <TabsTrigger value="paystack" className="flex items-center gap-1">
+              <CreditCard className="h-3 w-3" />
+              Paystack
+            </TabsTrigger>
+          )}
+          {isEnabled('paypal') && (
+            <TabsTrigger value="paypal" className="flex items-center gap-1">
+              <DollarSign className="h-3 w-3" />
+              PayPal
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="room_charge" className="space-y-2">
@@ -1089,8 +1257,33 @@ function PaymentMethodSelector({
             onChange={(e) => setCardRef(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">
-            Enter the reference from your card terminal.
+            Enter the reference from your physical card terminal.
           </p>
+        </TabsContent>
+
+        <TabsContent value="paystack" className="space-y-2">
+          <Label htmlFor="paystack_email">Customer Email</Label>
+          <Input
+            id="paystack_email"
+            type="email"
+            placeholder="customer@email.com"
+            value={paystackEmail}
+            onChange={(e) => setPaystackEmail(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Customer will be redirected to Paystack to pay by card or bank transfer.
+            No physical terminal needed.
+          </p>
+        </TabsContent>
+
+        <TabsContent value="paypal" className="space-y-2">
+          <div className="p-3 bg-indigo-50 rounded-lg">
+            <p className="text-sm font-medium text-indigo-900 mb-1">PayPal Payment</p>
+            <p className="text-xs text-indigo-700">
+              Customer will be redirected to PayPal to complete payment.
+              Suitable for international guests.
+            </p>
+          </div>
         </TabsContent>
       </Tabs>
 

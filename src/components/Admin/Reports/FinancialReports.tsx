@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ComprehensiveSalesReports } from '@/components/Manager/Reports/ComprehensiveSalesReports';
 import { ProfitLossStatement } from '@/components/Manager/Reports/ProfitLossStatement';
@@ -11,9 +12,11 @@ import { MenuProfitabilityReport } from '@/components/Manager/Reports/MenuProfit
 import { CustomerLifetimeValueReport } from '@/components/Manager/Reports/CustomerLifetimeValueReport';
 
 export function FinancialReports() {
+  const [activeTab, setActiveTab] = useState('sales');
+
   return (
-    <Tabs defaultValue="sales" className="space-y-4">
-      <TabsList className="grid w-full grid-cols-11">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <TabsList className="grid w-full grid-cols-10">
         <TabsTrigger value="sales">Sales</TabsTrigger>
         <TabsTrigger value="pl">P&L</TabsTrigger>
         <TabsTrigger value="balance">Balance</TabsTrigger>
@@ -26,45 +29,16 @@ export function FinancialReports() {
         <TabsTrigger value="clv">Customer CLV</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="sales">
-        <ComprehensiveSalesReports />
-      </TabsContent>
-
-      <TabsContent value="pl">
-        <ProfitLossStatement />
-      </TabsContent>
-
-      <TabsContent value="balance">
-        <BalanceSheet />
-      </TabsContent>
-
-      <TabsContent value="cashflow">
-        <CashFlowReport />
-      </TabsContent>
-
-      <TabsContent value="vat">
-        <VATReport />
-      </TabsContent>
-
-      <TabsContent value="compare">
-        <ComparativeAnalysis />
-      </TabsContent>
-
-      <TabsContent value="inventory">
-        <InventoryClosingStock />
-      </TabsContent>
-
-      <TabsContent value="occupancy">
-        <OccupancyReport />
-      </TabsContent>
-
-      <TabsContent value="menu">
-        <MenuProfitabilityReport />
-      </TabsContent>
-
-      <TabsContent value="clv">
-        <CustomerLifetimeValueReport />
-      </TabsContent>
+      <TabsContent value="sales">{activeTab === 'sales' && <ComprehensiveSalesReports />}</TabsContent>
+      <TabsContent value="pl">{activeTab === 'pl' && <ProfitLossStatement />}</TabsContent>
+      <TabsContent value="balance">{activeTab === 'balance' && <BalanceSheet />}</TabsContent>
+      <TabsContent value="cashflow">{activeTab === 'cashflow' && <CashFlowReport />}</TabsContent>
+      <TabsContent value="vat">{activeTab === 'vat' && <VATReport />}</TabsContent>
+      <TabsContent value="compare">{activeTab === 'compare' && <ComparativeAnalysis />}</TabsContent>
+      <TabsContent value="inventory">{activeTab === 'inventory' && <InventoryClosingStock />}</TabsContent>
+      <TabsContent value="occupancy">{activeTab === 'occupancy' && <OccupancyReport />}</TabsContent>
+      <TabsContent value="menu">{activeTab === 'menu' && <MenuProfitabilityReport />}</TabsContent>
+      <TabsContent value="clv">{activeTab === 'clv' && <CustomerLifetimeValueReport />}</TabsContent>
     </Tabs>
   );
 }

@@ -120,7 +120,10 @@ async def get_revenue_analytics(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        # Fetch all three sources in parallel
+        start_date = _start(start_date)
+        end_date   = _end(end_date)
+
+        # Fetch all sources in parallel
         def _b(): return supabase.table("bookings").select(
             "paid_amount, total_amount, payment_method, created_at"
         ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(2000).execute()
@@ -129,14 +132,9 @@ async def get_revenue_analytics(
             "total_amount, payment_method, payment_status, status, created_at"
         ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(2000).execute()
 
-        def _bills(): return supabase.table("bills").select(
-            "total_amount, payment_status, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(2000).execute()
-
-        bookings_res, orders_res, bills_res = await _par(_b, _o, _bills)
+        bookings_res, orders_res = await _par(_b, _o)
         bookings = bookings_res
         orders   = orders_res
-        bills    = bills_res
 
         # Group revenue by date
         revenue_by_date: Dict[str, Dict[str, Any]] = {}
@@ -179,14 +177,11 @@ async def get_revenue_analytics(
                 else:
                     revenue_by_date[date_key]["cash"] += amount
 
-        # Process orders
+        # Process orders — count all non-voided/cancelled orders
+        # (matches employee-sales endpoint which correctly shows sales data)
+        EXCLUDED_ORDER_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
         for order in orders.data:
-            # Count paid orders OR cash orders that are delivered/completed
-            is_paid = order.get("payment_status") in ["paid", "completed"]
-            is_cash_completed = ((order.get("payment_method") or "").lower() == "cash" and
-                                order.get("status") in ["delivered", "completed", "served"])
-            
-            if not (is_paid or is_cash_completed):
+            if (order.get("status") or "").lower() in EXCLUDED_ORDER_STATUSES:
                 continue
 
             created_at = datetime.fromisoformat(order["created_at"].replace('Z', '+00:00'))
@@ -225,44 +220,6 @@ async def get_revenue_analytics(
                 else:
                     revenue_by_date[date_key]["cash"] += amount
         
-        # Process bills (waiter bills system)
-        for bill in bills.data:
-            if bill.get("payment_status") != "paid":
-                continue
-            
-            created_at = datetime.fromisoformat(bill["created_at"].replace('Z', '+00:00'))
-            if group_by == "day":
-                date_key = created_at.strftime("%Y-%m-%d")
-            elif group_by == "week":
-                date_key = created_at.strftime("%Y-W%W")
-            else:
-                date_key = created_at.strftime("%Y-%m")
-
-            if date_key not in revenue_by_date:
-                revenue_by_date[date_key] = {
-                    "date": date_key,
-                    "total": 0,
-                    "bookings": 0,
-                    "orders": 0,
-                    "mpesa": 0,
-                    "cash": 0,
-                    "card": 0,
-                    "count": 0
-                }
-
-            amount = float(bill.get("total_amount") or 0)
-            if amount > 0:
-                revenue_by_date[date_key]["total"] += amount
-                revenue_by_date[date_key]["orders"] += amount
-                revenue_by_date[date_key]["count"] += 1
-                method = (bill.get("payment_method") or "cash").lower()
-                if method in ["mpesa", "m-pesa"]:
-                    revenue_by_date[date_key]["mpesa"] += amount
-                elif method == "card":
-                    revenue_by_date[date_key]["card"] += amount
-                else:
-                    revenue_by_date[date_key]["cash"] += amount
-
         # Convert to list and sort
         revenue_data = sorted(revenue_by_date.values(), key=lambda x: x["date"])
 
@@ -308,10 +265,13 @@ async def get_bookings_statistics(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
+        start_date = _start(start_date)
+        end_date   = _end(end_date)
+
         # Get all bookings in period
-        bookings = supabase.table("bookings").select("*").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).execute()
+        bookings = supabase.table("bookings").select(
+            "id, status, total_amount, room_id, check_in_date, check_out_date, created_at"
+        ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
 
         # Get rooms to map room_id -> room type
         rooms = supabase.table("rooms").select("id, type").execute()
@@ -384,10 +344,13 @@ async def get_orders_statistics(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        # Get all orders in period
-        orders = supabase.table("orders").select("*").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).execute()
+        start_date = _start(start_date)
+        end_date   = _end(end_date)
+
+        # Get all orders in period (select only needed fields — avoids fetching heavy JSON blobs)
+        orders = supabase.table("orders").select(
+            "id, status, total_amount, delivery_location, items, created_at"
+        ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
 
         # Calculate statistics
         total_orders = len(orders.data)
@@ -409,17 +372,22 @@ async def get_orders_statistics(
             delivery_location_counts[location] = delivery_location_counts.get(location, 0) + 1
 
         # Get order items from the JSON items field in each order
-        item_quantities = {}
+        item_quantities: Dict[str, Dict[str, Any]] = {}
         for order in orders.data:
             order_items_list = order.get("items") or []
             if isinstance(order_items_list, list):
                 for item in order_items_list:
-                    menu_item_id = item.get("menu_item_id") or item.get("name", "unknown")
-                    quantity = item.get("quantity", 0)
-                    item_quantities[menu_item_id] = item_quantities.get(menu_item_id, 0) + quantity
+                    key = item.get("menu_item_id") or item.get("name", "unknown")
+                    name = item.get("name") or key
+                    qty = item.get("quantity", 0)
+                    price = float(item.get("price") or item.get("unit_price") or 0)
+                    if key not in item_quantities:
+                        item_quantities[key] = {"name": name, "quantity": 0, "revenue": 0.0, "category": item.get("category", "")}
+                    item_quantities[key]["quantity"] += qty
+                    item_quantities[key]["revenue"] += price * qty
 
-        # Get top 5 items
-        top_items = sorted(item_quantities.items(), key=lambda x: x[1], reverse=True)[:5]
+        # Get top 5 items by quantity
+        top_items_sorted = sorted(item_quantities.items(), key=lambda x: x[1]["quantity"], reverse=True)[:5]
 
         return {
             "period": {
@@ -434,7 +402,10 @@ async def get_orders_statistics(
             },
             "by_status": status_counts,
             "by_location": delivery_location_counts,
-            "top_items": [{"menu_item_id": item_id, "quantity": qty} for item_id, qty in top_items]
+            "top_items": [
+                {"menu_item_id": k, "name": v["name"], "quantity": v["quantity"], "revenue": round(v["revenue"], 2), "category": v["category"]}
+                for k, v in top_items_sorted
+            ]
         }
 
     except Exception as e:
@@ -453,7 +424,7 @@ async def get_top_customers(
     supabase: Client = Depends(get_supabase_admin)
 ):
     """
-    Get top customers by spending
+    Get top customers by spending (aggregated from orders + bookings).
     """
     try:
         if not end_date:
@@ -461,48 +432,68 @@ async def get_top_customers(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=90)).isoformat()
 
-        # Get completed payments
-        payments = supabase.table("payments").select(
-            "user_id, amount"
-        ).gte("created_at", start_date).lte("created_at", end_date).eq(
-            "status", "completed"
-        ).execute()
+        start_date = _start(start_date)
+        end_date   = _end(end_date)
 
-        # Aggregate by user
-        user_spending = {}
-        for payment in payments.data:
-            user_id = payment["user_id"]
-            amount = float(payment["amount"])
-            if user_id in user_spending:
-                user_spending[user_id]["total"] += amount
-                user_spending[user_id]["count"] += 1
-            else:
-                user_spending[user_id] = {"total": amount, "count": 1}
+        def _orders():
+            return supabase.table("orders").select(
+                "customer_id, total_amount, status"
+            ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
 
-        # Sort and get top customers
+        def _bookings():
+            return supabase.table("bookings").select(
+                "customer_id, total_amount, status"
+            ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
+
+        orders_res, bookings_res = await _par(_orders, _bookings)
+
+        EXCLUDED = {"voided", "void", "cancelled", "canceled", "void_requested"}
+
+        user_spending: Dict[str, Dict[str, Any]] = {}
+
+        for order in (orders_res.data or []):
+            cid = order.get("customer_id")
+            if not cid:
+                continue
+            if (order.get("status") or "").lower() in EXCLUDED:
+                continue
+            amount = float(order.get("total_amount") or 0)
+            if amount <= 0:
+                continue
+            if cid not in user_spending:
+                user_spending[cid] = {"total": 0.0, "count": 0}
+            user_spending[cid]["total"] += amount
+            user_spending[cid]["count"] += 1
+
+        for booking in (bookings_res.data or []):
+            cid = booking.get("customer_id")
+            if not cid:
+                continue
+            amount = float(booking.get("total_amount") or 0)
+            if amount <= 0:
+                continue
+            if cid not in user_spending:
+                user_spending[cid] = {"total": 0.0, "count": 0}
+            user_spending[cid]["total"] += amount
+            user_spending[cid]["count"] += 1
+
         top_users = sorted(
             user_spending.items(),
             key=lambda x: x[1]["total"],
             reverse=True
         )[:limit]
 
-        # Format result
-        result = []
-        for user_id, data in top_users:
-            result.append({
-                "user_id": user_id,
-                "total_spent": data["total"],
+        result = [
+            {
+                "user_id": uid,
+                "total_spent": round(data["total"], 2),
                 "transaction_count": data["count"],
                 "average_transaction": round(data["total"] / data["count"], 2)
-            })
+            }
+            for uid, data in top_users
+        ]
 
-        return {
-            "period": {
-                "start": start_date,
-                "end": end_date
-            },
-            "customers": result
-        }
+        return {"period": {"start": start_date, "end": end_date}, "customers": result}
 
     except Exception as e:
         raise HTTPException(
@@ -533,6 +524,12 @@ async def get_employee_sales_report(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
+        # Ensure time components so timestamp comparisons work correctly
+        if 'T' not in start_date:
+            start_date = start_date + 'T00:00:00'
+        if 'T' not in end_date:
+            end_date = end_date + 'T23:59:59'
+
         # ── Step 1: Fetch all orders in the period ────────────────────
         orders_res = supabase.table("orders").select(
             "id, total_amount, status, created_at, items, bill_id, "
@@ -541,9 +538,7 @@ async def get_employee_sales_report(
         all_orders = orders_res.data or []
 
         # ── Step 2: Collect staff IDs who have orders ─────────────────
-        # Priority: assigned_waiter_id first (customer order attached to waiter),
-        # fallback to created_by_staff_id (staff-created order)
-        staff_order_map: Dict[str, list] = {}  # staff_id -> [orders]
+        staff_order_map: Dict[str, list] = {}
         unattributed_orders = []
 
         for o in all_orders:
@@ -553,7 +548,6 @@ async def get_employee_sales_report(
             else:
                 unattributed_orders.append(o)
 
-        # Filter by specific employee if requested
         if employee_id:
             staff_order_map = {k: v for k, v in staff_order_map.items() if k == employee_id}
 
@@ -566,17 +560,42 @@ async def get_employee_sales_report(
                 "employees": []
             }
 
-        # ── Step 3: Look up user info for all active staff ────────────
+        # ── Step 3: Batch-fetch users, payments, bills (3 queries total) ──
         staff_ids = list(staff_order_map.keys())
         users_res = supabase.table("users").select(
             "id, full_name, email, role, department"
         ).in_("id", staff_ids).execute()
         users_map = {u["id"]: u for u in (users_res.data or [])}
 
-        # ── Step 4: Build per-employee stats ──────────────────────────
+        # Collect ALL bill IDs from ALL orders at once
+        all_bill_ids = list({o["bill_id"] for o in all_orders if o.get("bill_id")})
+
+        global_payments_by_bill: Dict[str, list] = {}
+        global_bills_map: Dict[str, dict] = {}
+
+        if all_bill_ids:
+            pay_res = supabase.table("payments").select(
+                "id, bill_id, amount, payment_method, mpesa_code, mpesa_phone, "
+                "payment_status, processed_by_waiter_id, created_at"
+            ).in_("bill_id", all_bill_ids).execute()
+            for p in (pay_res.data or []):
+                global_payments_by_bill.setdefault(p["bill_id"], []).append(p)
+
+            bill_res = supabase.table("bills").select(
+                "id, bill_number, total_amount"
+            ).in_("id", all_bill_ids).execute()
+            global_bills_map = {b["id"]: b for b in (bill_res.data or [])}
+
+        # ── Step 4: Build per-employee stats (pure Python, no more DB calls) ──
         today = datetime.now().date()
         this_week_start = today - timedelta(days=today.weekday())
         this_month_start = datetime(today.year, today.month, 1).date()
+
+        def safe_date(ts):
+            try:
+                return datetime.fromisoformat(ts.replace('Z', '+00:00')).date()
+            except Exception:
+                return None
 
         employee_sales_list = []
 
@@ -584,10 +603,8 @@ async def get_employee_sales_report(
             user = users_map.get(staff_id)
             emp_role = (user.get("role") if user else None) or "staff"
 
-            # Skip chefs — they cook, not sell
             if emp_role == "chef":
                 continue
-            # Apply role filter if provided
             if role and emp_role != role:
                 continue
 
@@ -595,7 +612,6 @@ async def get_employee_sales_report(
             total_orders = len(emp_orders)
             completed_orders = len([o for o in emp_orders if o.get("status") in ["delivered", "completed", "served"]])
 
-            # Items breakdown
             emp_order_items = []
             for order in emp_orders:
                 for item in (order.get("items") or []):
@@ -609,18 +625,10 @@ async def get_employee_sales_report(
             total_items_sold = sum(oi.get("quantity", 0) for oi in emp_order_items)
             avg_order_value = total_sales / total_orders if total_orders > 0 else 0
 
-            # Time-based counts
-            def safe_date(ts):
-                try:
-                    return datetime.fromisoformat(ts.replace('Z', '+00:00')).date()
-                except Exception:
-                    return None
-
             orders_today = sum(1 for o in emp_orders if safe_date(o.get("created_at", "")) == today)
             orders_this_week = sum(1 for o in emp_orders if (safe_date(o.get("created_at", "")) or today) >= this_week_start)
             orders_this_month = sum(1 for o in emp_orders if (safe_date(o.get("created_at", "")) or today) >= this_month_start)
 
-            # Top item
             item_counts: Dict[str, int] = {}
             item_names: Dict[str, str] = {}
             for oi in emp_order_items:
@@ -630,10 +638,8 @@ async def get_employee_sales_report(
             top_key = max(item_counts, key=lambda k: item_counts[k]) if item_counts else None
             top_selling_item = item_names.get(top_key, "N/A") if top_key else "N/A"
 
-            # First / last sale
             sorted_orders = sorted(emp_orders, key=lambda x: x.get("created_at", ""))
-            first_sale_time = "N/A"
-            last_sale_time = "N/A"
+            first_sale_time = last_sale_time = "N/A"
             if sorted_orders:
                 try:
                     first_sale_time = datetime.fromisoformat(sorted_orders[0]["created_at"].replace('Z', '+00:00')).strftime("%I:%M %p")
@@ -641,56 +647,43 @@ async def get_employee_sales_report(
                 except Exception:
                     pass
 
-            # ── Payment breakdown ──────────────────────────────────────
-            bill_ids = list({o["bill_id"] for o in emp_orders if o.get("bill_id")})
+            # ── Payment breakdown (uses pre-fetched data, no extra queries) ──
+            emp_bill_ids = {o["bill_id"] for o in emp_orders if o.get("bill_id")}
             payment_cash = payment_mpesa = payment_card = payment_room_charge = payment_other = 0.0
             mpesa_transactions: list = []
             split_bills: list = []
 
-            if bill_ids:
-                pay_res = supabase.table("payments").select(
-                    "id, bill_id, amount, payment_method, mpesa_code, mpesa_phone, "
-                    "payment_status, processed_by_waiter_id, created_at"
-                ).in_("bill_id", bill_ids).execute()
-                all_bill_payments = pay_res.data or []
-
-                bill_res = supabase.table("bills").select("id, bill_number, total_amount").in_("id", bill_ids).execute()
-                bills_map = {b["id"]: b for b in (bill_res.data or [])}
-
-                payments_by_bill: Dict[str, list] = {}
-                for p in all_bill_payments:
-                    payments_by_bill.setdefault(p["bill_id"], []).append(p)
-
-                for bid, bill_payments in payments_by_bill.items():
-                    bill_info = bills_map.get(bid, {})
-                    bill_number = bill_info.get("bill_number", "N/A")
-                    bill_total = float(bill_info.get("total_amount") or 0)
-                    processors = {p.get("processed_by_waiter_id") for p in bill_payments if p.get("processed_by_waiter_id")}
-                    if len(processors) > 1:
-                        split_bills.append({
-                            "bill_number": bill_number,
-                            "bill_id": bid,
-                            "your_amount": round(sum(float(p.get("amount") or 0) for p in bill_payments), 2),
-                            "total_amount": round(bill_total, 2),
-                            "split_count": len(processors)
-                        })
-                    for p in bill_payments:
-                        if p.get("payment_status") not in ("completed", "paid", None):
-                            continue
-                        amt = float(p.get("amount") or 0)
-                        method = (p.get("payment_method") or "cash").lower()
-                        if method == "mpesa":
-                            payment_mpesa += amt
-                            if p.get("mpesa_code"):
-                                mpesa_transactions.append({"mpesa_code": p["mpesa_code"], "amount": round(amt, 2), "phone": p.get("mpesa_phone", ""), "bill_number": bill_number, "date": p.get("created_at", "")})
-                        elif method in ("card", "credit_card", "debit_card"):
-                            payment_card += amt
-                        elif method in ("room_charge", "room charge"):
-                            payment_room_charge += amt
-                        elif method == "cash":
-                            payment_cash += amt
-                        else:
-                            payment_other += amt
+            for bid in emp_bill_ids:
+                bill_payments = global_payments_by_bill.get(bid, [])
+                bill_info = global_bills_map.get(bid, {})
+                bill_number = bill_info.get("bill_number", "N/A")
+                bill_total = float(bill_info.get("total_amount") or 0)
+                processors = {p.get("processed_by_waiter_id") for p in bill_payments if p.get("processed_by_waiter_id")}
+                if len(processors) > 1:
+                    split_bills.append({
+                        "bill_number": bill_number,
+                        "bill_id": bid,
+                        "your_amount": round(sum(float(p.get("amount") or 0) for p in bill_payments), 2),
+                        "total_amount": round(bill_total, 2),
+                        "split_count": len(processors)
+                    })
+                for p in bill_payments:
+                    if p.get("payment_status") not in ("completed", "paid", None):
+                        continue
+                    amt = float(p.get("amount") or 0)
+                    method = (p.get("payment_method") or "cash").lower()
+                    if method == "mpesa":
+                        payment_mpesa += amt
+                        if p.get("mpesa_code"):
+                            mpesa_transactions.append({"mpesa_code": p["mpesa_code"], "amount": round(amt, 2), "phone": p.get("mpesa_phone", ""), "bill_number": bill_number, "date": p.get("created_at", "")})
+                    elif method in ("card", "credit_card", "debit_card"):
+                        payment_card += amt
+                    elif method in ("room_charge", "room charge"):
+                        payment_room_charge += amt
+                    elif method == "cash":
+                        payment_cash += amt
+                    else:
+                        payment_other += amt
 
             total_collected = round(payment_cash + payment_mpesa + payment_card + payment_room_charge + payment_other, 2)
 
@@ -1108,6 +1101,13 @@ async def get_employee_details(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
+        # Ensure time components are present so lte/gte comparisons work
+        # against timestamp columns (e.g. "2026-03-25" < "2026-03-25T10:00:00Z")
+        if 'T' not in start_date:
+            start_date = start_date + 'T00:00:00'
+        if 'T' not in end_date:
+            end_date = end_date + 'T23:59:59'
+
         # Get employee information
         employee_result = supabase.table("users").select("*").eq("id", employee_id).execute()
 
@@ -1222,8 +1222,11 @@ async def get_employee_details(
             transactions.append(transaction)
 
             # Aggregate stats
+            EXCLUDED_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
             if order_status in ["completed", "delivered", "served"]:
                 completed_orders += 1
+
+            if order_status not in EXCLUDED_STATUSES:
                 total_sales += order_total
 
                 # Payment method breakdown
@@ -1535,6 +1538,12 @@ async def get_void_report(
         ).execute()
         mods = mods_result.data or []
 
+        # Get void_log entries (from the void-item endpoint)
+        void_log_result = supabase.table("void_log").select(
+            "id, order_id, bill_id, item_name, item_index, void_reason, voided_amount, voided_by, voided_at"
+        ).gte("voided_at", start_date).lte("voided_at", end_date).execute()
+        void_log_entries = void_log_result.data or []
+
         # Get cancelled orders (directly cancelled, not via modification)
         cancelled_result = supabase.table("orders").select(
             "id, order_number, items, total_amount, assigned_waiter_id, "
@@ -1551,17 +1560,22 @@ async def get_void_report(
             for fld in ["requested_by", "approved_by"]:
                 if mod.get(fld):
                     staff_ids.add(mod[fld])
+        for vl in void_log_entries:
+            if vl.get("voided_by"):
+                staff_ids.add(vl["voided_by"])
         for o in cancelled_orders:
             for fld in ["assigned_waiter_id", "created_by_staff_id"]:
                 if o.get(fld):
                     staff_ids.add(o[fld])
 
-        # Fetch orders for mods
+        # Fetch orders for mods and void_log entries
+        void_log_order_ids = [vl["order_id"] for vl in void_log_entries if vl.get("order_id")]
+        all_order_ids = list(set(mod_order_ids + void_log_order_ids))
         orders_map: Dict[str, Any] = {}
-        if mod_order_ids:
+        if all_order_ids:
             ord_result = supabase.table("orders").select(
                 "id, order_number, items, total_amount, assigned_waiter_id, created_by_staff_id"
-            ).in_("id", mod_order_ids).execute()
+            ).in_("id", all_order_ids).execute()
             for o in (ord_result.data or []):
                 orders_map[o["id"]] = o
                 for fld in ["assigned_waiter_id", "created_by_staff_id"]:
@@ -1609,6 +1623,25 @@ async def get_void_report(
                 "type": "void_request"
             })
 
+        # From void_log (individual items voided via void-item endpoint)
+        for vl in void_log_entries:
+            order = orders_map.get(vl.get("order_id"), {})
+            waiter_id = order.get("assigned_waiter_id") or order.get("created_by_staff_id")
+            void_records.append({
+                "id": vl["id"],
+                "date": vl.get("voided_at"),
+                "order_number": order.get("order_number", "N/A"),
+                "items": [{"name": vl.get("item_name", "Unknown"), "quantity": 1}],
+                "items_summary": vl.get("item_name", "Unknown item"),
+                "amount": round(float(vl.get("voided_amount") or 0), 2),
+                "voided_by": staff_name(vl.get("voided_by")),
+                "voided_by_role": staff_map.get(vl.get("voided_by"), {}).get("role", ""),
+                "original_waiter": staff_name(waiter_id),
+                "reason": vl.get("void_reason") or "No reason given",
+                "status": "approved",
+                "type": "void_item"
+            })
+
         # Directly cancelled orders
         mod_order_id_set = set(mod_order_ids)
         for order in cancelled_orders:
@@ -1633,18 +1666,31 @@ async def get_void_report(
 
         void_records.sort(key=lambda x: x.get("date") or "", reverse=True)
 
-        # Summary by voider
-        by_voider: Dict[str, Any] = {}
-        by_waiter: Dict[str, Any] = {}
+        # Group by voider (with sub-records)
+        by_voider_map: Dict[str, Any] = {}
+        by_waiter_map: Dict[str, Any] = {}
         for r in void_records:
             v = r["voided_by"]
-            by_voider.setdefault(v, {"count": 0, "amount": 0.0})
-            by_voider[v]["count"] += 1
-            by_voider[v]["amount"] += r["amount"]
+            if v not in by_voider_map:
+                by_voider_map[v] = {"voided_by": v, "role": r.get("voided_by_role", ""), "count": 0, "total_amount": 0.0, "records": []}
+            by_voider_map[v]["count"] += 1
+            by_voider_map[v]["total_amount"] += r["amount"]
+            by_voider_map[v]["records"].append(r)
+
             w = r["original_waiter"]
-            by_waiter.setdefault(w, {"count": 0, "amount": 0.0})
-            by_waiter[w]["count"] += 1
-            by_waiter[w]["amount"] += r["amount"]
+            if w not in by_waiter_map:
+                by_waiter_map[w] = {"waiter": w, "count": 0, "total_amount": 0.0, "records": []}
+            by_waiter_map[w]["count"] += 1
+            by_waiter_map[w]["total_amount"] += r["amount"]
+            by_waiter_map[w]["records"].append(r)
+
+        by_voider = sorted(by_voider_map.values(), key=lambda x: x["total_amount"], reverse=True)
+        for g in by_voider:
+            g["total_amount"] = round(g["total_amount"], 2)
+
+        by_waiter = sorted(by_waiter_map.values(), key=lambda x: x["total_amount"], reverse=True)
+        for g in by_waiter:
+            g["total_amount"] = round(g["total_amount"], 2)
 
         return {
             "period": {"start": start_date, "end": end_date},
@@ -1652,16 +1698,8 @@ async def get_void_report(
                 "total_voids": len(void_records),
                 "total_voided_amount": round(sum(r["amount"] for r in void_records), 2)
             },
-            "by_voider": sorted(
-                [{"name": k, "count": v["count"], "amount": round(v["amount"], 2)}
-                 for k, v in by_voider.items()],
-                key=lambda x: x["amount"], reverse=True
-            ),
-            "by_waiter": sorted(
-                [{"name": k, "count": v["count"], "amount": round(v["amount"], 2)}
-                 for k, v in by_waiter.items()],
-                key=lambda x: x["amount"], reverse=True
-            ),
+            "by_voider": by_voider,
+            "by_waiter": by_waiter,
             "records": void_records
         }
 

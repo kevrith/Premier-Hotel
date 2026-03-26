@@ -51,9 +51,9 @@ async def get_system_components(
     supabase_admin: Client = Depends(get_supabase_admin)
 ):
     """Get status of all system components"""
-    if current_user.get("role") not in ['admin', 'manager']:
+    if current_user.get("role") not in ['admin', 'manager', 'owner']:
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
     components = []
     
     # Database health - use faster query
@@ -234,7 +234,7 @@ async def get_system_metrics(
     supabase_admin: Client = Depends(get_supabase_admin)
 ):
     """Get system performance metrics"""
-    if current_user.get("role") not in ['admin', 'manager']:
+    if current_user.get("role") not in ['admin', 'manager', 'owner']:
         raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
@@ -267,7 +267,7 @@ async def get_system_activity(
     supabase_admin: Client = Depends(get_supabase_admin)
 ):
     """Get real system activity from notifications and recent events"""
-    if current_user.get("role") not in ['admin', 'manager']:
+    if current_user.get("role") not in ['admin', 'manager', 'owner']:
         raise HTTPException(status_code=403, detail="Admin access required")
 
     events = []
@@ -355,7 +355,7 @@ async def get_system_status(
     current_user: dict = Depends(get_current_user)
 ):
     """Get overall system status"""
-    if current_user.get("role") not in ['admin', 'manager']:
+    if current_user.get("role") not in ['admin', 'manager', 'owner']:
         raise HTTPException(status_code=403, detail="Admin access required")
     
     cpu = psutil.cpu_percent(interval=0)

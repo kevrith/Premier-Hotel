@@ -86,11 +86,12 @@ class WebSocketSingleton {
 
       // Create WebSocket connection
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname === 'localhost'
-        ? 'localhost:8000'
-        : window.location.host;
+      const wsBase = import.meta.env.VITE_WS_URL
+        || (import.meta.env.VITE_API_BASE_URL
+            ? import.meta.env.VITE_API_BASE_URL.replace(/^https?/, protocol.replace(':', '')).replace('/api/v1', '')
+            : `${protocol}//${window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host}`);
 
-      const wsUrl = `${protocol}//${host}/api/v1/ws?token=${encodeURIComponent(authToken)}`;
+      const wsUrl = `${wsBase}/api/v1/ws?token=${encodeURIComponent(authToken)}`;
       
       console.log('[WebSocket] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
       
@@ -265,8 +266,9 @@ class WebSocketSingleton {
 
   private async getToken(): Promise<string | null> {
     try {
-      const apiHost = window.location.hostname === 'localhost' ? 'localhost:8000' : `${window.location.hostname}:8000`;
-      const response = await fetch(`http://${apiHost}/api/v1/auth/ws-token`, {
+      const apiBase = import.meta.env.VITE_API_BASE_URL
+        || (window.location.hostname === 'localhost' ? 'http://localhost:8000/api/v1' : `${window.location.protocol}//${window.location.hostname}:8000/api/v1`);
+      const response = await fetch(`${apiBase}/auth/ws-token`, {
         method: 'GET',
         credentials: 'include',
         headers: {

@@ -1,208 +1,100 @@
 /**
  * Deep Cleaning Schedule Component
- * Manage and track deep cleaning schedules for all rooms
+ * Manage and track deep cleaning schedules for all rooms — wired to real API
  */
 
 import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'react-hot-toast';
-import {
-  Calendar as CalendarIcon,
-  Plus,
-  Edit,
-  Trash2,
-  Check,
-  Clock,
-  AlertCircle,
-  Filter,
-  Download
-} from 'lucide-react';
+import { Plus, Edit, Trash2, Check, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Progress } from '@/components/ui/progress';
+import { housekeepingService, type HousekeepingSchedule, type HousekeepingScheduleCreate } from '@/lib/api/housekeeping';
 
-interface DeepCleaningSchedule {
-  id: string;
-  room_number: string;
-  room_type: string;
-  frequency: 'weekly' | 'biweekly' | 'monthly' | 'quarterly';
-  last_cleaned: string;
-  next_scheduled: string;
-  assigned_to?: string;
-  status: 'scheduled' | 'overdue' | 'in_progress' | 'completed';
-  priority: 'low' | 'normal' | 'high';
-  notes?: string;
-}
-
-const FREQUENCY_DAYS = {
-  weekly: 7,
-  biweekly: 14,
-  monthly: 30,
-  quarterly: 90
+const FREQUENCY_DAYS: Record<string, number> = {
+  daily: 1, weekly: 7, biweekly: 14, monthly: 30, quarterly: 90,
 };
 
+function deriveStatus(schedule: HousekeepingSchedule): 'scheduled' | 'overdue' | 'completed' {
+  if (!schedule.next_scheduled_at) return 'scheduled';
+  const next = new Date(schedule.next_scheduled_at);
+  const now = new Date();
+  if (next < now) return 'overdue';
+  return 'scheduled';
+}
+
+function daysUntil(dateStr?: string): number | null {
+  if (!dateStr) return null;
+  const diff = new Date(dateStr).getTime() - Date.now();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
 export function DeepCleaningSchedule() {
-  const { t } = useTranslation('common');
-  const [schedules, setSchedules] = useState<DeepCleaningSchedule[]>([]);
-  const [filteredSchedules, setFilteredSchedules] = useState<DeepCleaningSchedule[]>([]);
+  const [schedules, setSchedules] = useState<HousekeepingSchedule[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showDialog, setShowDialog] = useState(false);
-  const [selectedSchedule, setSelectedSchedule] = useState<DeepCleaningSchedule | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [selected, setSelected] = useState<HousekeepingSchedule | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadSchedules();
-  }, []);
-
-  useEffect(() => {
-    filterSchedules();
-  }, [schedules, statusFilter]);
-
-  const loadSchedules = async () => {
-    setIsLoading(true);
+  const load = async () => {
+    setLoading(true);
     try {
-      // Mock data - replace with actual API call
-      const mockData: DeepCleaningSchedule[] = [
-        {
-          id: '1',
-          room_number: '101',
-          room_type: 'Deluxe',
-          frequency: 'weekly',
-          last_cleaned: '2025-12-20',
-          next_scheduled: '2025-12-27',
-          status: 'scheduled',
-          priority: 'normal'
-        },
-        {
-          id: '2',
-          room_number: '102',
-          room_type: 'Suite',
-          frequency: 'biweekly',
-          last_cleaned: '2025-12-10',
-          next_scheduled: '2025-12-24',
-          status: 'overdue',
-          priority: 'high'
-        },
-        {
-          id: '3',
-          room_number: '201',
-          room_type: 'Standard',
-          frequency: 'monthly',
-          last_cleaned: '2025-11-27',
-          next_scheduled: '2025-12-27',
-          status: 'scheduled',
-          priority: 'normal'
-        }
-      ];
-
-      setSchedules(mockData);
-    } catch (error) {
-      console.error('Failed to load schedules:', error);
+      const data = await housekeepingService.getSchedules({ task_type: 'deep_clean' });
+      setSchedules(data);
+    } catch {
       toast.error('Failed to load schedules');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const filterSchedules = () => {
-    let filtered = schedules;
+  useEffect(() => { load(); }, []);
 
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(schedule => schedule.status === statusFilter);
-    }
+  const filtered = schedules.filter(s => {
+    if (statusFilter === 'all') return true;
+    return deriveStatus(s) === statusFilter;
+  }).sort((a, b) =>
+    new Date(a.next_scheduled_at ?? '').getTime() - new Date(b.next_scheduled_at ?? '').getTime()
+  );
 
-    // Sort by next scheduled date
-    filtered.sort((a, b) => new Date(a.next_scheduled).getTime() - new Date(b.next_scheduled).getTime());
-
-    setFilteredSchedules(filtered);
+  const stats = {
+    total: schedules.length,
+    scheduled: schedules.filter(s => deriveStatus(s) === 'scheduled').length,
+    overdue: schedules.filter(s => deriveStatus(s) === 'overdue').length,
+    thisWeek: schedules.filter(s => { const d = daysUntil(s.next_scheduled_at); return d !== null && d >= 0 && d <= 7; }).length,
   };
 
-  const handleAddNew = () => {
-    setSelectedSchedule(null);
-    setShowDialog(true);
-  };
-
-  const handleEdit = (schedule: DeepCleaningSchedule) => {
-    setSelectedSchedule(schedule);
-    setShowDialog(true);
-  };
-
-  const handleComplete = async (scheduleId: string) => {
+  const handleComplete = async (id: string) => {
     try {
-      // Update schedule
-      const today = new Date().toISOString().split('T')[0];
-      const schedule = schedules.find(s => s.id === scheduleId);
-
-      if (schedule) {
-        const nextDate = new Date();
-        nextDate.setDate(nextDate.getDate() + FREQUENCY_DAYS[schedule.frequency]);
-
-        const updatedSchedule = {
-          ...schedule,
-          last_cleaned: today,
-          next_scheduled: nextDate.toISOString().split('T')[0],
-          status: 'completed' as const
-        };
-
-        setSchedules(prev => prev.map(s => s.id === scheduleId ? updatedSchedule : s));
-        toast.success('Deep cleaning marked as complete');
-      }
-    } catch (error) {
-      console.error('Failed to update schedule:', error);
+      const updated = await housekeepingService.completeSchedule(id);
+      setSchedules(prev => prev.map(s => s.id === id ? updated : s));
+      toast.success('Deep cleaning marked as complete');
+    } catch {
       toast.error('Failed to update schedule');
     }
   };
 
-  const handleDelete = async (scheduleId: string) => {
-    if (!confirm('Are you sure you want to delete this schedule?')) return;
-
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this schedule?')) return;
     try {
-      setSchedules(prev => prev.filter(s => s.id !== scheduleId));
+      await housekeepingService.deleteSchedule(id);
+      setSchedules(prev => prev.filter(s => s.id !== id));
       toast.success('Schedule deleted');
-    } catch (error) {
-      console.error('Failed to delete schedule:', error);
+    } catch {
       toast.error('Failed to delete schedule');
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'scheduled':
-        return 'bg-blue-100 text-blue-800';
-      case 'overdue':
-        return 'bg-red-100 text-red-800';
-      case 'in_progress':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getDaysUntil = (date: string) => {
-    const today = new Date();
-    const scheduled = new Date(date);
-    const diffTime = scheduled.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  const stats = {
-    total: schedules.length,
-    scheduled: schedules.filter(s => s.status === 'scheduled').length,
-    overdue: schedules.filter(s => s.status === 'overdue').length,
-    thisWeek: schedules.filter(s => {
-      const days = getDaysUntil(s.next_scheduled);
-      return days >= 0 && days <= 7;
-    }).length
+  const statusColor = (s: HousekeepingSchedule) => {
+    const st = deriveStatus(s);
+    if (st === 'overdue') return 'bg-red-100 text-red-800';
+    if (st === 'scheduled') return 'bg-blue-100 text-blue-800';
+    return 'bg-green-100 text-green-800';
   };
 
   return (
@@ -214,84 +106,65 @@ export function DeepCleaningSchedule() {
           <p className="text-muted-foreground">Manage periodic deep cleaning for all rooms</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Export
+          <Button variant="outline" onClick={() => {
+            const rows = filtered.map(s =>
+              `${s.room_id ?? 'All'},${s.frequency},${s.last_executed_at?.split('T')[0] ?? ''},${s.next_scheduled_at?.split('T')[0] ?? ''},${deriveStatus(s)}`
+            );
+            const csv = ['Room,Frequency,Last Cleaned,Next Scheduled,Status', ...rows].join('\n');
+            const a = document.createElement('a');
+            a.href = 'data:text/csv,' + encodeURIComponent(csv);
+            a.download = 'deep_cleaning_schedule.csv';
+            a.click();
+          }}>
+            <Download className="h-4 w-4 mr-2" />Export
           </Button>
-          <Button onClick={handleAddNew}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Schedule
+          <Button onClick={() => { setSelected(null); setShowDialog(true); }}>
+            <Plus className="h-4 w-4 mr-2" />Add Schedule
           </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Total Rooms</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Scheduled</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.scheduled}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Overdue</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{stats.overdue}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Due This Week</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats.thisWeek}</div>
-          </CardContent>
-        </Card>
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total', value: stats.total, color: '' },
+          { label: 'Scheduled', value: stats.scheduled, color: 'text-blue-600' },
+          { label: 'Overdue', value: stats.overdue, color: 'text-red-600' },
+          { label: 'Due This Week', value: stats.thisWeek, color: 'text-orange-600' },
+        ].map(({ label, value, color }) => (
+          <Card key={label}>
+            <div className="p-4">
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <p className={`text-2xl font-bold ${color}`}>{value}</p>
+            </div>
+          </Card>
+        ))}
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-4">
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="scheduled">Scheduled</SelectItem>
-            <SelectItem value="overdue">Overdue</SelectItem>
-            <SelectItem value="in_progress">In Progress</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Filter */}
+      <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Statuses</SelectItem>
+          <SelectItem value="scheduled">Scheduled</SelectItem>
+          <SelectItem value="overdue">Overdue</SelectItem>
+        </SelectContent>
+      </Select>
 
-      {/* Schedule Table */}
+      {/* Table */}
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">Loading...</div>
-          ) : filteredSchedules.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12 text-muted-foreground">Loading schedules…</div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              {statusFilter !== 'all' ? 'No schedules match your filter' : 'No deep cleaning schedules'}
+              {statusFilter !== 'all' ? 'No schedules match your filter' : 'No deep cleaning schedules yet'}
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Room</TableHead>
-                  <TableHead>Type</TableHead>
+                  <TableHead>Room / Area</TableHead>
                   <TableHead>Frequency</TableHead>
                   <TableHead>Last Cleaned</TableHead>
                   <TableHead>Next Scheduled</TableHead>
@@ -301,56 +174,43 @@ export function DeepCleaningSchedule() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSchedules.map((schedule) => {
-                  const daysUntil = getDaysUntil(schedule.next_scheduled);
+                {filtered.map(s => {
+                  const days = daysUntil(s.next_scheduled_at);
                   return (
-                    <TableRow key={schedule.id}>
-                      <TableCell className="font-medium">{schedule.room_number}</TableCell>
-                      <TableCell>{schedule.room_type}</TableCell>
-                      <TableCell className="capitalize">{schedule.frequency}</TableCell>
+                    <TableRow key={s.id}>
+                      <TableCell className="font-medium">{s.room_id ?? 'All Rooms'}</TableCell>
+                      <TableCell className="capitalize">{s.frequency}</TableCell>
                       <TableCell>
-                        {new Date(schedule.last_cleaned).toLocaleDateString()}
+                        {s.last_executed_at
+                          ? new Date(s.last_executed_at).toLocaleDateString()
+                          : <span className="text-muted-foreground">Never</span>}
                       </TableCell>
                       <TableCell>
-                        {new Date(schedule.next_scheduled).toLocaleDateString()}
+                        {s.next_scheduled_at
+                          ? new Date(s.next_scheduled_at).toLocaleDateString()
+                          : '—'}
                       </TableCell>
                       <TableCell>
-                        <span
-                          className={`font-medium ${
-                            daysUntil < 0
-                              ? 'text-red-600'
-                              : daysUntil <= 3
-                              ? 'text-orange-600'
-                              : 'text-green-600'
-                          }`}
-                        >
-                          {daysUntil < 0 ? `${Math.abs(daysUntil)} days overdue` : `${daysUntil} days`}
-                        </span>
+                        {days === null ? '—' : (
+                          <span className={days < 0 ? 'text-red-600 font-medium' : days <= 3 ? 'text-orange-600 font-medium' : 'text-green-600'}>
+                            {days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
-                        <Badge className={getStatusColor(schedule.status)}>
-                          {schedule.status}
-                        </Badge>
+                        <Badge className={statusColor(s)}>{deriveStatus(s)}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          {(schedule.status === 'scheduled' || schedule.status === 'overdue') && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleComplete(schedule.id)}
-                            >
+                          {deriveStatus(s) !== 'completed' && (
+                            <Button size="sm" variant="ghost" onClick={() => handleComplete(s.id)} title="Mark complete">
                               <Check className="h-4 w-4" />
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost" onClick={() => handleEdit(schedule)}>
+                          <Button size="sm" variant="ghost" onClick={() => { setSelected(s); setShowDialog(true); }}>
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(schedule.id)}
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -364,72 +224,66 @@ export function DeepCleaningSchedule() {
         </CardContent>
       </Card>
 
-      {/* Schedule Dialog */}
       <ScheduleDialog
         isOpen={showDialog}
-        onClose={() => {
-          setShowDialog(false);
-          setSelectedSchedule(null);
-        }}
-        schedule={selectedSchedule}
-        onSave={() => {
-          setShowDialog(false);
-          loadSchedules();
-        }}
+        onClose={() => { setShowDialog(false); setSelected(null); }}
+        schedule={selected}
+        onSave={() => { setShowDialog(false); setSelected(null); load(); }}
       />
     </div>
   );
 }
 
-// Schedule Dialog Component
+// ── Dialog ────────────────────────────────────────────────────────────────────
+
 interface ScheduleDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  schedule: DeepCleaningSchedule | null;
+  schedule: HousekeepingSchedule | null;
   onSave: () => void;
 }
 
 function ScheduleDialog({ isOpen, onClose, schedule, onSave }: ScheduleDialogProps) {
-  const [formData, setFormData] = useState<Partial<DeepCleaningSchedule>>({
-    room_number: '',
-    room_type: '',
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<HousekeepingScheduleCreate>({
+    task_type: 'deep_clean',
     frequency: 'monthly',
-    last_cleaned: new Date().toISOString().split('T')[0],
-    next_scheduled: '',
-    status: 'scheduled',
-    priority: 'normal',
-    notes: ''
+    room_id: '',
+    notes: '',
   });
 
   useEffect(() => {
     if (schedule) {
-      setFormData(schedule);
-    } else {
-      const today = new Date();
-      const nextMonth = new Date(today);
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-
-      setFormData({
-        room_number: '',
-        room_type: '',
-        frequency: 'monthly',
-        last_cleaned: today.toISOString().split('T')[0],
-        next_scheduled: nextMonth.toISOString().split('T')[0],
-        status: 'scheduled',
-        priority: 'normal',
-        notes: ''
+      setForm({
+        task_type: schedule.task_type,
+        frequency: schedule.frequency,
+        room_id: schedule.room_id ?? '',
+        notes: schedule.notes ?? '',
+        assigned_to: schedule.assigned_to,
       });
+    } else {
+      setForm({ task_type: 'deep_clean', frequency: 'monthly', room_id: '', notes: '' });
     }
   }, [schedule, isOpen]);
 
-  const handleSubmit = () => {
-    if (!formData.room_number || !formData.frequency) {
-      toast.error('Please fill in required fields');
-      return;
+  const handleSubmit = async () => {
+    if (!form.frequency) { toast.error('Frequency is required'); return; }
+    setSaving(true);
+    try {
+      const payload = { ...form, room_id: form.room_id || undefined };
+      if (schedule) {
+        await housekeepingService.updateSchedule(schedule.id, payload);
+        toast.success('Schedule updated');
+      } else {
+        await housekeepingService.createSchedule(payload);
+        toast.success('Schedule created');
+      }
+      onSave();
+    } catch {
+      toast.error('Failed to save schedule');
+    } finally {
+      setSaving(false);
     }
-
-    toast.success(schedule ? 'Schedule updated' : 'Schedule created');
-    onSave();
   };
 
   return (
@@ -438,131 +292,48 @@ function ScheduleDialog({ isOpen, onClose, schedule, onSave }: ScheduleDialogPro
         <DialogHeader>
           <DialogTitle>{schedule ? 'Edit Schedule' : 'Add Deep Cleaning Schedule'}</DialogTitle>
           <DialogDescription>
-            {schedule ? 'Update the deep cleaning schedule' : 'Create a new deep cleaning schedule'}
+            {schedule ? 'Update this deep cleaning schedule' : 'Create a recurring deep cleaning schedule'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Room Number *</Label>
+              <Label>Room ID (leave blank for all)</Label>
               <Input
-                value={formData.room_number}
-                onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
-                placeholder="e.g., 101"
+                value={form.room_id ?? ''}
+                onChange={e => setForm(f => ({ ...f, room_id: e.target.value }))}
+                placeholder="Room UUID or blank"
               />
             </div>
-
             <div className="space-y-2">
-              <Label>Room Type</Label>
-              <Select
-                value={formData.room_type}
-                onValueChange={(value) => setFormData({ ...formData, room_type: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
+              <Label>Frequency *</Label>
+              <Select value={form.frequency} onValueChange={v => setForm(f => ({ ...f, frequency: v as any }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Standard">Standard</SelectItem>
-                  <SelectItem value="Deluxe">Deluxe</SelectItem>
-                  <SelectItem value="Suite">Suite</SelectItem>
-                  <SelectItem value="Executive">Executive</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly (7 days)</SelectItem>
+                  <SelectItem value="biweekly">Bi-weekly (14 days)</SelectItem>
+                  <SelectItem value="monthly">Monthly (30 days)</SelectItem>
+                  <SelectItem value="quarterly">Quarterly (90 days)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-
           <div className="space-y-2">
-            <Label>Cleaning Frequency *</Label>
-            <Select
-              value={formData.frequency}
-              onValueChange={(value: any) => setFormData({ ...formData, frequency: value })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="weekly">Weekly (every 7 days)</SelectItem>
-                <SelectItem value="biweekly">Bi-weekly (every 14 days)</SelectItem>
-                <SelectItem value="monthly">Monthly (every 30 days)</SelectItem>
-                <SelectItem value="quarterly">Quarterly (every 90 days)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Last Cleaned</Label>
-              <Input
-                type="date"
-                value={formData.last_cleaned}
-                onChange={(e) => setFormData({ ...formData, last_cleaned: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Next Scheduled</Label>
-              <Input
-                type="date"
-                value={formData.next_scheduled}
-                onChange={(e) => setFormData({ ...formData, next_scheduled: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Priority</Label>
-              <Select
-                value={formData.priority}
-                onValueChange={(value: any) => setFormData({ ...formData, priority: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value: any) => setFormData({ ...formData, status: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="scheduled">Scheduled</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="overdue">Overdue</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Notes (Optional)</Label>
+            <Label>Notes</Label>
             <Input
-              value={formData.notes || ''}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Additional notes or special instructions..."
+              value={form.notes ?? ''}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              placeholder="Special instructions…"
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit}>
-            {schedule ? 'Update Schedule' : 'Create Schedule'}
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={saving}>
+            {saving ? 'Saving…' : schedule ? 'Update' : 'Create'}
           </Button>
         </DialogFooter>
       </DialogContent>

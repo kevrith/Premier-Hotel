@@ -441,67 +441,7 @@ export function HousekeepingManagement() {
 
       {/* Linen Inventory Panel */}
       {activeSection === 'linen' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><ShoppingBag className="h-5 w-5" />Linen & Room Inventory</CardTitle>
-            <CardDescription>Track and manage towels, sheets, pillows and all room linen</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {linenItems.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <ShoppingBag className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                <p>No linen items</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-3">Item</th>
-                      <th className="text-center p-3">Category</th>
-                      <th className="text-center p-3 text-green-700">Available</th>
-                      <th className="text-center p-3 text-blue-700">In Use</th>
-                      <th className="text-center p-3 text-yellow-700">Laundry</th>
-                      <th className="text-center p-3 text-red-700">Damaged</th>
-                      <th className="text-center p-3">Total</th>
-                      <th className="text-center p-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {linenItems.map(item => {
-                      const isLow = item.available_quantity <= item.reorder_level;
-                      return (
-                        <tr key={item.id} className={`border-b ${isLow ? 'bg-orange-50' : ''}`}>
-                          <td className="p-3 font-medium">
-                            {item.item_name}
-                            {isLow && <span className="ml-2 text-xs text-orange-600 font-semibold">LOW</span>}
-                          </td>
-                          <td className="p-3 text-center capitalize">{item.category}</td>
-                          <td className="p-3 text-center font-bold text-green-700">{item.available_quantity}</td>
-                          <td className="p-3 text-center font-bold text-blue-700">{item.in_use_quantity}</td>
-                          <td className="p-3 text-center font-bold text-yellow-700">{item.in_laundry_quantity}</td>
-                          <td className="p-3 text-center font-bold text-red-700">{item.damaged_quantity}</td>
-                          <td className="p-3 text-center">{item.total_quantity} {item.unit}</td>
-                          <td className="p-3 text-center">
-                            <Button size="sm" variant="outline" onClick={async () => {
-                              const qty = prompt(`Add to total stock for ${item.item_name} (enter number to add):`);
-                              if (!qty || isNaN(Number(qty))) return;
-                              await api.patch(`/maintenance/linen/${item.id}`, {
-                                total_quantity: item.total_quantity + Number(qty)
-                              });
-                              toast.success('Stock updated');
-                              loadData();
-                            }}>+ Stock</Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <LinenInventoryPanel linenItems={linenItems} onRefresh={loadData} />
       )}
 
       {/* Task List */}
@@ -805,5 +745,197 @@ export function HousekeepingManagement() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ─── Linen Inventory Panel (Manager/Admin) ───────────────────────────────────
+
+const LINEN_CATEGORIES = ['linen', 'towel', 'pillow', 'blanket', 'mattress', 'curtain', 'other'];
+
+function LinenInventoryPanel({ linenItems, onRefresh }: { linenItems: LinenItem[]; onRefresh: () => void }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [editItem, setEditItem] = useState<LinenItem | null>(null);
+  const [form, setForm] = useState({ item_name: '', category: 'linen', total_quantity: 0, unit: 'piece', reorder_level: 5, notes: '' });
+  const [saving, setSaving] = useState(false);
+
+  const openCreate = () => {
+    setForm({ item_name: '', category: 'linen', total_quantity: 0, unit: 'piece', reorder_level: 5, notes: '' });
+    setEditItem(null);
+    setShowCreate(true);
+  };
+
+  const openEdit = (item: LinenItem) => {
+    setForm({ item_name: item.item_name, category: item.category, total_quantity: item.total_quantity, unit: item.unit, reorder_level: item.reorder_level, notes: '' });
+    setEditItem(item);
+    setShowCreate(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.item_name.trim()) { toast.error('Item name is required'); return; }
+    setSaving(true);
+    try {
+      if (editItem) {
+        await api.patch(`/maintenance/linen/${editItem.id}`, form);
+        toast.success('Item updated');
+      } else {
+        await api.post('/maintenance/linen', form);
+        toast.success('Item created');
+      }
+      setShowCreate(false);
+      onRefresh();
+    } catch { toast.error('Failed to save item'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (item: LinenItem) => {
+    if (!confirm(`Delete "${item.item_name}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/maintenance/linen/${item.id}`);
+      toast.success('Item deleted');
+      onRefresh();
+    } catch { toast.error('Failed to delete item'); }
+  };
+
+  const handleUpdateStock = async (item: LinenItem) => {
+    const qty = prompt(`Current total for "${item.item_name}" is ${item.total_quantity}.\nEnter new total quantity:`);
+    if (qty === null) return;
+    const n = parseInt(qty, 10);
+    if (isNaN(n) || n < 0) { toast.error('Enter a valid number'); return; }
+    try {
+      await api.patch(`/maintenance/linen/${item.id}`, { total_quantity: n });
+      toast.success('Total updated');
+      onRefresh();
+    } catch { toast.error('Failed to update'); }
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2"><ShoppingBag className="h-5 w-5" />Linen & Room Inventory</CardTitle>
+              <CardDescription>
+                Manage all room linen items for this hotel. Add items specific to your rooms (e.g. prayer mats, extra pillows, robes).
+              </CardDescription>
+            </div>
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4 mr-1" /> Add Item
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {linenItems.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <ShoppingBag className="h-12 w-12 mx-auto mb-4 opacity-30" />
+              <p className="mb-3">No linen items yet</p>
+              <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" />Add First Item</Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-muted-foreground">
+                    <th className="text-left p-3">Item</th>
+                    <th className="text-center p-3">Category</th>
+                    <th className="text-center p-3 text-green-700">Available</th>
+                    <th className="text-center p-3 text-blue-700">In Use</th>
+                    <th className="text-center p-3 text-yellow-700">Laundry</th>
+                    <th className="text-center p-3 text-red-700">Damaged</th>
+                    <th className="text-center p-3">Total / Unit</th>
+                    <th className="text-center p-3">Reorder At</th>
+                    <th className="text-center p-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {linenItems.map(item => {
+                    const isLow = item.available_quantity <= item.reorder_level;
+                    return (
+                      <tr key={item.id} className={`border-b hover:bg-muted/40 ${isLow ? 'bg-orange-50/60' : ''}`}>
+                        <td className="p-3 font-medium">
+                          {item.item_name}
+                          {isLow && <span className="ml-2 text-xs text-orange-600 font-semibold">LOW</span>}
+                        </td>
+                        <td className="p-3 text-center capitalize">{item.category}</td>
+                        <td className="p-3 text-center font-bold text-green-700">{item.available_quantity}</td>
+                        <td className="p-3 text-center font-bold text-blue-700">{item.in_use_quantity}</td>
+                        <td className="p-3 text-center font-bold text-yellow-700">{item.in_laundry_quantity}</td>
+                        <td className="p-3 text-center font-bold text-red-700">{item.damaged_quantity}</td>
+                        <td className="p-3 text-center">{item.total_quantity} {item.unit}</td>
+                        <td className="p-3 text-center text-muted-foreground">{item.reorder_level}</td>
+                        <td className="p-3 text-center">
+                          <div className="flex gap-1 justify-center">
+                            <Button size="sm" variant="outline" className="text-xs px-2" onClick={() => handleUpdateStock(item)}>Stock</Button>
+                            <Button size="sm" variant="ghost" className="text-xs px-2" onClick={() => openEdit(item)}>Edit</Button>
+                            <Button size="sm" variant="ghost" className="text-xs px-2 text-red-500 hover:text-red-700" onClick={() => handleDelete(item)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create / Edit dialog */}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editItem ? 'Edit Linen Item' : 'Add Linen Item'}</DialogTitle>
+            <DialogDescription>
+              {editItem ? 'Update details for this item.' : 'Add any linen or room item specific to your hotel.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Item Name *</Label>
+              <Input placeholder="e.g. Bath Towel, Prayer Mat, Bathrobe..." value={form.item_name} onChange={e => setForm(p => ({ ...p, item_name: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Category</Label>
+                <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {LINEN_CATEGORIES.map(c => <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Unit</Label>
+                <Input placeholder="piece, set, pair..." value={form.unit} onChange={e => setForm(p => ({ ...p, unit: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Total Quantity</Label>
+                <Input type="number" min={0} value={form.total_quantity} onChange={e => setForm(p => ({ ...p, total_quantity: Number(e.target.value) }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Reorder Level</Label>
+                <Input type="number" min={0} value={form.reorder_level} onChange={e => setForm(p => ({ ...p, reorder_level: Number(e.target.value) }))} />
+                <p className="text-xs text-muted-foreground">Alert when available drops below this</p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Notes (optional)</Label>
+              <Input placeholder="Any extra info..." value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              {editItem ? 'Save Changes' : 'Create Item'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

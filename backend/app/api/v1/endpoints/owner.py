@@ -10,6 +10,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from app.middleware.auth_secure import require_role
 from app.core.supabase import get_supabase_admin, get_supabase
+from app.core.cache import cache_get, cache_set, cache_invalidate
 from supabase import Client
 
 router = APIRouter()
@@ -70,40 +71,40 @@ def _stats_for_branch(supabase: Client, branch_id: Optional[str], start: str, en
     staff = staff_q.execute().data or []
     active_staff = sum(1 for s in staff if s.get("status") == "active")
 
-    # Orders
+    # Orders — filter by branch_id directly
     orders_q = supabase.table("orders").select("id, total_amount, status, created_at, customer_id") \
-        .gte("created_at", start).lte("created_at", end)
+        .gte("created_at", start).lte("created_at", end) \
+        .in_("status", ["completed", "delivered", "served"])
     if branch_id:
-        # Orders don't have branch_id — proxy via assigned staff
-        branch_staff_ids = [s["id"] for s in staff]
-        if branch_staff_ids:
-            orders_q = orders_q.in_("assigned_waiter_id", branch_staff_ids)
-        else:
-            return _empty_stats()
-    orders = orders_q.execute().data or []
-    completed = [o for o in orders if o.get("status") in ("completed", "delivered", "served")]
+        orders_q = orders_q.eq("branch_id", branch_id)
+    completed = orders_q.execute().data or []
     fb_revenue = sum(float(o.get("total_amount") or 0) for o in completed)
 
-    # Bookings
+    # Bookings — filter by branch_id directly
     bookings_q = supabase.table("bookings").select("id, total_amount, paid_amount, status, created_at") \
         .gte("created_at", start).lte("created_at", end)
+    if branch_id:
+        bookings_q = bookings_q.eq("branch_id", branch_id)
     bookings = bookings_q.execute().data or []
     room_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings)
 
-    # Occupancy (rooms occupied today)
-    rooms_all = supabase.table("rooms").select("id, status").execute().data or []
+    # Rooms — filter by branch_id directly
+    rooms_q = supabase.table("rooms").select("id, status")
+    if branch_id:
+        rooms_q = rooms_q.eq("branch_id", branch_id)
+    rooms_all = rooms_q.execute().data or []
     total_rooms = len(rooms_all)
     occupied = sum(1 for r in rooms_all if r.get("status") == "occupied")
     occupancy_rate = round(occupied / total_rooms * 100, 1) if total_rooms else 0
 
     total_revenue = fb_revenue + room_revenue
-    unique_customers = len({o.get("customer_id") for o in orders if o.get("customer_id")})
+    unique_customers = len({o.get("customer_id") for o in completed if o.get("customer_id")})
 
     return {
         "total_revenue": round(total_revenue, 2),
         "fb_revenue": round(fb_revenue, 2),
         "room_revenue": round(room_revenue, 2),
-        "total_orders": len(orders),
+        "total_orders": len(completed),
         "completed_orders": len(completed),
         "total_bookings": len(bookings),
         "unique_customers": unique_customers,
@@ -131,12 +132,7 @@ def _revenue_trend(supabase: Client, branch_id: Optional[str], days: int = 30) -
         .gte("created_at", start.isoformat()).lte("created_at", end.isoformat()) \
         .in_("status", ["completed", "delivered", "served"])
     if branch_id:
-        staff = supabase.table("users").select("id").eq("branch_id", branch_id).neq("role", "customer").execute().data or []
-        ids = [s["id"] for s in staff]
-        if ids:
-            orders_q = orders_q.in_("assigned_waiter_id", ids)
-        else:
-            return []
+        orders_q = orders_q.eq("branch_id", branch_id)
     orders = orders_q.execute().data or []
     by_day: dict = {}
     for o in orders:
@@ -153,30 +149,37 @@ def _revenue_trend(supabase: Client, branch_id: Optional[str], days: int = 30) -
 
 @router.get("/branches")
 async def list_branches(
-    current_user: dict = Depends(require_role(OWNER_ROLES)),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """List all branches with their assigned manager."""
-    branches = supabase.table("branches").select("*").order("created_at").execute().data or []
-    manager_ids = [b["manager_id"] for b in branches if b.get("manager_id")]
-    managers = {}
-    if manager_ids:
-        result = supabase.table("users").select("id, full_name, email").in_("id", manager_ids).execute().data or []
-        managers = {u["id"]: u for u in result}
+    cached = cache_get("branches")
+    if cached:
+        return cached
+
+    branches_res, users_res = await _par(
+        lambda: supabase.table("branches").select("*").order("created_at").execute(),
+        lambda: supabase.table("users").select("id, full_name, email").neq("role", "customer").execute(),
+    )
+    branches = branches_res.data or []
+    all_users = {u["id"]: u for u in (users_res.data or [])}
     for b in branches:
-        b["manager"] = managers.get(b.get("manager_id"))
-    return {"branches": branches}
+        b["manager"] = all_users.get(b.get("manager_id"))
+    result = {"branches": branches}
+    cache_set("branches", result, ttl=60)  # 1-minute TTL — branches change rarely
+    return result
 
 
 @router.post("/branches", status_code=201)
 async def create_branch(
     body: BranchCreate,
-    current_user: dict = Depends(require_role(OWNER_ROLES)),
+    current_user: dict = Depends(require_role(["owner"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     result = supabase.table("branches").insert(body.model_dump(exclude_none=True)).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create branch")
+    cache_invalidate("branches")
     return result.data[0]
 
 
@@ -184,7 +187,7 @@ async def create_branch(
 async def update_branch(
     branch_id: str,
     body: BranchUpdate,
-    current_user: dict = Depends(require_role(OWNER_ROLES)),
+    current_user: dict = Depends(require_role(["owner", "admin"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -194,16 +197,84 @@ async def update_branch(
     result = supabase.table("branches").update(updates).eq("id", branch_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Branch not found")
+    cache_invalidate("branches")
     return result.data[0]
 
 
 @router.delete("/branches/{branch_id}", status_code=204)
-async def delete_branch(
+async def close_branch(
     branch_id: str,
     current_user: dict = Depends(require_role(["owner"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
+    """
+    Soft-close a branch:
+    - Sets branch status to 'closed'
+    - Unassigns all staff (sets their branch_id to NULL)
+    - Preserves all historical data (orders, bookings, rooms) for reporting and compliance
+    """
+    branch = supabase.table("branches").select("id, name").eq("id", branch_id).execute().data
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    # Mark branch as closed
+    supabase.table("branches").update({
+        "status": "closed",
+        "updated_at": datetime.now().isoformat(),
+    }).eq("id", branch_id).execute()
+
+    # Unassign all staff — they keep their accounts and history
+    supabase.table("users").update({"branch_id": None}).eq("branch_id", branch_id).execute()
+
+    return
+
+
+@router.post("/branches/{branch_id}/purge", status_code=204)
+async def purge_branch(
+    branch_id: str,
+    confirm_name: str = Query(..., description="Must match the branch name exactly"),
+    current_user: dict = Depends(require_role(["owner"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """
+    IRREVERSIBLE hard-delete of a branch and ALL its data.
+    Caller must pass ?confirm_name=<exact branch name> as a safety gate.
+    Deletes: orders, bookings, rooms, staff accounts, budgets, alert configs.
+    Keep all financial records in your accounting system before calling this.
+    """
+    branch_row = supabase.table("branches").select("id, name").eq("id", branch_id).execute().data
+    if not branch_row:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    if confirm_name.strip() != branch_row[0]["name"].strip():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Name mismatch. Expected: \"{branch_row[0]['name']}\""
+        )
+
+    # ── 1. Collect IDs ────────────────────────────────────────────────────
+    order_ids = [r["id"] for r in
+        supabase.table("orders").select("id").eq("branch_id", branch_id).execute().data or []]
+    staff_ids = [r["id"] for r in
+        supabase.table("users").select("id").eq("branch_id", branch_id).execute().data or []]
+
+    # ── 2. Order dependents ───────────────────────────────────────────────
+    if order_ids:
+        supabase.table("void_log").delete().in_("order_id", order_ids).execute()
+        supabase.table("bills").delete().in_("order_id", order_ids).execute()
+
+    # ── 3. Core branch data ───────────────────────────────────────────────
+    supabase.table("orders").delete().eq("branch_id", branch_id).execute()
+    supabase.table("bookings").delete().eq("branch_id", branch_id).execute()
+    supabase.table("rooms").delete().eq("branch_id", branch_id).execute()
+
+    # ── 4. Staff accounts (notifications + loyalty cascade) ───────────────
+    if staff_ids:
+        supabase.table("users").delete().in_("id", staff_ids).execute()
+
+    # ── 5. Branch record (branch_budgets + alert_thresholds cascade) ──────
     supabase.table("branches").delete().eq("id", branch_id).execute()
+
     return
 
 
@@ -231,18 +302,22 @@ async def owner_overview(
             days = 0
     else:
         start, end = _period(days)
+
+    # Serve from cache (2-minute TTL — overview is hit on every dashboard load)
+    cached = cache_get("owner_overview", days=days, start=start, end=end)
+    if cached:
+        return cached
+
     # ── Parallel batch: 5 queries instead of N×4+1 ──────────────────────────
     (branches, all_staff, all_orders, all_bookings, all_rooms) = await _par(
         lambda: supabase.table("branches").select("*").eq("status", "active").execute().data or [],
         lambda: supabase.table("users").select("id, role, status, branch_id").neq("role", "customer").execute().data or [],
-        lambda: supabase.table("orders").select("id, total_amount, status, created_at, customer_id, assigned_waiter_id").gte("created_at", start).lte("created_at", end).execute().data or [],
-        lambda: supabase.table("bookings").select("id, paid_amount, total_amount, status, created_at").gte("created_at", start).lte("created_at", end).execute().data or [],
-        lambda: supabase.table("rooms").select("id, status").execute().data or [],
+        lambda: supabase.table("orders").select("id, total_amount, status, created_at, customer_id, branch_id").gte("created_at", start).lte("created_at", end).execute().data or [],
+        lambda: supabase.table("bookings").select("id, paid_amount, total_amount, status, created_at, branch_id").gte("created_at", start).lte("created_at", end).execute().data or [],
+        lambda: supabase.table("rooms").select("id, status, branch_id").execute().data or [],
     )
 
     # ── Build lookup indexes in Python (O(n), not O(n²)) ─────────────────────
-    staff_id_to_branch = {s["id"]: s.get("branch_id") for s in all_staff}
-
     staff_by_branch: dict = {}
     for s in all_staff:
         staff_by_branch.setdefault(s.get("branch_id"), []).append(s)
@@ -250,44 +325,52 @@ async def owner_overview(
     completed_statuses = {"completed", "delivered", "served"}
     all_completed = [o for o in all_orders if o.get("status") in completed_statuses]
 
+    # Group orders, bookings, and rooms by their own branch_id (no proxy needed)
     all_orders_by_branch: dict = {}
     completed_by_branch: dict = {}
-    for o in all_orders:
-        bid = staff_id_to_branch.get(o.get("assigned_waiter_id"))
-        all_orders_by_branch.setdefault(bid, []).append(o)
-    for o in all_completed:
-        bid = staff_id_to_branch.get(o.get("assigned_waiter_id"))
-        completed_by_branch.setdefault(bid, []).append(o)
+    bookings_by_branch: dict = {}
+    rooms_by_branch: dict = {}
 
-    # Rooms & bookings have no branch_id — show global figures for every branch
-    total_rooms_n = len(all_rooms)
-    occupied_rooms_n = sum(1 for r in all_rooms if r.get("status") == "occupied")
-    global_occupancy = round(occupied_rooms_n / total_rooms_n * 100, 1) if total_rooms_n else 0
-    total_bookings_n = len(all_bookings)
-    room_revenue_total = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in all_bookings)
+    for o in all_orders:
+        all_orders_by_branch.setdefault(o.get("branch_id"), []).append(o)
+    for o in all_completed:
+        completed_by_branch.setdefault(o.get("branch_id"), []).append(o)
+    for b in all_bookings:
+        bookings_by_branch.setdefault(b.get("branch_id"), []).append(b)
+    for r in all_rooms:
+        rooms_by_branch.setdefault(r.get("branch_id"), []).append(r)
 
     # ── Per-branch stats (zero additional DB calls) ────────────────────────
     branch_stats = []
     for branch in branches:
         bid = branch["id"]
-        b_staff = staff_by_branch.get(bid, [])
-        b_all = all_orders_by_branch.get(bid, [])
-        b_done = completed_by_branch.get(bid, [])
-        fb_rev = sum(float(o.get("total_amount") or 0) for o in b_done)
+        b_staff    = staff_by_branch.get(bid, [])
+        b_all      = all_orders_by_branch.get(bid, [])
+        b_done     = completed_by_branch.get(bid, [])
+        b_bookings = bookings_by_branch.get(bid, [])
+        b_rooms    = rooms_by_branch.get(bid, [])
+
+        fb_rev   = sum(float(o.get("total_amount") or 0) for o in b_done)
+        room_rev = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in b_bookings)
+
+        total_rooms_n   = len(b_rooms)
+        occupied_rooms_n = sum(1 for r in b_rooms if r.get("status") == "occupied")
+        occupancy        = round(occupied_rooms_n / total_rooms_n * 100, 1) if total_rooms_n else 0
+
         branch_stats.append({
             "id": bid,
             "name": branch["name"],
             "location": branch.get("location"),
             "status": branch.get("status"),
             "stats": {
-                "total_revenue":    round(fb_rev + room_revenue_total, 2),
+                "total_revenue":    round(fb_rev + room_rev, 2),
                 "fb_revenue":       round(fb_rev, 2),
-                "room_revenue":     round(room_revenue_total, 2),
+                "room_revenue":     round(room_rev, 2),
                 "total_orders":     len(b_all),
                 "completed_orders": len(b_done),
-                "total_bookings":   total_bookings_n,
+                "total_bookings":   len(b_bookings),
                 "unique_customers": len({o.get("customer_id") for o in b_all if o.get("customer_id")}),
-                "occupancy_rate":   global_occupancy,
+                "occupancy_rate":   occupancy,
                 "total_rooms":      total_rooms_n,
                 "occupied_rooms":   occupied_rooms_n,
                 "total_staff":      len(b_staff),
@@ -296,18 +379,22 @@ async def owner_overview(
         })
 
     # ── Consolidated totals from pre-fetched data ─────────────────────────
-    total_fb = sum(float(o.get("total_amount") or 0) for o in all_completed)
+    total_fb       = sum(float(o.get("total_amount") or 0) for o in all_completed)
+    total_room_rev = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in all_bookings)
+    total_rooms_all   = len(all_rooms)
+    occupied_all      = sum(1 for r in all_rooms if r.get("status") == "occupied")
+    avg_occupancy_all = round(occupied_all / total_rooms_all * 100, 1) if total_rooms_all else 0
     consolidated = {
-        "total_revenue":      round(total_fb + room_revenue_total, 2),
+        "total_revenue":      round(total_fb + total_room_rev, 2),
         "fb_revenue":         round(total_fb, 2),
-        "room_revenue":       round(room_revenue_total, 2),
+        "room_revenue":       round(total_room_rev, 2),
         "total_orders":       len(all_orders),
         "completed_orders":   len(all_completed),
-        "total_bookings":     total_bookings_n,
+        "total_bookings":     len(all_bookings),
         "unique_customers":   len({o.get("customer_id") for o in all_orders if o.get("customer_id")}),
         "total_staff":        len(all_staff),
         "active_staff":       sum(1 for s in all_staff if s.get("status") == "active"),
-        "avg_occupancy_rate": global_occupancy,
+        "avg_occupancy_rate": avg_occupancy_all,
     }
 
     # Best / worst performing branch by revenue
@@ -318,7 +405,7 @@ async def owner_overview(
     else:
         top_branch = needs_attention = None
 
-    return {
+    result = {
         "period_days": days,
         "period_start": start,
         "period_end": end,
@@ -327,6 +414,8 @@ async def owner_overview(
         "top_branch": top_branch,
         "needs_attention": needs_attention,
     }
+    cache_set("owner_overview", result, ttl=120, days=days, start=start, end=end)
+    return result
 
 
 @router.get("/branches/{branch_id}/stats")
@@ -364,27 +453,39 @@ async def consolidated_financials(
     if not start_date:
         start_date = datetime.now().replace(day=1).strftime("%Y-%m-%d")
 
+    # Serve from cache (5-minute TTL)
+    cached = cache_get("consolidated_financials", start_date=start_date, end_date=end_date)
+    if cached:
+        return cached
+
     start_q = start_date + "T00:00:00"
     end_q = end_date + "T23:59:59"
 
-    orders = supabase.table("orders").select("total_amount, status") \
-        .gte("created_at", start_q).lte("created_at", end_q).execute().data or []
+    # Run all 3 queries in parallel
+    orders_res, bookings_res, expenses_res = await _par(
+        lambda: supabase.table("orders").select("total_amount, status")
+            .gte("created_at", start_q).lte("created_at", end_q).execute(),
+        lambda: supabase.table("bookings").select("paid_amount, total_amount")
+            .gte("created_at", start_q).lte("created_at", end_q).execute(),
+        lambda: supabase.table("expenses").select("amount")
+            .gte("expense_date", start_q).lte("expense_date", end_q).execute(),
+    )
+
+    orders = orders_res.data or []
     fb_revenue = sum(float(o.get("total_amount") or 0) for o in orders
                      if o.get("status") in ("completed", "delivered", "served"))
 
-    bookings = supabase.table("bookings").select("paid_amount, total_amount") \
-        .gte("created_at", start_q).lte("created_at", end_q).execute().data or []
+    bookings = bookings_res.data or []
     room_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings)
 
-    expenses = supabase.table("expenses").select("amount") \
-        .gte("expense_date", start_q).lte("expense_date", end_q).execute().data or []
+    expenses = expenses_res.data or []
     total_expenses = sum(float(e.get("amount") or 0) for e in expenses)
 
     total_revenue = fb_revenue + room_revenue
     gross_profit = total_revenue - total_expenses
     margin = round(gross_profit / total_revenue * 100, 1) if total_revenue else 0
 
-    return {
+    result = {
         "period": {"start": start_date, "end": end_date},
         "revenue": {
             "fb": round(fb_revenue, 2),
@@ -395,6 +496,8 @@ async def consolidated_financials(
         "gross_profit": round(gross_profit, 2),
         "profit_margin": margin,
     }
+    cache_set("consolidated_financials", result, ttl=300, start_date=start_date, end_date=end_date)
+    return result
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -675,26 +778,32 @@ async def inventory_alerts(
     current_user: dict = Depends(require_role(OWNER_ROLES)),
     supabase: Client = Depends(get_supabase_admin)
 ):
-    """Cross-branch low stock and out-of-stock alerts."""
-    inv_client = get_supabase()
-    items = inv_client.table("inventory_items").select("id, name, sku, quantity, min_quantity, unit, unit_cost, category_id").eq("is_active", True).execute().data or []
-    low = [i for i in items if float(i.get("quantity") or 0) <= float(i.get("min_quantity") or 0)]
-    critical = [i for i in low if float(i.get("quantity") or 0) == 0]
-    alerts = []
-    for i in low:
-        qty = float(i.get("quantity") or 0)
-        min_qty = float(i.get("min_quantity") or 0)
-        level = "critical" if qty == 0 else "low"
-        alerts.append({
-            "id": i["id"], "name": i.get("name", ""), "sku": i.get("sku", ""),
-            "quantity": qty, "min_quantity": min_qty, "unit": i.get("unit", ""),
-            "unit_cost": float(i.get("unit_cost") or 0), "level": level,
-            "shortfall": round(max(0, min_qty - qty), 2),
-            "reorder_cost": round(max(0, min_qty - qty) * float(i.get("unit_cost") or 0), 2),
-        })
-    alerts.sort(key=lambda a: (0 if a["level"] == "critical" else 1, a["name"]))
-    return {"alerts": alerts, "total": len(alerts), "critical": len(critical),
-            "low": len(low) - len(critical), "total_reorder_cost": round(sum(a["reorder_cost"] for a in alerts), 2)}
+    """Cross-branch low stock and out-of-stock alerts (from menu_items stock tracking)."""
+    try:
+        items = supabase.table("menu_items").select(
+            "id, name, category, stock_quantity, reorder_level, unit, cost_price, track_inventory, stock_department"
+        ).or_("track_inventory.eq.true,stock_quantity.gt.0").execute().data or []
+
+        low = [i for i in items if float(i.get("stock_quantity") or 0) <= float(i.get("reorder_level") or 0)]
+        critical = [i for i in low if float(i.get("stock_quantity") or 0) == 0]
+        alerts = []
+        for i in low:
+            qty = float(i.get("stock_quantity") or 0)
+            min_qty = float(i.get("reorder_level") or 0)
+            level = "critical" if qty == 0 else "low"
+            alerts.append({
+                "id": i["id"], "name": i.get("name", ""), "category": i.get("category", ""),
+                "quantity": qty, "min_quantity": min_qty, "unit": i.get("unit", ""),
+                "unit_cost": float(i.get("cost_price") or 0), "level": level,
+                "department": i.get("stock_department") or "general",
+                "shortfall": round(max(0, min_qty - qty), 2),
+                "reorder_cost": round(max(0, min_qty - qty) * float(i.get("cost_price") or 0), 2),
+            })
+        alerts.sort(key=lambda a: (0 if a["level"] == "critical" else 1, a["name"]))
+        return {"alerts": alerts, "total": len(alerts), "critical": len(critical),
+                "low": len(low) - len(critical), "total_reorder_cost": round(sum(a["reorder_cost"] for a in alerts), 2)}
+    except Exception as e:
+        return {"alerts": [], "total": 0, "critical": 0, "low": 0, "total_reorder_cost": 0}
 
 
 @router.get("/operations/housekeeping")
@@ -702,28 +811,35 @@ async def housekeeping_status(
     current_user: dict = Depends(require_role(OWNER_ROLES)),
     supabase: Client = Depends(get_supabase_admin)
 ):
-    """Rooms and tasks pending housekeeping across all branches."""
-    tasks, dirty_rooms = await _par(
-        lambda: supabase.table("housekeeping_tasks").select(
-            "id, task_type, status, priority, room_id, assigned_to, scheduled_time, created_at"
-        ).in_("status", ["pending", "assigned", "in_progress"])
-            .order("priority").limit(100).execute().data or [],
-        lambda: supabase.table("rooms").select("id, room_number, type, status")
-            .in_("status", ["dirty", "cleaning"]).execute().data or [],
-    )
+    """Rooms pending housekeeping across all branches."""
+    try:
+        dirty_rooms = supabase.table("rooms").select("id, room_number, type, status") \
+            .in_("status", ["dirty", "cleaning"]).execute().data or []
+    except Exception:
+        dirty_rooms = []
 
-    staff_ids = list({t.get("assigned_to") for t in tasks if t.get("assigned_to")})
-    staff_map = {}
-    if staff_ids:
-        staff = supabase.table("users").select("id, full_name").in_("id", staff_ids).execute().data or []
-        staff_map = {s["id"]: s["full_name"] for s in staff}
+    tasks = []
+    try:
+        tasks = supabase.table("housekeeping_tasks").select(
+            "id, task_type, status, priority, room_id, assigned_to, scheduled_time, created_at"
+        ).in_("status", ["pending", "assigned", "in_progress"]) \
+            .order("priority").limit(100).execute().data or []
+
+        staff_ids = list({t.get("assigned_to") for t in tasks if t.get("assigned_to")})
+        staff_map = {}
+        if staff_ids:
+            staff = supabase.table("users").select("id, full_name").in_("id", staff_ids).execute().data or []
+            staff_map = {s["id"]: s["full_name"] for s in staff}
+        tasks = [{**t, "assigned_to_name": staff_map.get(t.get("assigned_to"), "Unassigned")} for t in tasks]
+    except Exception:
+        pass
 
     urgent = [t for t in tasks if t.get("priority") in ("urgent", "high")]
     return {
         "pending_tasks": len(tasks),
         "urgent_tasks": len(urgent),
         "dirty_rooms": len(dirty_rooms),
-        "tasks": [{**t, "assigned_to_name": staff_map.get(t.get("assigned_to"), "Unassigned")} for t in tasks],
+        "tasks": tasks,
         "dirty_room_list": dirty_rooms,
     }
 
@@ -734,11 +850,14 @@ async def pending_service_requests(
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Unresolved service requests across all branches."""
-    requests = supabase.table("service_requests").select(
-        "id, request_number, title, category, status, priority, created_at, guest_id"
-    ).in_("status", ["pending", "assigned", "in_progress"]).order("created_at", desc=False).limit(200).execute().data or []
+    try:
+        requests = supabase.table("service_requests").select(
+            "id, request_number, title, category, status, priority, created_at, guest_id"
+        ).in_("status", ["pending", "assigned", "in_progress"]).order("created_at", desc=False).limit(200).execute().data or []
+    except Exception:
+        requests = []
 
-    by_priority = {"urgent": [], "high": [], "normal": [], "low": []}
+    by_priority: dict = {}
     for r in requests:
         p = r.get("priority", "normal")
         by_priority.setdefault(p, []).append(r)
@@ -1371,7 +1490,7 @@ async def owner_stock_movements(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     item_id: Optional[str] = None,
-    current_user: dict = Depends(require_role(OWNER_ROLES)),
+    current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
 ):
     """Receipts and adjustments merged — lets owner trace stock on any date range."""
     from datetime import date as _date, timedelta as _td

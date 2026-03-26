@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_supabase_admin
 from app.middleware.auth_secure import get_current_user, require_role
 from app.core.security import get_password_hash
 import secrets
@@ -220,56 +220,62 @@ async def update_user_role(
 
 
 @router.delete("/users/{user_id}")
-async def deactivate_user(
+async def delete_user(
     user_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
-    Deactivate a user account.
-    Admin can deactivate any user. Manager can only deactivate staff members.
-    We don't delete users, just mark as inactive.
+    Permanently delete a user from the database.
+    Admin can delete any user. Manager can only delete staff (waiter/chef/cleaner).
+    Cannot delete your own account.
     """
     try:
-        current_user_role = current_user.get("role")
-        allowed_roles_for_manager = ["waiter", "chef", "cleaner"]
-        
-        # Check permissions for managers
-        if current_user_role == "manager":
-            # Check that the target user is a staff member
-            user_result = supabase.table("users").select("role").eq("id", user_id).execute()
-            if not user_result.data:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found"
-                )
-            
-            target_role = user_result.data[0].get("role")
-            if target_role not in allowed_roles_for_manager:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Managers can only deactivate staff members"
-                )
-
-        result = supabase.table("users").update({
-            "status": "inactive",
-            "updated_at": "NOW()"
-        }).eq("id", user_id).execute()
-
-        if not result.data:
+        # Cannot delete yourself
+        if user_id == current_user["id"]:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot delete your own account"
             )
 
-        return {"message": "User deactivated successfully", "user_id": user_id}
+        # Fetch target user
+        user_result = supabase.table("users").select("role, full_name").eq("id", user_id).execute()
+        if not user_result.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        target_role = user_result.data[0].get("role")
+
+        # Managers can only delete staff members
+        if current_user.get("role") == "manager" and target_role not in ("waiter", "chef", "cleaner"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Managers can only delete staff members (waiter, chef, cleaner)"
+            )
+
+        # Protect the last admin
+        if target_role == "admin":
+            admin_count = supabase.table("users").select("id").eq("role", "admin").eq("status", "active").execute()
+            if len(admin_count.data) <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete the last admin account"
+                )
+
+        # Hard delete — FK columns with ON DELETE SET NULL are nulled automatically;
+        # CASCADE columns (notifications, loyalty) are removed automatically.
+        result = supabase.table("users").delete().eq("id", user_id).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        return {"message": "User permanently deleted", "user_id": user_id}
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error deactivating user: {str(e)}"
+            detail=f"Error deleting user: {str(e)}"
         )
 
 

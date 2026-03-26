@@ -10,6 +10,7 @@ from supabase import Client
 from pydantic import BaseModel
 from app.core.supabase import get_supabase_admin, get_supabase
 from app.middleware.auth_secure import get_current_user
+from app.core.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter()
 
@@ -41,6 +42,25 @@ class UpdateMenuItemStockSettings(BaseModel):
     unit: Optional[str] = "piece"
     cost_price: Optional[float] = 0
     stock_department: Optional[str] = None  # 'kitchen', 'bar', 'both', or None (auto)
+
+
+class CreateStockItemRequest(BaseModel):
+    name: str
+    category: str
+    unit: str = "kg"
+    reorder_level: float = 0
+    cost_price: float = 0
+    stock_department: Optional[str] = "kitchen"  # 'kitchen', 'bar', 'both'
+    initial_quantity: float = 0
+
+
+class UpdateStockItemRequest(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    unit: Optional[str] = None
+    reorder_level: Optional[float] = None
+    cost_price: Optional[float] = None
+    stock_department: Optional[str] = None
 
 
 @router.post("/receive")
@@ -94,6 +114,7 @@ async def receive_stock(
         "is_available": new_qty > 0,  # auto-available when stock > 0
     }).eq("id", req.menu_item_id).execute()
 
+    cache_invalidate("stock_levels")
     return {
         "success": True,
         "receipt_number": receipt_number,
@@ -112,6 +133,12 @@ async def get_stock_levels(
     supabase: Client = Depends(get_supabase_admin),
 ):
     """Get current stock levels for all tracked menu items (or any with qty > 0)."""
+    # 60-second cache (stock changes frequently — short TTL keeps it fresh)
+    cache_key_args = dict(category=category or "all", low_stock_only=low_stock_only)
+    cached = cache_get("stock_levels", **cache_key_args)
+    if cached is not None:
+        return cached
+
     query = supabase.table("menu_items").select(
         "id, name, category, stock_quantity, reorder_level, unit, cost_price, base_price, track_inventory, is_available, stock_department"
     ).or_("track_inventory.eq.true,stock_quantity.gt.0")
@@ -136,6 +163,7 @@ async def get_stock_levels(
         else:
             item["stock_status"] = "in_stock"
 
+    cache_set("stock_levels", items, ttl=60, **cache_key_args)
     return items
 
 
@@ -203,6 +231,7 @@ async def adjust_stock(
         "is_available": req.new_quantity > 0,
     }).eq("id", req.menu_item_id).execute()
 
+    cache_invalidate("stock_levels")
     return {
         "success": True,
         "item_name": item["name"],
@@ -264,3 +293,100 @@ async def get_stock_summary(
         "total_inventory_value": round(total_value, 2),
         "week_purchases": round(week_purchases, 2),
     }
+
+
+@router.post("/items")
+async def create_stock_item(
+    req: CreateStockItemRequest,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """Create a new tracked inventory item (kitchen/bar ingredient, not a menu item)."""
+    user_role = current_user.get("role", "")
+    if user_role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only managers and admins can add inventory items")
+
+    # Check for duplicate name
+    existing = supabase.table("menu_items").select("id").eq("name", req.name).eq("track_inventory", True).execute()
+    if existing.data:
+        raise HTTPException(status_code=409, detail=f"Tracked item '{req.name}' already exists")
+
+    # Create menu_item with track_inventory=true, hidden from menu (is_available=false, base_price=0)
+    import uuid
+    result = supabase.table("menu_items").insert({
+        "id": str(uuid.uuid4()),
+        "name": req.name,
+        "category": req.category,
+        "unit": req.unit,
+        "reorder_level": req.reorder_level,
+        "cost_price": req.cost_price,
+        "stock_department": req.stock_department,
+        "stock_quantity": req.initial_quantity,
+        "track_inventory": True,
+        "is_available": False,  # hidden from menu — it's an ingredient
+        "base_price": 0,
+        "description": f"Kitchen/bar inventory item — managed via stock system",
+    }).execute()
+
+    return {"success": True, "item": result.data[0] if result.data else None}
+
+
+@router.patch("/items/{item_id}")
+async def update_stock_item(
+    item_id: str,
+    req: UpdateStockItemRequest,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """Update details (name, category, unit, reorder level, cost price, department) of a tracked item."""
+    user_role = current_user.get("role", "")
+    if user_role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only managers and admins can edit inventory items")
+
+    # Build update payload from non-None fields
+    payload = {}
+    if req.name is not None:
+        payload["name"] = req.name
+    if req.category is not None:
+        payload["category"] = req.category
+    if req.unit is not None:
+        payload["unit"] = req.unit
+    if req.reorder_level is not None:
+        payload["reorder_level"] = req.reorder_level
+    if req.cost_price is not None:
+        payload["cost_price"] = req.cost_price
+    if req.stock_department is not None:
+        payload["stock_department"] = req.stock_department
+
+    if not payload:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    supabase.table("menu_items").update(payload).eq("id", item_id).execute()
+    return {"success": True}
+
+
+@router.delete("/items/{item_id}")
+async def delete_stock_item(
+    item_id: str,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """Delete a tracked inventory item (only items with is_available=false are deletable)."""
+    user_role = current_user.get("role", "")
+    if user_role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only managers and admins can delete inventory items")
+
+    # Safety: only allow deleting items that are hidden from menu (pure inventory items)
+    item_res = supabase.table("menu_items").select("id, name, is_available, base_price").eq("id", item_id).execute()
+    if not item_res.data:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    item = item_res.data[0]
+    if item.get("is_available") or float(item.get("base_price", 0)) > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete items that are on the menu. Disable tracking instead."
+        )
+
+    supabase.table("menu_items").delete().eq("id", item_id).execute()
+    return {"success": True, "deleted": item["name"]}

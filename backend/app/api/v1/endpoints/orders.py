@@ -78,8 +78,15 @@ async def get_all_orders(
             "tax_inclusive, priority, special_instructions, notes, estimated_ready_time, "
             "customer_name, customer_phone, order_type, payment_status, bill_id, paid_at, "
             "created_by_staff_id, assigned_waiter_id, assigned_chef_id, "
-            "room_number, table_number, created_at, updated_at, items"
+            "room_number, table_number, branch_id, created_at, updated_at, items"
         )
+
+        # Branch isolation: staff see only their branch's orders
+        user_role = current_user.get("role")
+        if user_role not in ("admin", "owner"):
+            branch_id = current_user.get("branch_id")
+            if branch_id:
+                query = query.eq("branch_id", branch_id)
 
         # Apply filters
         if status:
@@ -496,6 +503,7 @@ async def create_order(
                 "customizations": order_item.customizations,
                 "special_instructions": order_item.special_instructions,
                 "total": float(item_total),
+                "category": menu_item.get("category") or "",
             })
 
         # Get tax configuration
@@ -579,6 +587,19 @@ async def create_order(
         if total_items > 3 or total_amount > 5000:
             priority = "high"
 
+        # Determine if all items are bar/drinks (no kitchen prep needed)
+        BAR_CATEGORIES = {
+            "drinks", "beverages", "beverage", "bar", "alcohol", "cocktails",
+            "cocktail", "spirits", "spirit", "beer", "wine", "wines",
+            "soda", "juice", "juices", "water", "soft drinks", "soft drink",
+        }
+        all_bar_items = bool(order_items) and all(
+            (item.get("category") or "").lower().strip() in BAR_CATEGORIES
+            for item in order_items
+        )
+        # Bar-only orders skip kitchen — set directly to ready so waiter serves immediately
+        initial_status = "ready" if all_bar_items else "pending"
+
         # Generate order number
         order_number = await generate_order_number(supabase_admin)
 
@@ -588,7 +609,7 @@ async def create_order(
             "customer_id": current_user["id"],
             "location": order_data.location,
             "location_type": order_data.location_type,
-            "status": "pending",
+            "status": initial_status,
             "items": order_items,
             "subtotal": float(subtotal),
             "tax": float(tax),
@@ -608,6 +629,7 @@ async def create_order(
             "assigned_waiter_id": current_user["id"] if current_user.get("role") == "waiter" else None,
             "room_number": order_data.location if order_data.location_type == "room" else None,
             "table_number": order_data.location if order_data.location_type == "table" else None,
+            "branch_id": current_user.get("branch_id"),
         }
 
         # Use admin client to bypass RLS for order insertion
@@ -805,8 +827,8 @@ async def update_order_status(
 
         # Validate status transitions (with backward compatibility)
         valid_transitions = {
-            "pending": ["confirmed", "in-progress", "cancelled"],  # Allow old 'in-progress'
-            "confirmed": ["preparing", "in-progress", "cancelled"],
+            "pending": ["confirmed", "in-progress", "served", "cancelled"],  # bar orders: pending→served
+            "confirmed": ["preparing", "in-progress", "served", "cancelled"],  # bar orders: confirmed→served
             "preparing": ["ready", "cancelled"],
             "in-progress": ["preparing", "ready", "cancelled"],  # Handle old status
             "ready": ["served", "delivered", "cancelled"],  # Allow old 'delivered'

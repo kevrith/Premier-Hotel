@@ -45,6 +45,7 @@ class RoomResponse(RoomBase):
     """Room response schema"""
     id: str
     status: str
+    branch_id: Optional[str] = None
     rating: Optional[Decimal] = None
     created_at: datetime
     updated_at: datetime

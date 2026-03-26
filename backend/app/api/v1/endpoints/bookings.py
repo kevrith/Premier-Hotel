@@ -48,6 +48,13 @@ async def get_all_bookings(
     try:
         query = supabase.table("bookings").select("*")
 
+        # Branch isolation: staff see only their branch's bookings
+        user_role = current_user.get("role")
+        if user_role not in ("admin", "owner"):
+            branch_id = current_user.get("branch_id")
+            if branch_id:
+                query = query.eq("branch_id", branch_id)
+
         if status:
             query = query.eq("status", status)
 
@@ -550,11 +557,23 @@ async def check_out(
             supabase.table("bookings").update(update_data).eq("id", booking_id).execute()
         )
 
-        # Update room status
-        new_room_status = "maintenance" if check_out_data.damages else "available"
+        # Update room status — set to 'cleaning' until housekeeping confirms done
+        new_room_status = "maintenance" if check_out_data.damages else "cleaning"
         supabase.table("rooms").update({"status": new_room_status}).eq(
             "id", booking["room_id"]
         ).execute()
+
+        # Auto-create a cleaning task for the checked-out room
+        if not check_out_data.damages:
+            cleaning_task = {
+                "room_id": booking["room_id"],
+                "task_type": "cleaning",
+                "priority": "high",
+                "status": "pending",
+                "notes": f"Post-checkout cleaning — booking {booking_id[:8]}",
+                "created_by": current_user["id"],
+            }
+            supabase.table("housekeeping_tasks").insert(cleaning_task).execute()
 
         # If there are damages, create a maintenance issue
         if check_out_data.damages:

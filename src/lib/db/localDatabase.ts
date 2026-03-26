@@ -1,8 +1,23 @@
 /**
- * Local IndexedDB database using Dexie.js
- * Enables offline operation for the Premier Hotel app
+ * localDatabase.ts — compatibility shim
+ *
+ * Previously opened its own Dexie instance ("PremierHotelDB" v1) which
+ * conflicted with the canonical v2 database in src/db/schema.ts.
+ *
+ * Now this file is a thin adapter:
+ *  • Re-exports `db` from the single canonical database (schema.ts)
+ *  • Provides cacheUser / cacheMenuItems with the same signatures that
+ *    authStore.secure.ts expects
+ *  • All other helpers delegate to the canonical db so there is only
+ *    ever ONE IndexedDB instance open at a time.
  */
-import Dexie, { Table } from 'dexie';
+
+import { db, dbHelpers } from '@/db/schema';
+
+// Re-export the canonical db so legacy imports (e.g. syncService.ts) still compile
+export { db };
+
+// ── Compatibility interfaces (kept so TypeScript doesn't break callers) ───────
 
 export interface LocalMenuItem {
   id: string;
@@ -15,126 +30,106 @@ export interface LocalMenuItem {
   synced_at: number;
 }
 
-export interface LocalOrder {
-  localId?: number;       // auto-increment (IndexedDB primary key)
-  serverId?: string;      // UUID from server (null if not synced yet)
-  order_number?: string;
-  location: string;
-  location_type: 'table' | 'room';
-  items: any[];
-  subtotal: number;
-  tax: number;
-  total_amount: number;
-  status: string;
-  payment_status: string;
-  customer_name?: string;
-  notes?: string;
-  created_at: string;
-  synced: boolean;        // false = needs to be pushed to server
-}
-
-export interface LocalPendingAction {
-  id?: number;
-  type: 'create_order' | 'update_order' | 'process_payment' | 'update_order_status';
-  payload: any;
-  created_at: string;
-  retry_count: number;
-  last_error?: string;
-}
-
 export interface LocalUser {
   id: string;
   email: string;
   full_name: string;
   role: string;
-  token: string;          // JWT for API calls
+  token: string;
   cached_at: number;
 }
 
-export interface LocalBill {
-  id: string;
-  bill_number: string;
-  total_amount: number;
-  payment_status: string;
-  table_number?: string;
-  room_number?: string;
-  location_type: string;
-  synced_at: number;
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Simple online check */
+export const isOnline = () => navigator.onLine;
+
+/**
+ * Cache user profile for offline recognition.
+ * Auth tokens are in httpOnly cookies; Zustand already persists user state to
+ * localStorage — so we only store a lightweight profile snapshot here.
+ */
+export async function cacheUser(user: Omit<LocalUser, 'cached_at'>) {
+  try {
+    localStorage.setItem(
+      'cached-user-profile',
+      JSON.stringify({ ...user, cached_at: Date.now() })
+    );
+  } catch { /* non-fatal */ }
 }
 
-class HotelDatabase extends Dexie {
-  menuItems!: Table<LocalMenuItem, string>;
-  orders!: Table<LocalOrder, number>;
-  pendingActions!: Table<LocalPendingAction, number>;
-  users!: Table<LocalUser, string>;
-  bills!: Table<LocalBill, string>;
-
-  constructor() {
-    super('PremierHotelDB');
-
-    this.version(1).stores({
-      menuItems: 'id, category, is_available, synced_at',
-      orders: '++localId, serverId, location, location_type, status, synced, created_at',
-      pendingActions: '++id, type, created_at, retry_count',
-      users: 'id, email, role',
-      bills: 'id, bill_number, payment_status, synced_at',
-    });
+/** Get cached user profile (offline fallback) */
+export async function getCachedUser(userId: string): Promise<LocalUser | undefined> {
+  try {
+    const raw = localStorage.getItem('cached-user-profile');
+    if (!raw) return undefined;
+    const parsed: LocalUser = JSON.parse(raw);
+    return parsed.id === userId ? parsed : undefined;
+  } catch {
+    return undefined;
   }
 }
 
-export const db = new HotelDatabase();
-
-// Helper: check if we're online
-export const isOnline = () => navigator.onLine;
-
-// Cache menu items
-export async function cacheMenuItems(items: LocalMenuItem[]) {
-  const now = Date.now();
-  await db.menuItems.bulkPut(items.map(i => ({ ...i, synced_at: now })));
+/**
+ * Cache menu items — delegates to the canonical schema.ts dbHelpers so data
+ * lands in the same IndexedDB table used by offlineService.ts.
+ */
+export async function cacheMenuItems(items: any[]) {
+  try {
+    await dbHelpers.cacheMenuItems(
+      items.map(item => ({
+        id:              item.id,
+        name:            item.name,
+        description:     item.description   ?? '',
+        price:           item.base_price     ?? item.price ?? 0,
+        category:        item.category,
+        imageUrl:        item.image_url      ?? item.imageUrl,
+        isAvailable:     item.is_available   ?? item.isAvailable ?? true,
+        preparationTime: item.preparation_time ?? item.preparationTime,
+        cachedAt:        new Date().toISOString(),
+      }))
+    );
+  } catch { /* non-fatal */ }
 }
 
-// Get cached menu items
-export async function getCachedMenuItems(): Promise<LocalMenuItem[]> {
+/** Get cached menu items from the canonical table */
+export async function getCachedMenuItems() {
   return db.menuItems.orderBy('category').toArray();
 }
 
-// Cache current user credentials
-export async function cacheUser(user: Omit<LocalUser, 'cached_at'>) {
-  await db.users.put({ ...user, cached_at: Date.now() });
+/** Save an order locally (offline) */
+export async function saveOrderLocally(order: any): Promise<number> {
+  return db.orders.add({ ...order, offline: true, createdAt: new Date().toISOString() });
 }
 
-// Get cached user
-export async function getCachedUser(userId: string): Promise<LocalUser | undefined> {
-  return db.users.get(userId);
-}
-
-// Save an order (locally if offline)
-export async function saveOrderLocally(order: Omit<LocalOrder, 'localId'>): Promise<number> {
-  return db.orders.add(order);
-}
-
-// Queue an action for sync when back online
-export async function queueAction(type: LocalPendingAction['type'], payload: any) {
-  return db.pendingActions.add({
-    type,
-    payload,
-    created_at: new Date().toISOString(),
-    retry_count: 0,
+/** Queue an action for sync — writes to pendingSync (canonical table) */
+export async function queueAction(type: string, payload: any) {
+  return db.pendingSync.add({
+    action:     type.startsWith('create') ? 'create' : type.startsWith('delete') ? 'delete' : 'update',
+    entityType: payload.entityType ?? 'generic',
+    data:       payload,
+    timestamp:  new Date().toISOString(),
+    priority:   5,
+    retryCount: 0,
   });
 }
 
-// Get all pending actions
-export async function getPendingActions(): Promise<LocalPendingAction[]> {
-  return db.pendingActions.orderBy('id').toArray();
+/** Get all pending sync items */
+export async function getPendingActions() {
+  return db.pendingSync.orderBy('priority').toArray();
 }
 
-// Mark action as completed (remove from queue)
+/** Remove a pending sync item by id */
 export async function removeAction(id: number) {
-  return db.pendingActions.delete(id);
+  return db.pendingSync.delete(id);
 }
 
-// Clear all cached data (logout)
+/** Clear user-specific cached data on logout (keeps menu cache) */
 export async function clearLocalDatabase() {
-  await db.users.clear();
-  // Keep menu items cached for next login
+  try {
+    localStorage.removeItem('cached-user-profile');
+    await db.orderHistory.clear();
+    await db.bookingHistory.clear();
+    await db.loyaltyData.clear();
+  } catch { /* non-fatal */ }
 }

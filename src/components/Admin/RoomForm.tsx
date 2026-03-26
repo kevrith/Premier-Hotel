@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { X } from 'lucide-react';
+import ImageUpload from '@/components/ui/ImageUpload';
 
 interface RoomFormProps {
   room?: any;
@@ -186,6 +187,47 @@ export default function RoomForm({ room, onSave, onCancel }: RoomFormProps) {
             <SelectItem value="reserved">Reserved</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Room Images */}
+      <div className="space-y-3">
+        <Label>Room Images</Label>
+        <ImageUpload
+          label="Primary Image"
+          bucket="room-images"
+          value={formData.images?.[0] || ''}
+          onChange={(url) => setFormData((prev: any) => ({
+            ...prev,
+            images: url ? [url, ...(prev.images || []).slice(1)] : (prev.images || []).slice(1)
+          }))}
+        />
+        {(formData.images || []).slice(1).map((img: string, idx: number) => (
+          <ImageUpload
+            key={idx}
+            label={`Additional Image ${idx + 2}`}
+            bucket="room-images"
+            value={img}
+            onChange={(url) => {
+              const imgs = [...(formData.images || [])];
+              if (url) {
+                imgs[idx + 1] = url;
+              } else {
+                imgs.splice(idx + 1, 1);
+              }
+              setFormData((prev: any) => ({ ...prev, images: imgs }));
+            }}
+          />
+        ))}
+        {(formData.images || []).length < 5 && formData.images?.[0] && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setFormData((prev: any) => ({ ...prev, images: [...(prev.images || []), ''] }))}
+          >
+            + Add Another Image
+          </Button>
+        )}
       </div>
 
       <div className="flex gap-2 justify-end pt-4">

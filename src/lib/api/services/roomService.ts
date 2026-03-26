@@ -12,7 +12,7 @@ const roomService = {
    * @returns {Promise} - List of rooms
    */
   getAllRooms: async (params = {}) => {
-    const response = await api.get('/rooms', { params });
+    const response = await api.get('/rooms/', { params });
     return response.data;
   },
 

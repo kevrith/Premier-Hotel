@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { checkinCheckoutService } from '@/lib/api/checkin-checkout';
 import bookingService from '@/lib/api/services/bookingService';
+import apiClient from '@/lib/api/client';
 import toast from 'react-hot-toast';
 
 interface BillItem {
@@ -120,8 +121,21 @@ export default function ExpressCheckOut() {
       setCheckoutComplete(true);
       toast.success('Checkout completed successfully!');
 
-      // TODO: Send feedback to backend
-      console.log('Feedback:', { overallRating, feedback, wouldRecommend });
+      // Submit guest feedback as a review (non-fatal — don't block checkout on failure)
+      if (overallRating > 0) {
+        try {
+          await apiClient.post('/reviews/', {
+            review_type: 'overall',
+            overall_rating: overallRating,
+            comment: feedback || (wouldRecommend ? 'Great stay, would recommend.' : 'Thank you for your feedback.'),
+            booking_id: bookingId,
+            room_id: bookingData?.room_id || null,
+            would_recommend: wouldRecommend,
+          });
+        } catch {
+          // Silently ignore — review submission is optional
+        }
+      }
     } catch (error: any) {
       console.error('Checkout error:', error);
       toast.error(error.response?.data?.detail || 'Failed to complete checkout');

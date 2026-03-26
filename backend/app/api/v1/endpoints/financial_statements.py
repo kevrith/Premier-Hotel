@@ -6,11 +6,23 @@ from typing import Optional
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pydantic import BaseModel
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from app.middleware.auth_secure import require_role
 from app.core.supabase import get_supabase, get_supabase_admin
 from supabase import Client
 
 router = APIRouter()
+
+from app.core.cache import cache_get, cache_set
+
+_thread_pool = ThreadPoolExecutor(max_workers=12)
+
+
+async def _par(*fns):
+    """Run multiple zero-argument callables in parallel using the thread pool."""
+    loop = asyncio.get_event_loop()
+    return await asyncio.gather(*[loop.run_in_executor(_thread_pool, fn) for fn in fns])
 
 
 def _start(date_str: str) -> str:
@@ -32,6 +44,11 @@ async def get_profit_loss_statement(
 ):
     """Generate Profit & Loss Statement"""
     try:
+        # Serve from cache if available (5-minute TTL)
+        cached = cache_get("pl", start_date=start_date, end_date=end_date)
+        if cached:
+            return cached
+
         # Parse and format dates properly
         if not end_date:
             end_dt = datetime.now()
@@ -47,46 +64,48 @@ async def get_profit_loss_statement(
         start_query = start_dt.strftime("%Y-%m-%dT00:00:00")
         end_query = end_dt.strftime("%Y-%m-%dT23:59:59")
 
+        # Run all revenue/expense queries in parallel
+        def _fetch_bookings():
+            return supabase.table("bookings").select("paid_amount, total_amount").gte(
+                "created_at", start_query).lte("created_at", end_query).execute()
+
+        def _fetch_orders():
+            return supabase.table("orders").select("total_amount").gte(
+                "created_at", start_query).lte("created_at", end_query).in_(
+                "status", ["completed", "delivered", "served"]).execute()
+
+        def _fetch_stock():
+            try:
+                return supabase.table("stock_movements").select("total_cost").gte(
+                    "created_at", start_query).lte("created_at", end_query).eq(
+                    "movement_type", "out").execute()
+            except Exception:
+                return None
+
+        def _fetch_expenses():
+            try:
+                return supabase.table("expenses").select("amount, expense_type").gte(
+                    "expense_date", start_query).lte("expense_date", end_query).execute()
+            except Exception:
+                return None
+
+        bookings_res, orders_res, stock_res, expenses_res = await _par(
+            _fetch_bookings, _fetch_orders, _fetch_stock, _fetch_expenses
+        )
+
         # REVENUE
-        # Room Revenue
-        bookings = supabase.table("bookings").select("paid_amount, total_amount").gte(
-            "created_at", start_query
-        ).lte("created_at", end_query).execute()
-        
-        room_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings.data)
-
-        # F&B Revenue - count all completed orders
-        orders = supabase.table("orders").select("total_amount, status").gte(
-            "created_at", start_query
-        ).lte("created_at", end_query).execute()
-        
-        # Filter completed orders in Python
-        completed_orders = [o for o in orders.data if o.get("status") in ["completed", "delivered", "served"]]
-        fb_revenue = sum(float(o.get("total_amount") or 0) for o in completed_orders)
-
+        room_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0)
+                           for b in (bookings_res.data or []))
+        fb_revenue = sum(float(o.get("total_amount") or 0) for o in (orders_res.data or []))
         total_revenue = room_revenue + fb_revenue
 
         # COST OF GOODS SOLD (COGS)
-        # Inventory usage
-        try:
-            stock_movements = supabase.table("stock_movements").select("total_cost").gte(
-                "created_at", start_query
-            ).lte("created_at", end_query).eq("movement_type", "out").execute()
-            cogs = sum(float(m.get("total_cost") or 0) for m in stock_movements.data)
-        except Exception:
-            cogs = 0
-
+        cogs = sum(float(m.get("total_cost") or 0) for m in (stock_res.data if stock_res else []))
         gross_profit = total_revenue - cogs
         gross_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0
 
         # OPERATING EXPENSES
-        try:
-            expenses = supabase.table("expenses").select("amount, expense_type").gte(
-                "expense_date", start_query
-            ).lte("expense_date", end_query).execute()
-            expense_data = expenses.data
-        except Exception:
-            expense_data = []
+        expense_data = expenses_res.data if expenses_res else []
 
         # Categorize expenses
         expense_categories = {}
@@ -102,7 +121,7 @@ async def get_profit_loss_statement(
         net_profit = operating_profit  # Simplified (no tax/interest for now)
         net_margin = (net_profit / total_revenue * 100) if total_revenue > 0 else 0
 
-        return {
+        result = {
             "period": {
                 "start": start_dt.strftime("%Y-%m-%d"),
                 "end": end_dt.strftime("%Y-%m-%d")
@@ -127,6 +146,8 @@ async def get_profit_loss_statement(
                 "net_margin": round(net_margin, 2)
             }
         }
+        cache_set("pl", result, ttl=300, start_date=start_date, end_date=end_date)
+        return result
 
     except Exception as e:
         from fastapi import HTTPException, status
@@ -242,19 +263,42 @@ async def get_balance_sheet(
         if not as_of_date:
             as_of_date = datetime.now().isoformat()
 
-        # ASSETS
-        # Cash (from completed payments)
-        payments = supabase.table("payments").select("amount, payment_method").lte(
-            "created_at", as_of_date
-        ).eq("payment_status", "completed").execute()
+        # Serve from cache (5-minute TTL — balance sheet changes slowly)
+        cached = cache_get("balance_sheet", as_of_date=as_of_date[:10])
+        if cached:
+            return cached
 
-        # Also include revenue from completed orders (bills paid)
-        paid_bills = supabase.table("bills").select("total_amount").lte(
-            "created_at", as_of_date
-        ).eq("payment_status", "paid").execute()
+        # Run all 8 Supabase queries in parallel instead of sequentially
+        (
+            payments_res,
+            paid_bills_res,
+            orders_res,
+            expenses_res,
+            inventory_res,
+            unpaid_bookings_res,
+            unpaid_bills_res,
+            adjustments_res,
+        ) = await _par(
+            lambda: supabase.table("payments").select("amount, payment_method").lte(
+                "created_at", as_of_date).eq("payment_status", "completed").execute(),
+            lambda: supabase.table("bills").select("total_amount").lte(
+                "created_at", as_of_date).eq("payment_status", "paid").execute(),
+            lambda: supabase.table("orders").select("total_amount").lte(
+                "created_at", as_of_date).in_("status", ["completed", "delivered", "served"]).execute(),
+            lambda: supabase.table("expenses").select("amount").lte(
+                "expense_date", as_of_date).execute(),
+            lambda: supabase.table("inventory_items").select("current_stock").eq(
+                "status", "active").execute(),
+            lambda: supabase.table("bookings").select("total_amount, paid_amount").lte(
+                "created_at", as_of_date).neq("payment_status", "paid").execute(),
+            lambda: supabase.table("bills").select("total_amount").lte(
+                "created_at", as_of_date).eq("payment_status", "unpaid").execute(),
+            lambda: supabase.table("balance_sheet_adjustments").select("*").execute(),
+        )
 
+        # ASSETS — Cash
         cash_by_method = {"mpesa": 0, "cash": 0, "card": 0}
-        for p in payments.data:
+        for p in (payments_res.data or []):
             amount = float(p.get("amount", 0))
             method = (p.get("payment_method") or "cash").lower()
             if method in ["mpesa", "m-pesa"]:
@@ -264,59 +308,26 @@ async def get_balance_sheet(
             else:
                 cash_by_method["cash"] += amount
 
-        # Add revenue from completed orders
-        order_revenue = sum(float(o.get("total_amount", 0)) for o in (
-            supabase.table("orders").select("total_amount").lte(
-                "created_at", as_of_date
-            ).in_("status", ["completed", "delivered", "served"]).execute()
-        ).data)
+        order_revenue = sum(float(o.get("total_amount", 0)) for o in (orders_res.data or []))
         cash_by_method["cash"] += order_revenue
-
-        # Add bill payments
-        bill_revenue = sum(float(b.get("total_amount", 0)) for b in paid_bills.data)
+        bill_revenue = sum(float(b.get("total_amount", 0)) for b in (paid_bills_res.data or []))
         cash_by_method["cash"] += bill_revenue
 
-        # Subtract expenses
-        expenses = supabase.table("expenses").select("amount").lte(
-            "expense_date", as_of_date
-        ).execute()
-        total_expenses = sum(float(e.get("amount", 0)) for e in expenses.data)
-
+        total_expenses = sum(float(e.get("amount", 0)) for e in (expenses_res.data or []))
         net_cash = sum(cash_by_method.values()) - total_expenses
 
-        # Inventory value (inventory_items has current_stock, no unit_cost so value is approximate)
-        inventory = supabase.table("inventory_items").select("current_stock").eq(
-            "status", "active"
-        ).execute()
-        inventory_value = sum(
-            float(i.get("current_stock", 0))
-            for i in inventory.data
-        )
+        inventory_value = sum(float(i.get("current_stock", 0)) for i in (inventory_res.data or []))
 
-        # Accounts Receivable (unpaid bookings/orders)
-        unpaid_bookings = supabase.table("bookings").select("total_amount, paid_amount").lte(
-            "created_at", as_of_date
-        ).neq("payment_status", "paid").execute()
-        
         accounts_receivable = sum(
             float(b.get("total_amount", 0)) - float(b.get("paid_amount", 0))
-            for b in unpaid_bookings.data
+            for b in (unpaid_bookings_res.data or [])
         )
 
-        total_assets = net_cash + inventory_value + accounts_receivable
-
-        # LIABILITIES
-        # Accounts Payable (unpaid expenses/bills)
-        unpaid_bills = supabase.table("bills").select("total_amount").lte(
-            "created_at", as_of_date
-        ).eq("payment_status", "unpaid").execute()
-        
-        accounts_payable = sum(float(b.get("total_amount", 0)) for b in unpaid_bills.data)
+        accounts_payable = sum(float(b.get("total_amount", 0)) for b in (unpaid_bills_res.data or []))
 
         # MANUAL ADJUSTMENTS
         try:
-            adj_result = supabase.table("balance_sheet_adjustments").select("*").execute()
-            adjustments = adj_result.data or []
+            adjustments = adjustments_res.data or []
         except Exception:
             adjustments = []
 
@@ -381,6 +392,9 @@ async def get_balance_sheet(
                 "total_equity": round(total_assets - total_liabilities, 2)
             }
         }
+
+        cache_set("balance_sheet", result, ttl=300, as_of_date=as_of_date[:10])
+        return result
 
     except Exception as e:
         from fastapi import HTTPException, status
@@ -577,16 +591,94 @@ async def get_inventory_closing_stock(
     current_user: dict = Depends(require_role(["owner", "admin", "manager"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
-    """Get Inventory Closing Stock Report using menu_items stock data."""
+    """
+    Get Inventory Closing Stock Report for a specific historical date.
+
+    Strategy (most accurate first):
+    1. If a daily stock take was submitted ON that date → use its physical closing counts.
+    2. Otherwise reconstruct from current stock by reversing all movements AFTER that date:
+       - Add back sales that occurred after as_of_date (those consumed stock since then)
+       - Subtract receipts received after as_of_date (those added stock since then)
+       - Add back stock adjustments that reduced stock after as_of_date / reverse increases
+    """
+    from datetime import date as date_type
     try:
-        # Fetch all tracked menu items (have stock or track_inventory enabled)
-        items_query = supabase.table("menu_items").select(
+        as_of = date_type.fromisoformat(as_of_date)
+        cutoff_ts = f"{as_of_date}T23:59:59"   # end of the selected day
+        after_ts  = f"{as_of_date}T23:59:59"   # everything STRICTLY after this moment
+
+        # ── 1. Fetch all tracked menu items ──────────────────────────────────
+        items_result = supabase.table("menu_items").select(
             "id, name, category, stock_quantity, reorder_level, unit, cost_price, base_price, track_inventory"
-        ).or_("track_inventory.eq.true,stock_quantity.gt.0")
-
-        items_result = items_query.execute()
+        ).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
         items = items_result.data or []
+        item_map = {i["id"]: i for i in items}
 
+        # ── 2. Check for daily stock-take session on that exact date ─────────
+        #    If the chef submitted a physical count on that day, it's the ground truth.
+        physical_map: dict = {}   # item_id → physical closing qty
+        try:
+            session_res = supabase.table("daily_stock_sessions").select("id").eq(
+                "session_date", as_of_date
+            ).execute()
+            if session_res.data:
+                session_id = session_res.data[0]["id"]
+                items_res = supabase.table("daily_stock_items").select(
+                    "menu_item_id, physical_closing"
+                ).eq("session_id", session_id).execute()
+                for row in (items_res.data or []):
+                    if row.get("menu_item_id") and row.get("physical_closing") is not None:
+                        physical_map[row["menu_item_id"]] = float(row["physical_closing"])
+        except Exception:
+            pass
+
+        # ── 3. Reconstruct quantities for items WITHOUT a physical count ──────
+        #    current_qty + sales_after - receipts_after ± adjustments_after
+
+        # Sales after as_of_date (completed orders)
+        sales_after: dict = {}  # item_id → qty sold after cutoff
+        try:
+            orders_res = supabase.table("orders").select("items, status").gt(
+                "created_at", after_ts
+            ).in_("status", ["served", "completed", "delivered", "paid"]).execute()
+            for order in (orders_res.data or []):
+                for oi in (order.get("items") or []):
+                    mid = oi.get("menu_item_id") or oi.get("id")
+                    if mid:
+                        sales_after[mid] = sales_after.get(mid, 0.0) + float(oi.get("quantity", 0))
+        except Exception:
+            pass
+
+        # Stock receipts after as_of_date (these added stock AFTER the date we want)
+        receipts_after: dict = {}  # item_id → qty received after cutoff
+        try:
+            rcpt_res = supabase.table("stock_receipts").select(
+                "menu_item_id, quantity"
+            ).gt("received_at", after_ts).execute()
+            for r in (rcpt_res.data or []):
+                mid = r.get("menu_item_id")
+                if mid:
+                    receipts_after[mid] = receipts_after.get(mid, 0.0) + float(r.get("quantity", 0))
+        except Exception:
+            pass
+
+        # Stock adjustments after as_of_date
+        #   quantity_after − quantity_before = net change applied AFTER the date
+        #   To reverse: subtract that net change from current stock
+        adj_after_net: dict = {}  # item_id → net qty change applied after cutoff
+        try:
+            adj_res = supabase.table("stock_adjustments").select(
+                "menu_item_id, quantity_before, quantity_after"
+            ).gt("adjusted_at", after_ts).execute()
+            for a in (adj_res.data or []):
+                mid = a.get("menu_item_id")
+                if mid:
+                    net = float(a.get("quantity_after", 0)) - float(a.get("quantity_before", 0))
+                    adj_after_net[mid] = adj_after_net.get(mid, 0.0) + net
+        except Exception:
+            pass
+
+        # ── 4. Build report rows ──────────────────────────────────────────────
         closing_stock_items = []
         total_cost_value = 0.0
         total_selling_value = 0.0
@@ -594,55 +686,80 @@ async def get_inventory_closing_stock(
         out_of_stock_count = 0
 
         for item in items:
-            qty = float(item.get("stock_quantity") or 0)
-            cost_price = float(item.get("cost_price") or 0)
+            mid = item["id"]
+            cost_price   = float(item.get("cost_price") or 0)
             selling_price = float(item.get("base_price") or 0)
-            reorder = float(item.get("reorder_level") or 0)
+            reorder      = float(item.get("reorder_level") or 0)
 
-            cost_value = qty * cost_price
+            if mid in physical_map:
+                # Physical count from daily stock take — most accurate
+                qty = physical_map[mid]
+                source = "stocktake"
+            else:
+                # Reconstruct: current stock
+                #   + sales that happened AFTER as_of_date  (add back — those weren't consumed yet)
+                #   − receipts received AFTER as_of_date   (subtract — those hadn't arrived yet)
+                #   − net adjustments applied AFTER as_of_date
+                current = float(item.get("stock_quantity") or 0)
+                qty = (
+                    current
+                    + sales_after.get(mid, 0.0)
+                    - receipts_after.get(mid, 0.0)
+                    - adj_after_net.get(mid, 0.0)
+                )
+                qty = max(0.0, round(qty, 3))
+                source = "reconstructed"
+
+            cost_value    = qty * cost_price
             selling_value = qty * selling_price
-            total_cost_value += cost_value
+            total_cost_value    += cost_value
             total_selling_value += selling_value
 
             if qty <= 0:
                 out_of_stock_count += 1
                 stock_status = "Out of Stock"
-            elif qty <= reorder:
+            elif reorder > 0 and qty <= reorder:
                 low_stock_count += 1
                 stock_status = "Low Stock"
             else:
                 stock_status = "In Stock"
 
             closing_stock_items.append({
-                "item_id": item["id"],
-                "sku": "",
-                "name": item["name"],
-                "category_name": item.get("category") or "Uncategorized",
-                "unit": item.get("unit") or "piece",
+                "item_id":          mid,
+                "sku":              "",
+                "name":             item["name"],
+                "category_name":    item.get("category") or "Uncategorized",
+                "unit":             item.get("unit") or "piece",
                 "closing_quantity": qty,
-                "unit_cost": cost_price,
-                "selling_price": selling_price,
-                "closing_value": round(selling_value, 2),      # selling-price value (used for closing stock)
-                "closing_value_cost": round(cost_value, 2),    # cost-price value (for reference)
-                "min_quantity": reorder,
-                "stock_status": stock_status,
+                "unit_cost":        cost_price,
+                "selling_price":    selling_price,
+                "closing_value":        round(selling_value, 2),
+                "closing_value_cost":   round(cost_value, 2),
+                "min_quantity":     reorder,
+                "stock_status":     stock_status,
+                "source":           source,  # 'stocktake' | 'reconstructed'
             })
 
-        # Sort by selling value descending
-        closing_stock_items.sort(key=lambda x: x["closing_value"], reverse=True)
+        # Sort by category then name for readability
+        closing_stock_items.sort(key=lambda x: (x["category_name"], x["name"]))
+
+        today = date_type.today().isoformat()
+        is_today = (as_of_date == today)
 
         return {
             "as_of_date": as_of_date,
+            "is_today": is_today,
+            "has_stocktake": len(physical_map) > 0,
             "summary": {
-                "total_items": len(closing_stock_items),
-                "total_value": round(total_selling_value, 2),
-                "total_cost_value": round(total_cost_value, 2),
+                "total_items":        len(closing_stock_items),
+                "total_value":        round(total_selling_value, 2),
+                "total_cost_value":   round(total_cost_value, 2),
                 "total_selling_value": round(total_selling_value, 2),
-                "low_stock_items": low_stock_count,
+                "low_stock_items":    low_stock_count,
                 "out_of_stock_items": out_of_stock_count,
-                "in_stock_items": len(closing_stock_items) - low_stock_count - out_of_stock_count
+                "in_stock_items":     len(closing_stock_items) - low_stock_count - out_of_stock_count,
             },
-            "items": closing_stock_items
+            "items": closing_stock_items,
         }
 
     except Exception as e:

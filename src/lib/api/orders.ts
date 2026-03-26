@@ -47,7 +47,9 @@ export interface Order {
   special_instructions?: string;
   notes?: string;
   assigned_waiter_id?: string;
+  assigned_waiter?: { id: string; full_name: string };
   assigned_chef_id?: string;
+  assigned_chef?: { id: string; full_name: string };
   estimated_ready_time?: string;
   created_at: string;
   updated_at: string;

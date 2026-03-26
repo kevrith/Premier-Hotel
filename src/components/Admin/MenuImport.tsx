@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import menuService from '@/lib/api/services/menuService';
+import { api } from '@/lib/api/client';
 
 interface ImportResult {
   success: number;
@@ -48,13 +49,22 @@ export default function MenuImport() {
     const items: any[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
+      // Handle quoted fields that may contain commas
+      const values: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (const char of lines[i]) {
+        if (char === '"') { inQuotes = !inQuotes; }
+        else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+        else { current += char; }
+      }
+      values.push(current.trim());
+
       const item: any = {};
 
       headers.forEach((header, index) => {
-        const value = values[index] || '';
+        const value = (values[index] || '').replace(/^"|"$/g, '');
 
-        // Map CSV headers to database fields
         switch (header) {
           case 'name':
             item.name = value;
@@ -96,11 +106,44 @@ export default function MenuImport() {
           case 'dietary':
             item.dietary_info = value ? value.split(';').map(d => d.trim()) : [];
             break;
+          // ── Stock fields ────────────────────────────────────────────────
+          case 'quantity':
+          case 'stock_quantity':
+          case 'initial_quantity':
+          case 'opening_stock':
+            item._stock_quantity = parseFloat(value) || 0;
+            break;
+          case 'track_inventory':
+          case 'tracked':
+          case 'track':
+            item._track_inventory = value.toLowerCase() === 'true' || value === '1' || value === 'yes';
+            break;
+          case 'unit':
+            item._unit = value || 'piece';
+            break;
+          case 'reorder_level':
+          case 'reorder':
+          case 'min_stock':
+            item._reorder_level = parseFloat(value) || 0;
+            break;
+          case 'cost_price':
+          case 'cost':
+            item._cost_price = parseFloat(value) || 0;
+            break;
+          case 'stock_department':
+          case 'department':
+            item._stock_department = value.toLowerCase() || 'kitchen';
+            break;
         }
       });
 
-      // Validate required fields
-      if (item.name && item.base_price) {
+      // Auto-enable tracking if a quantity or unit was specified
+      if (item._stock_quantity > 0 || item._unit) {
+        item._track_inventory = item._track_inventory ?? true;
+      }
+
+      // Validate required fields — base_price can be 0 for pure stock/ingredient items
+      if (item.name && item.base_price !== undefined && item.base_price !== null) {
         items.push(item);
       }
     }
@@ -136,7 +179,52 @@ export default function MenuImport() {
       // Import items one by one with progress tracking
       for (let i = 0; i < items.length; i++) {
         try {
-          await menuService.createMenuItem(items[i]);
+          // Strip private stock fields before sending to menu create endpoint
+          const { _track_inventory, _stock_quantity, _unit, _reorder_level, _cost_price, _stock_department, ...menuPayload } = items[i];
+
+          let createdId: string | undefined;
+
+          if (!menuPayload.base_price || menuPayload.base_price <= 0) {
+            // Pure stock/ingredient item — use the dedicated stock items endpoint
+            const stockRes: any = await api.post('/stock/items', {
+              name: menuPayload.name,
+              category: menuPayload.category || 'ingredients',
+              unit: _unit || 'piece',
+              reorder_level: _reorder_level || 0,
+              cost_price: _cost_price || 0,
+              stock_department: _stock_department || 'kitchen',
+              initial_quantity: _stock_quantity || 0,
+            });
+            createdId = stockRes?.data?.item?.id;
+          } else {
+            const created: any = await menuService.createMenuItem(menuPayload);
+            createdId = created?.id || created?.data?.id;
+
+            // Apply stock settings if tracking was requested
+            if (createdId && (_track_inventory || _stock_quantity > 0)) {
+              try {
+                await api.patch(`/stock/settings/${createdId}`, {
+                  track_inventory: true,
+                  unit: _unit || 'piece',
+                  reorder_level: _reorder_level || 0,
+                  cost_price: _cost_price || 0,
+                  stock_department: _stock_department || 'kitchen',
+                });
+
+                // Set initial stock quantity
+                if (_stock_quantity > 0) {
+                  await api.post('/stock/adjust', {
+                    menu_item_id: createdId,
+                    new_quantity: _stock_quantity,
+                    reason: 'Opening stock from CSV import',
+                  });
+                }
+              } catch {
+                // Non-fatal: item was created, only stock settings failed
+              }
+            }
+          }
+
           importResult.success++;
         } catch (error: any) {
           importResult.failed++;
@@ -175,12 +263,12 @@ export default function MenuImport() {
   };
 
   const downloadTemplate = () => {
-    const template = `name,name_sw,description,description_sw,category,base_price,image_url,preparation_time,available,dietary_info
-Grilled Salmon,Samaki wa Kuchoma,Fresh Atlantic salmon with herbs and lemon butter,Samaki safi wa Atlantic na viungo,mains,1200,https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400,25,true,gluten-free
-Caesar Salad,Saladi ya Caesar,Crisp romaine lettuce with Caesar dressing,Saladi ya kawaida,starters,650,https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400,10,true,vegetarian
-Margherita Pizza,Pizza ya Margherita,Classic pizza with fresh mozzarella and basil,Pizza ya kawaida na jibini safi,mains,950,https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400,20,true,vegetarian
-Chocolate Lava Cake,Keki ya Chokoleti,Warm chocolate cake with molten center,Keki ya moto ya chokoleti,desserts,550,https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400,15,true,vegetarian
-Mango Smoothie,Smoothie ya Embe,Fresh mango blended with yogurt and honey,Embe safi na yogati,beverages,450,https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400,5,true,vegetarian;gluten-free`;
+    const template = `name,name_sw,description,category,base_price,preparation_time,available,dietary_info,track_inventory,quantity,unit,reorder_level,cost_price,stock_department
+Grilled Salmon,Samaki wa Kuchoma,Fresh Atlantic salmon,mains,1200,25,true,gluten-free,false,0,piece,0,0,kitchen
+Caesar Salad,Saladi ya Caesar,Crisp romaine lettuce,starters,650,10,true,vegetarian,false,0,piece,0,0,kitchen
+Soda (Coke 300ml),,,beverages,150,0,true,,true,100,piece,10,80,bar
+Water (500ml),,,beverages,50,0,true,,true,200,piece,20,30,bar
+Chicken Breast (raw),,Ingredient - not on menu,mains,0,0,false,,true,5,kg,1,800,kitchen`;
 
     const blob = new Blob([template], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -335,12 +423,13 @@ Mango Smoothie,Smoothie ya Embe,Fresh mango blended with yogurt and honey,Embe s
             CSV Format Instructions
           </h4>
           <ul className="text-sm space-y-1 text-muted-foreground ml-6 list-disc">
-            <li><strong>Required columns:</strong> name, base_price</li>
-            <li><strong>Optional columns:</strong> name_sw, description, description_sw, category, image_url, preparation_time, available, dietary_info</li>
-            <li><strong>Categories:</strong> starters, mains, desserts, beverages, appetizers</li>
+            <li><strong>Required columns:</strong> name, base_price (use 0 for pure stock items not on the menu)</li>
+            <li><strong>Optional columns:</strong> name_sw, description, category, image_url, preparation_time, available, dietary_info</li>
+            <li><strong>Stock columns:</strong> track_inventory (true/false), quantity (opening stock), unit (piece/kg/L/bottle…), reorder_level, cost_price, stock_department (kitchen/bar/both)</li>
+            <li><strong>Categories:</strong> starters, mains, desserts, beverages, drinks, appetizers, breakfast, snacks</li>
             <li><strong>Available:</strong> Use true/false or 1/0</li>
             <li><strong>Dietary info:</strong> Separate multiple values with semicolon (e.g., "vegetarian;gluten-free")</li>
-            <li><strong>Price:</strong> Enter numeric values without currency symbols</li>
+            <li><strong>Tip:</strong> If you set a quantity or unit, track_inventory will be enabled automatically</li>
           </ul>
         </div>
       </CardContent>

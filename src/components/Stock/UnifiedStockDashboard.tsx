@@ -13,10 +13,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import {
   Package, AlertTriangle, TrendingDown, CheckCircle2, BarChart2,
   RefreshCw, Search, Download, ArrowDownToLine, SlidersHorizontal,
-  ChevronDown, ChevronRight, Layers, FileSpreadsheet
+  ChevronDown, ChevronRight, Layers, FileSpreadsheet, Plus, Pencil, Trash2
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
+import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClosingStock';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface StockItem {
@@ -56,6 +58,7 @@ interface Movement {
 interface GroupStats { count: number; lowStock: number; outOfStock: number; costValue: number; sellingValue: number; }
 
 export type StockMode = 'owner' | 'manager' | 'admin';
+export type StockDepartment = 'kitchen' | 'bar';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => `KES ${Number(n || 0).toLocaleString()}`;
@@ -390,11 +393,348 @@ function MovementHistory({ apiBase }: { apiBase: string }) {
   );
 }
 
+// ─── Item Management Panel ────────────────────────────────────────────────────
+const UNITS = ['kg', 'g', 'L', 'ml', 'piece', 'dozen', 'crate', 'bag', 'bottle', 'can', 'box', 'tray'];
+
+interface ItemFormState {
+  name: string;
+  category: string;
+  unit: string;
+  reorder_level: string;
+  cost_price: string;
+  stock_department: string;
+  initial_quantity: string;
+}
+
+const EMPTY_FORM: ItemFormState = {
+  name: '', category: '', unit: 'kg', reorder_level: '0',
+  cost_price: '0', stock_department: 'kitchen', initial_quantity: '0',
+};
+
+function ItemManagementPanel({ onRefreshParent }: { onRefreshParent: () => void }) {
+  const [items, setItems] = useState<StockItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState<string>('all');
+
+  // Dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editItem, setEditItem] = useState<StockItem | null>(null);
+  const [form, setForm] = useState<ItemFormState>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+
+  // Delete confirm
+  const [deleteItem, setDeleteItem] = useState<StockItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/stock/levels');
+      setItems((res.data || []) as unknown as StockItem[]);
+    } catch {
+      toast.error('Failed to load inventory items');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openAdd = () => {
+    setEditItem(null);
+    setForm(EMPTY_FORM);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (item: StockItem) => {
+    setEditItem(item);
+    setForm({
+      name: item.name,
+      category: item.category,
+      unit: item.unit || 'kg',
+      reorder_level: String(item.reorder_level || 0),
+      cost_price: String(item.cost_price || 0),
+      stock_department: (item as any).stock_department || 'kitchen',
+      initial_quantity: '0',
+    });
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { toast.error('Item name is required'); return; }
+    if (!form.category.trim()) { toast.error('Category is required'); return; }
+    setSaving(true);
+    try {
+      if (editItem) {
+        await api.patch(`/stock/items/${editItem.id}`, {
+          name: form.name.trim(),
+          category: form.category.trim(),
+          unit: form.unit,
+          reorder_level: parseFloat(form.reorder_level) || 0,
+          cost_price: parseFloat(form.cost_price) || 0,
+          stock_department: form.stock_department,
+        });
+        toast.success(`Updated ${form.name}`);
+      } else {
+        await api.post('/stock/items', {
+          name: form.name.trim(),
+          category: form.category.trim(),
+          unit: form.unit,
+          reorder_level: parseFloat(form.reorder_level) || 0,
+          cost_price: parseFloat(form.cost_price) || 0,
+          stock_department: form.stock_department,
+          initial_quantity: parseFloat(form.initial_quantity) || 0,
+        });
+        toast.success(`Added ${form.name}`);
+      }
+      setDialogOpen(false);
+      load();
+      onRefreshParent();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Save failed');
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteItem) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/stock/items/${deleteItem.id}`);
+      toast.success(`Deleted ${deleteItem.name}`);
+      setDeleteItem(null);
+      load();
+      onRefreshParent();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Delete failed');
+    }
+    setDeleting(false);
+  };
+
+  const filtered = items.filter(i => {
+    if (deptFilter !== 'all') {
+      const d = (i as any).stock_department || '';
+      if (d !== deptFilter && d !== 'both') return false;
+    }
+    if (search && !i.name.toLowerCase().includes(search.toLowerCase()) &&
+        !i.category.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  // Collect unique categories from existing items for autocomplete suggestions
+  const existingCategories = [...new Set(items.map(i => i.category))].sort();
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar */}
+      <div className="flex flex-wrap gap-2 items-center justify-between">
+        <div className="flex gap-2 flex-wrap items-center">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="Search items..." className="pl-8 h-9 text-sm w-48"
+              value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <div className="flex gap-1">
+            {(['all', 'kitchen', 'bar', 'both'] as const).map(d => (
+              <button key={d} onClick={() => setDeptFilter(d)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors capitalize
+                  ${deptFilter === d ? 'bg-foreground text-background border-foreground' : 'bg-background hover:bg-muted border-border'}`}>
+                {d === 'all' ? 'All Depts' : d}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={load} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button size="sm" className="h-9 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={openAdd}>
+            <Plus className="h-3.5 w-3.5" /> Add Item
+          </Button>
+        </div>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="py-20 text-center text-muted-foreground text-sm animate-pulse">Loading items...</div>
+      ) : filtered.length === 0 ? (
+        <div className="py-16 text-center border-2 border-dashed rounded-xl">
+          <Package className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-30" />
+          <p className="font-semibold text-muted-foreground">No inventory items yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Click "Add Item" to create the first tracked item</p>
+          <Button size="sm" className="mt-4 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={openAdd}>
+            <Plus className="h-3.5 w-3.5" /> Add First Item
+          </Button>
+        </div>
+      ) : (
+        <Card className="border-0 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-y bg-muted/40">
+                  {['Item Name', 'Category', 'Department', 'Unit', 'Reorder Level', 'Cost Price', 'Current Stock', 'Actions'].map(h => (
+                    <th key={h} className={`p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide
+                      ${h === 'Item Name' ? 'text-left pl-4' : h === 'Actions' ? 'text-center' : 'text-right'}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(item => (
+                  <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
+                    <td className="p-3 pl-4 font-medium">{item.name}</td>
+                    <td className="p-3 text-right capitalize text-muted-foreground">{item.category}</td>
+                    <td className="p-3 text-right">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize
+                        ${(item as any).stock_department === 'kitchen' ? 'bg-orange-500/10 text-orange-700 border-orange-200' :
+                          (item as any).stock_department === 'bar' ? 'bg-purple-500/10 text-purple-700 border-purple-200' :
+                          'bg-blue-500/10 text-blue-700 border-blue-200'}`}>
+                        {(item as any).stock_department || '—'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right text-muted-foreground">{item.unit}</td>
+                    <td className="p-3 text-right text-muted-foreground">{item.reorder_level || 0}</td>
+                    <td className="p-3 text-right text-muted-foreground">
+                      {item.cost_price ? fmt(item.cost_price) : '—'}
+                    </td>
+                    <td className="p-3 text-right">
+                      <span className={`font-mono font-bold text-xs
+                        ${item.stock_status === 'out_of_stock' ? 'text-rose-600' :
+                          item.stock_status === 'low_stock' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {item.stock_quantity} {item.unit}
+                      </span>
+                    </td>
+                    <td className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button variant="ghost" size="sm"
+                          className="h-7 px-2 text-xs text-indigo-700 hover:text-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/20"
+                          onClick={() => openEdit(item)}>
+                          <Pencil className="h-3 w-3 mr-1" />Edit
+                        </Button>
+                        {!(item as any).is_available && (
+                          <Button variant="ghost" size="sm"
+                            className="h-7 px-2 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                            onClick={() => setDeleteItem(item)}>
+                            <Trash2 className="h-3 w-3 mr-1" />Delete
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2 border-t text-xs text-muted-foreground bg-muted/20">
+            {filtered.length} item{filtered.length !== 1 ? 's' : ''} · Items on the menu cannot be deleted here
+          </div>
+        </Card>
+      )}
+
+      {/* Add / Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={v => !v && setDialogOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {editItem ? <><Pencil className="h-4 w-4" /> Edit Item</> : <><Plus className="h-4 w-4" /> Add Inventory Item</>}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs">Item Name *</Label>
+                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Chicken Breast" autoFocus />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Category *</Label>
+                <Input value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                  placeholder="e.g. Protein" list="cat-suggestions" />
+                <datalist id="cat-suggestions">
+                  {existingCategories.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Department</Label>
+                <Select value={form.stock_department} onValueChange={v => setForm(f => ({ ...f, stock_department: v }))}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="kitchen">Kitchen</SelectItem>
+                    <SelectItem value="bar">Bar</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Unit</Label>
+                <Select value={form.unit} onValueChange={v => setForm(f => ({ ...f, unit: v }))}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Reorder Level</Label>
+                <Input type="number" min="0" step="0.5" value={form.reorder_level}
+                  onChange={e => setForm(f => ({ ...f, reorder_level: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Cost Price (KES)</Label>
+                <Input type="number" min="0" step="0.01" value={form.cost_price}
+                  onChange={e => setForm(f => ({ ...f, cost_price: e.target.value }))} />
+              </div>
+              {!editItem && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Opening Stock ({form.unit})</Label>
+                  <Input type="number" min="0" step="0.01" value={form.initial_quantity}
+                    onChange={e => setForm(f => ({ ...f, initial_quantity: e.target.value }))} />
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+              {saving ? 'Saving...' : editItem ? 'Save Changes' : 'Add Item'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={!!deleteItem} onOpenChange={v => !v && setDeleteItem(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-600">
+              <Trash2 className="h-4 w-4" /> Delete Item
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Are you sure you want to delete <span className="font-semibold text-foreground">{deleteItem?.name}</span>?
+            This will remove it from stock tracking permanently.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteItem(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+
 // ─── Main Component ───────────────────────────────────────────────────────────
-export function UnifiedStockDashboard({ mode = 'owner' }: { mode?: StockMode }) {
+export function UnifiedStockDashboard({ mode = 'owner', department }: { mode?: StockMode; department?: StockDepartment }) {
   const canEdit = mode === 'admin' || mode === 'manager';
-  // Owner uses owner endpoints for movements; everyone uses /stock/levels for balances
-  const movementsBase = mode === 'owner' ? '/owner/stock' : '/owner/stock';
+  // All roles use the owner/stock/movements endpoint (manager/admin access granted)
+  const movementsBase = '/owner/stock';
 
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -402,7 +742,7 @@ export function UnifiedStockDashboard({ mode = 'owner' }: { mode?: StockMode }) 
   const [statusFilter, setStatusFilter] = useState<'all' | 'in_stock' | 'low_stock' | 'out_of_stock'>('all');
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [tab, setTab] = useState<'balances' | 'movements'>('balances');
+  const [tab, setTab] = useState<'balances' | 'movements' | 'snapshot' | 'manage'>('balances');
 
   const [receiveItem, setReceiveItem] = useState<StockItem | null>(null);
   const [adjustItem, setAdjustItem] = useState<StockItem | null>(null);
@@ -427,10 +767,15 @@ export function UnifiedStockDashboard({ mode = 'owner' }: { mode?: StockMode }) 
 
   useEffect(() => { load(); }, [load]);
 
-  // Derived state
-  const allCategories = [...new Set(items.map(i => i.category))].sort();
+  // Department-scoped base list (must be declared before allCategories / filtered / summary)
+  const deptItems = department
+    ? items.filter(i => { const d = (i as any).stock_department; return d === department || d === 'both'; })
+    : items;
 
-  const filtered = items.filter(i => {
+  // Derived state (category list scoped to department if set)
+  const allCategories = [...new Set(deptItems.map(i => i.category))].sort();
+
+  const filtered = deptItems.filter(i => {
     if (statusFilter !== 'all' && i.stock_status !== statusFilter) return false;
     if (selectedCats.size > 0 && !selectedCats.has(i.category)) return false;
     if (search && !i.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -442,15 +787,13 @@ export function UnifiedStockDashboard({ mode = 'owner' }: { mode?: StockMode }) 
     (acc[item.category] = acc[item.category] || []).push(item);
     return acc;
   }, {});
-
-  // Summary stats (from full items list, not filtered)
   const summary = {
-    total: items.length,
-    inStock: items.filter(i => i.stock_status === 'in_stock').length,
-    lowStock: items.filter(i => i.stock_status === 'low_stock').length,
-    outOfStock: items.filter(i => i.stock_status === 'out_of_stock').length,
-    totalCostValue: items.reduce((s, i) => s + (i.cost_value || 0), 0),
-    totalSellingValue: items.reduce((s, i) => s + (i.selling_value || 0), 0),
+    total: deptItems.length,
+    inStock: deptItems.filter(i => i.stock_status === 'in_stock').length,
+    lowStock: deptItems.filter(i => i.stock_status === 'low_stock').length,
+    outOfStock: deptItems.filter(i => i.stock_status === 'out_of_stock').length,
+    totalCostValue: deptItems.reduce((s, i) => s + (i.cost_value || 0), 0),
+    totalSellingValue: deptItems.reduce((s, i) => s + (i.selling_value || 0), 0),
   };
 
   const toggleCat = (cat: string) =>
@@ -531,12 +874,14 @@ export function UnifiedStockDashboard({ mode = 'owner' }: { mode?: StockMode }) 
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 p-1 bg-muted/40 rounded-lg w-fit border">
+      <div className="flex gap-1 p-1 bg-muted/40 rounded-lg w-fit border flex-wrap">
         {([
           { id: 'balances', label: 'Current Stock' },
           { id: 'movements', label: 'Receipts & Movements' },
+          { id: 'snapshot', label: 'Stock Value by Date' },
+          ...(canEdit ? [{ id: 'manage', label: 'Manage Items' }] : []),
         ] as const).map(({ id, label }) => (
-          <button key={id} onClick={() => setTab(id)}
+          <button key={id} onClick={() => setTab(id as any)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors
               ${tab === id ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
             {label}
@@ -544,7 +889,11 @@ export function UnifiedStockDashboard({ mode = 'owner' }: { mode?: StockMode }) 
         ))}
       </div>
 
-      {tab === 'movements' ? (
+      {tab === 'manage' ? (
+        <ItemManagementPanel onRefreshParent={load} />
+      ) : tab === 'snapshot' ? (
+        <InventoryClosingStock />
+      ) : tab === 'movements' ? (
         <MovementHistory apiBase={movementsBase} />
       ) : (
         <div className="flex gap-4">
@@ -556,8 +905,8 @@ export function UnifiedStockDashboard({ mode = 'owner' }: { mode?: StockMode }) 
                 onClick={() => setSelectedCats(new Set())}
                 className={`w-full text-left px-2 py-1.5 rounded text-sm transition-colors
                   ${selectedCats.size === 0 ? 'bg-foreground/10 font-semibold' : 'hover:bg-muted'}`}>
-                All Departments
-                <span className="ml-1.5 text-xs text-muted-foreground">({items.length})</span>
+                All Categories
+                <span className="ml-1.5 text-xs text-muted-foreground">({deptItems.length})</span>
               </button>
               {allCategories.map(cat => {
                 const count = items.filter(i => i.category === cat).length;

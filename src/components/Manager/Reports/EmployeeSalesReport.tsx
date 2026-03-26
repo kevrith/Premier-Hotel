@@ -221,25 +221,25 @@ export function EmployeeSalesReport() {
           {employees.map((emp, idx) => (
             <Card key={emp.employee_id} className="overflow-hidden">
               {/* Header bar */}
-              <div className="bg-gray-800 text-white px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="bg-muted px-4 py-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-3">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
-                    idx === 0 ? 'bg-yellow-400 text-yellow-900' : idx === 1 ? 'bg-gray-300 text-gray-800' :
-                    idx === 2 ? 'bg-orange-400 text-orange-900' : 'bg-gray-600'}`}>{idx + 1}</div>
+                    idx === 0 ? 'bg-yellow-500 text-white' : idx === 1 ? 'bg-muted-foreground/40 text-foreground' :
+                    idx === 2 ? 'bg-orange-500 text-white' : 'bg-muted-foreground/30 text-foreground'}`}>{idx + 1}</div>
                   <div>
-                    <p className="font-semibold">{emp.employee_name}</p>
-                    <p className="text-xs text-gray-300 capitalize">{emp.role} • {emp.department}</p>
+                    <p className="font-semibold text-foreground">{emp.employee_name}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{emp.role} • {emp.department}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="text-right mr-2">
-                    <p className="text-lg font-bold">{fmt(emp.total_sales)}</p>
-                    <p className="text-xs text-gray-300">{emp.total_orders} orders</p>
+                    <p className="text-lg font-bold text-foreground">{fmt(emp.total_sales)}</p>
+                    <p className="text-xs text-muted-foreground">{emp.total_orders} orders</p>
                   </div>
                   <Button size="sm" variant="secondary" onClick={() => {
                     setDetailId(emp.employee_id); setDetailName(emp.employee_name); setShowDetail(true);
                   }}><Eye className="h-3 w-3 mr-1" />Details</Button>
-                  <Button size="sm" variant="outline" className="border-gray-500 text-white hover:bg-gray-700"
+                  <Button size="sm" variant="outline"
                     onClick={() => handlePrint(emp)}><Printer className="h-3 w-3 mr-1" />Print</Button>
                 </div>
               </div>
@@ -262,10 +262,10 @@ export function EmployeeSalesReport() {
                   <TabsContent value="sales">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {[
-                        { label: 'Total Sales', value: fmt(emp.total_sales), cls: 'bg-green-50 text-green-800' },
-                        { label: 'Avg Order', value: fmt(emp.avg_order_value), cls: 'bg-blue-50 text-blue-800' },
-                        { label: 'Items Sold', value: emp.total_items_sold, cls: 'bg-purple-50 text-purple-800' },
-                        { label: 'Completion', value: `${emp.completion_rate}%`, cls: 'bg-orange-50 text-orange-800' },
+                        { label: 'Total Sales', value: fmt(emp.total_sales), cls: 'bg-green-500/10 text-green-500' },
+                        { label: 'Avg Order', value: fmt(emp.avg_order_value), cls: 'bg-blue-500/10 text-blue-500' },
+                        { label: 'Items Sold', value: emp.total_items_sold, cls: 'bg-purple-500/10 text-purple-500' },
+                        { label: 'Completion', value: `${emp.completion_rate}%`, cls: 'bg-orange-500/10 text-orange-500' },
                       ].map(({ label, value, cls }) => (
                         <div key={label} className={`rounded-lg p-3 ${cls}`}>
                           <p className="text-xs font-medium opacity-70">{label}</p>
@@ -284,29 +284,29 @@ export function EmployeeSalesReport() {
                   <TabsContent value="payments">
                     <div className="border rounded-lg overflow-hidden">
                       <table className="w-full text-sm">
-                        <thead><tr className="bg-gray-100">
-                          <th className="text-left px-4 py-2">Payment Method</th>
-                          <th className="text-right px-4 py-2">Amount</th>
+                        <thead><tr className="bg-muted">
+                          <th className="text-left px-4 py-2 text-muted-foreground font-medium">Payment Method</th>
+                          <th className="text-right px-4 py-2 text-muted-foreground font-medium">Amount</th>
                         </tr></thead>
                         <tbody>
                           {[
-                            { Icon: Banknote, label: 'Cash', val: emp.payment_summary.cash, color: 'text-green-600' },
-                            { Icon: Smartphone, label: 'M-Pesa', val: emp.payment_summary.mpesa, color: 'text-blue-600' },
-                            { Icon: CreditCard, label: 'Card (Paystack)', val: emp.payment_summary.card, color: 'text-purple-600' },
-                            { Icon: Hotel, label: 'Room Charge', val: emp.payment_summary.room_charge, color: 'text-orange-600' },
-                            ...(emp.payment_summary.other > 0 ? [{ Icon: DollarSign, label: 'Other', val: emp.payment_summary.other, color: 'text-gray-600' }] : []),
+                            { Icon: Banknote, label: 'Cash', val: emp.payment_summary.cash, color: 'text-green-500' },
+                            { Icon: Smartphone, label: 'M-Pesa', val: emp.payment_summary.mpesa, color: 'text-blue-500' },
+                            { Icon: CreditCard, label: 'Card (Paystack)', val: emp.payment_summary.card, color: 'text-purple-500' },
+                            { Icon: Hotel, label: 'Room Charge', val: emp.payment_summary.room_charge, color: 'text-orange-500' },
+                            ...(emp.payment_summary.other > 0 ? [{ Icon: DollarSign, label: 'Other', val: emp.payment_summary.other, color: 'text-muted-foreground' }] : []),
                           ].map(({ Icon, label, val, color }) => (
-                            <tr key={label} className="border-t hover:bg-gray-50">
-                              <td className="px-4 py-2"><div className="flex items-center gap-2"><Icon className={`h-4 w-4 ${color}`} />{label}</div></td>
-                              <td className="px-4 py-2 text-right font-medium">{fmt(val)}</td>
+                            <tr key={label} className="border-t border-border hover:bg-muted/50">
+                              <td className="px-4 py-2 text-foreground"><div className="flex items-center gap-2"><Icon className={`h-4 w-4 ${color}`} />{label}</div></td>
+                              <td className="px-4 py-2 text-right font-medium text-foreground">{fmt(val)}</td>
                             </tr>
                           ))}
-                          <tr className="border-t-2 border-green-400 bg-green-50 font-bold">
-                            <td className="px-4 py-2 text-green-800">TOTAL COLLECTED</td>
-                            <td className="px-4 py-2 text-right text-green-800">{fmt(emp.payment_summary.total_collected)}</td>
+                          <tr className="border-t-2 border-green-500/50 bg-green-500/10 font-bold">
+                            <td className="px-4 py-2 text-green-500">TOTAL COLLECTED</td>
+                            <td className="px-4 py-2 text-right text-green-500">{fmt(emp.payment_summary.total_collected)}</td>
                           </tr>
                           {emp.payment_summary.total_collected !== emp.total_sales && emp.total_sales > 0 && (
-                            <tr className="bg-yellow-50 text-xs text-yellow-700">
+                            <tr className="bg-yellow-500/10 text-xs text-yellow-500">
                               <td className="px-4 py-1.5">Variance (Sales vs Collected)</td>
                               <td className="px-4 py-1.5 text-right">
                                 {fmt(Math.abs(emp.total_sales - emp.payment_summary.total_collected))}
@@ -324,7 +324,7 @@ export function EmployeeSalesReport() {
                     <TabsContent value="mpesa">
                       <div className="border rounded-lg overflow-hidden">
                         <table className="w-full text-sm">
-                          <thead><tr className="bg-blue-800 text-white">
+                          <thead><tr className="bg-blue-600 text-white">
                             <th className="text-left px-3 py-2">M-Pesa Code</th>
                             <th className="text-left px-3 py-2">Phone</th>
                             <th className="text-left px-3 py-2">Bill #</th>
@@ -333,19 +333,19 @@ export function EmployeeSalesReport() {
                           </tr></thead>
                           <tbody>
                             {emp.mpesa_transactions.map((m, i) => (
-                              <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-blue-50'}>
-                                <td className="px-3 py-2 font-mono font-bold text-blue-700">{m.mpesa_code}</td>
-                                <td className="px-3 py-2">{m.phone || '—'}</td>
-                                <td className="px-3 py-2">{m.bill_number}</td>
-                                <td className="px-3 py-2 text-right font-semibold">{fmt(m.amount)}</td>
+                              <tr key={i} className={`border-t border-border ${i % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}>
+                                <td className="px-3 py-2 font-mono font-bold text-blue-500">{m.mpesa_code}</td>
+                                <td className="px-3 py-2 text-foreground">{m.phone || '—'}</td>
+                                <td className="px-3 py-2 text-foreground">{m.bill_number}</td>
+                                <td className="px-3 py-2 text-right font-semibold text-foreground">{fmt(m.amount)}</td>
                                 <td className="px-3 py-2 text-xs text-muted-foreground">
                                   {m.date ? format(new Date(m.date), 'dd/MM HH:mm') : '—'}
                                 </td>
                               </tr>
                             ))}
-                            <tr className="bg-blue-100 font-bold border-t-2 border-blue-400">
-                              <td colSpan={3} className="px-3 py-2">M-PESA TOTAL</td>
-                              <td className="px-3 py-2 text-right">{fmt(emp.payment_summary.mpesa)}</td>
+                            <tr className="bg-blue-500/10 font-bold border-t-2 border-blue-500/30">
+                              <td colSpan={3} className="px-3 py-2 text-blue-500">M-PESA TOTAL</td>
+                              <td className="px-3 py-2 text-right text-blue-500">{fmt(emp.payment_summary.mpesa)}</td>
                               <td />
                             </tr>
                           </tbody>
@@ -359,7 +359,7 @@ export function EmployeeSalesReport() {
                     <TabsContent value="splits">
                       <div className="border rounded-lg overflow-hidden">
                         <table className="w-full text-sm">
-                          <thead><tr className="bg-orange-700 text-white">
+                          <thead><tr className="bg-orange-600 text-white">
                             <th className="text-left px-3 py-2">Bill #</th>
                             <th className="text-right px-3 py-2">Bill Total</th>
                             <th className="text-right px-3 py-2">Your Share</th>
@@ -367,12 +367,12 @@ export function EmployeeSalesReport() {
                           </tr></thead>
                           <tbody>
                             {emp.split_bills.map((b, i) => (
-                              <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-orange-50'}>
-                                <td className="px-3 py-2 font-medium">{b.bill_number}</td>
-                                <td className="px-3 py-2 text-right">{fmt(b.total_amount)}</td>
-                                <td className="px-3 py-2 text-right font-semibold text-orange-700">{fmt(b.your_amount)}</td>
+                              <tr key={i} className={`border-t border-border ${i % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}>
+                                <td className="px-3 py-2 font-medium text-foreground">{b.bill_number}</td>
+                                <td className="px-3 py-2 text-right text-foreground">{fmt(b.total_amount)}</td>
+                                <td className="px-3 py-2 text-right font-semibold text-orange-500">{fmt(b.your_amount)}</td>
                                 <td className="px-3 py-2 text-center">
-                                  <Badge variant="outline" className="border-orange-400 text-orange-700">
+                                  <Badge variant="outline" className="border-orange-500 text-orange-500">
                                     <Split className="h-3 w-3 mr-1" />{b.split_count} ways
                                   </Badge>
                                 </td>
@@ -396,6 +396,8 @@ export function EmployeeSalesReport() {
           employeeName={detailName}
           open={showDetail}
           onClose={() => setShowDetail(false)}
+          initialStartDate={getDateRange().start.split('T')[0]}
+          initialEndDate={getDateRange().end.split('T')[0]}
         />
       )}
     </div>

@@ -29,6 +29,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import PaymentModal from '@/components/PaymentModal';
 import OrderStatusTracker from '@/components/OrderStatusTracker';
+import { ordersApi } from '@/lib/api/orders';
 
 export default function MyOrders() {
   const navigate = useNavigate();
@@ -42,16 +43,42 @@ export default function MyOrders() {
   const [trackedOrder, setTrackedOrder] = useState(null);
 
   useEffect(() => {
-    // Redirect to login if not authenticated
     if (!isAuthenticated) {
       toast.error('Please login to view your orders');
       navigate('/login', { state: { from: '/my-orders' } });
       return;
     }
 
-    // TODO: Fetch orders from API
-    // For now, using mock data
-    setIsLoading(false);
+    const fetchOrders = async () => {
+      try {
+        setIsLoading(true);
+        const data = await ordersApi.getMyOrders({ limit: 100 });
+        // Normalise field names to what the UI expects
+        const normalised = (data || []).map((o: any) => ({
+          ...o,
+          createdAt: o.created_at,
+          deliveryLocation: o.location,
+          specialInstructions: o.special_instructions,
+          estimatedReadyTime: o.estimated_ready_time,
+          subtotal: Number(o.subtotal ?? 0),
+          tax: Number(o.tax ?? 0),
+          total: Number(o.total_amount ?? 0),
+          paymentStatus: o.payment_status ?? (o.bill?.payment_status ?? 'pending'),
+          items: (o.items || []).map((item: any) => ({
+            ...item,
+            name: item.name ?? item.menu_item?.name ?? 'Item',
+            price: Number(item.price ?? item.unit_price ?? 0),
+          })),
+        }));
+        setOrders(normalised);
+      } catch (error) {
+        toast.error('Failed to load orders');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchOrders();
   }, [isAuthenticated, navigate, user]);
 
   if (!isAuthenticated) {
@@ -67,7 +94,26 @@ export default function MyOrders() {
     toast.success('Payment completed successfully!');
     setIsPaymentModalOpen(false);
     setPaymentOrder(null);
-    // TODO: Refresh orders to get updated payment status
+    // Refresh orders to reflect updated payment status
+    try {
+      const data = await ordersApi.getMyOrders({ limit: 100 });
+      setOrders((data || []).map((o: any) => ({
+        ...o,
+        createdAt: o.created_at,
+        deliveryLocation: o.location,
+        specialInstructions: o.special_instructions,
+        estimatedReadyTime: o.estimated_ready_time,
+        subtotal: Number(o.subtotal ?? 0),
+        tax: Number(o.tax ?? 0),
+        total: Number(o.total_amount ?? 0),
+        paymentStatus: o.payment_status ?? (o.bill?.payment_status ?? 'pending'),
+        items: (o.items || []).map((item: any) => ({
+          ...item,
+          name: item.name ?? item.menu_item?.name ?? 'Item',
+          price: Number(item.price ?? item.unit_price ?? 0),
+        })),
+      })));
+    } catch {}
   };
 
   const handlePaymentError = (error) => {

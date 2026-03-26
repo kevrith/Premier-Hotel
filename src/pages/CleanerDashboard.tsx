@@ -15,8 +15,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Sparkles, Clock, CheckCircle2, AlertTriangle, BedDouble, TrendingUp,
-  ClipboardCheck, Package, PlayCircle, ListChecks, WifiOff, Loader2,
-  Calendar, RefreshCw, Search, Star, BarChart2, MessageSquare, Plus, Wrench, ShoppingBag
+  ClipboardCheck, Package, PlayCircle, ListChecks, WifiOff, Loader2, BarChart2 as _BarChart2,
+  Calendar, RefreshCw, Search, Star, BarChart2, MessageSquare, Plus, Wrench, ShoppingBag, Home
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import housekeepingService, {
@@ -50,18 +50,18 @@ interface LinenItem {
   unit: string;
 }
 
-// Enterprise: checklist template — also saved to inspection record
+// Enterprise: checklist template — required items block completion; optional are advisory only
 const CHECKLIST_ITEMS = [
-  { id: 'bed_linens',    label: 'Bed linens changed and properly made' },
-  { id: 'bathroom',      label: 'Bathroom cleaned and sanitized' },
-  { id: 'toiletries',    label: 'Toiletries restocked' },
-  { id: 'towels',        label: 'Towels replaced' },
-  { id: 'floor',         label: 'Floor vacuumed/mopped' },
-  { id: 'dusting',       label: 'Surfaces and furniture dusted' },
-  { id: 'windows',       label: 'Windows and mirrors cleaned' },
-  { id: 'trash',         label: 'Trash bins emptied' },
-  { id: 'minibar',       label: 'Minibar restocked' },
-  { id: 'appliances',    label: 'All appliances checked and working' },
+  { id: 'bed_linens',  label: 'Bed linens changed and properly made',   required: true  },
+  { id: 'bathroom',    label: 'Bathroom cleaned and sanitized',          required: true  },
+  { id: 'toiletries',  label: 'Toiletries restocked',                   required: true  },
+  { id: 'towels',      label: 'Towels replaced',                        required: true  },
+  { id: 'floor',       label: 'Floor vacuumed/mopped',                  required: true  },
+  { id: 'dusting',     label: 'Surfaces and furniture dusted',          required: true  },
+  { id: 'windows',     label: 'Windows and mirrors cleaned',            required: true  },
+  { id: 'trash',       label: 'Trash bins emptied',                     required: true  },
+  { id: 'minibar',     label: 'Minibar restocked (if applicable)',       required: false },
+  { id: 'appliances',  label: 'All appliances checked and working',     required: false },
 ];
 
 export default function CleanerDashboard() {
@@ -109,6 +109,12 @@ export default function CleanerDashboard() {
   const [showLinenMove, setShowLinenMove] = useState(false);
   const [linenMoveForm, setLinenMoveForm] = useState({ linen_item_id: '', room_id: '', movement_type: 'issued', quantity: 1, notes: '' });
   const [submittingLinen, setSubmittingLinen] = useState(false);
+
+  // Headcount
+  const [showHeadcount, setShowHeadcount] = useState(false);
+  const [headcountData, setHeadcountData] = useState<Record<string, { total: number; in_use: number; laundry: number; damaged: number }>>({});
+  const [headcountNotes, setHeadcountNotes] = useState('');
+  const [submittingHeadcount, setSubmittingHeadcount] = useState(false);
 
   // Timers
   const [roomTimers, setRoomTimers] = useState<Record<string, { startTime: Date; elapsed: number }>>({});
@@ -262,11 +268,16 @@ export default function CleanerDashboard() {
     setShowInspectionDialog(true);
   };
 
-  const allChecked = CHECKLIST_ITEMS.every(i => checklistItems[i.id]);
+  const requiredItems = CHECKLIST_ITEMS.filter(i => i.required);
+  const requiredAllChecked = requiredItems.every(i => checklistItems[i.id]);
 
   const handleInspectionComplete = async () => {
     if (!selectedTask) return;
-    if (!allChecked) { toast.error('Complete all checklist items before finishing'); return; }
+    if (!requiredAllChecked) {
+      const missing = requiredItems.filter(i => !checklistItems[i.id]).map(i => i.label);
+      toast.error(`Please complete required items:\n• ${missing.slice(0, 3).join('\n• ')}`);
+      return;
+    }
 
     const taskId = selectedTask.id;
     const timer = roomTimers[taskId];
@@ -382,6 +393,36 @@ export default function CleanerDashboard() {
       setLinenItems(updated || []);
     } catch { toast.error('Failed to record movement'); }
     finally { setSubmittingLinen(false); }
+  };
+
+  const openHeadcount = () => {
+    // Pre-fill with current counts so cleaner just corrects what changed
+    const initial: Record<string, { total: number; in_use: number; laundry: number; damaged: number }> = {};
+    linenItems.forEach(i => {
+      initial[i.id] = { total: i.total_quantity, in_use: i.in_use_quantity, laundry: i.in_laundry_quantity, damaged: i.damaged_quantity };
+    });
+    setHeadcountData(initial);
+    setHeadcountNotes('');
+    setShowHeadcount(true);
+  };
+
+  const handleHeadcountSubmit = async () => {
+    setSubmittingHeadcount(true);
+    try {
+      const items = Object.entries(headcountData).map(([item_id, counts]) => ({
+        item_id,
+        total_quantity: counts.total,
+        in_use_quantity: counts.in_use,
+        in_laundry_quantity: counts.laundry,
+        damaged_quantity: counts.damaged,
+      }));
+      await api.post('/maintenance/linen/headcount', { items, notes: headcountNotes || 'Physical headcount' });
+      toast.success(`Headcount saved — ${items.length} items updated`);
+      setShowHeadcount(false);
+      const updated = await api.get('/maintenance/linen').then(r => r.data as unknown as LinenItem[]);
+      setLinenItems(updated || []);
+    } catch { toast.error('Failed to save headcount'); }
+    finally { setSubmittingHeadcount(false); }
   };
 
   const formatTime = (secs: number) => `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, '0')}`;
@@ -564,6 +605,9 @@ export default function CleanerDashboard() {
             <TabsTrigger value="lost-found" className="h-10 text-xs sm:text-sm">
               Lost & Found
             </TabsTrigger>
+            <TabsTrigger value="room-status" className="h-10 text-xs sm:text-sm">
+              Rooms {rooms.filter(r => r.status === 'cleaning').length > 0 && `(${rooms.filter(r => r.status === 'cleaning').length} to clean)`}
+            </TabsTrigger>
             <TabsTrigger value="performance" className="h-10 text-xs sm:text-sm">
               My Stats
             </TabsTrigger>
@@ -668,14 +712,19 @@ export default function CleanerDashboard() {
 
           {/* Linen Inventory Tab */}
           <TabsContent value="linen" className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <h2 className="text-xl font-semibold">Linen & Room Inventory</h2>
-                <p className="text-sm text-muted-foreground">Track towels, sheets, pillows and more</p>
+                <p className="text-sm text-muted-foreground">Count items and log movements</p>
               </div>
-              <Button onClick={() => setShowLinenMove(true)}>
-                <Plus className="h-4 w-4 mr-2" /> Log Movement
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={openHeadcount}>
+                  <ClipboardCheck className="h-4 w-4 mr-2" /> Do Headcount
+                </Button>
+                <Button onClick={() => setShowLinenMove(true)}>
+                  <Plus className="h-4 w-4 mr-2" /> Log Movement
+                </Button>
+              </div>
             </div>
 
             {linenItems.length === 0 ? (
@@ -818,6 +867,105 @@ export default function CleanerDashboard() {
             )}
           </TabsContent>
 
+          {/* Room Status Tab */}
+          <TabsContent value="room-status" className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-xl font-semibold">Room Status Overview</h2>
+                <p className="text-sm text-muted-foreground">Live status of all rooms — dirty rooms need cleaning</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={loadData}>
+                <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+              </Button>
+            </div>
+
+            {/* Status summary cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Needs Cleaning', status: 'cleaning', color: 'bg-red-50 border-red-200 text-red-700' },
+                { label: 'Available', status: 'available', color: 'bg-green-50 border-green-200 text-green-700' },
+                { label: 'Occupied', status: 'occupied', color: 'bg-blue-50 border-blue-200 text-blue-700' },
+                { label: 'Maintenance', status: 'maintenance', color: 'bg-orange-50 border-orange-200 text-orange-700' },
+              ].map(({ label, status: st, color }) => (
+                <div key={st} className={`p-4 rounded-lg border ${color}`}>
+                  <p className="text-2xl font-bold">{rooms.filter(r => r.status === st).length}</p>
+                  <p className="text-sm font-medium">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Dirty rooms — need cleaning */}
+            {rooms.filter(r => r.status === 'cleaning').length > 0 && (
+              <div>
+                <h3 className="font-semibold mb-3 flex items-center gap-2 text-red-600">
+                  <AlertTriangle className="h-4 w-4" /> Awaiting Cleaning ({rooms.filter(r => r.status === 'cleaning').length})
+                </h3>
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {rooms.filter(r => r.status === 'cleaning').map(room => {
+                    const existingTask = tasks.find(t => t.room_id === room.id && ['pending', 'assigned', 'in_progress'].includes(t.status));
+                    return (
+                      <Card key={room.id} className="border-red-300 border-2">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <BedDouble className="h-5 w-5 text-red-500" />
+                              <span className="font-bold text-lg">Room {room.room_number}</span>
+                            </div>
+                            <Badge className="bg-red-100 text-red-700">Needs Cleaning</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground capitalize mb-3">{room.type}</p>
+                          {existingTask ? (
+                            <div className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              Task {existingTask.status === 'in_progress' ? 'in progress' : 'assigned'}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" /> No task assigned yet
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* All rooms grouped by status */}
+            {(['available', 'occupied', 'maintenance', 'reserved', 'inactive', 'cleaning'] as const).map(st => {
+              const group = rooms.filter(r => r.status === st);
+              if (group.length === 0) return null;
+              const colors: Record<string, string> = {
+                available: 'text-green-600', occupied: 'text-blue-600',
+                maintenance: 'text-orange-600', reserved: 'text-purple-600', inactive: 'text-gray-500',
+                cleaning: 'text-red-600',
+              };
+              return (
+                <div key={st}>
+                  <h3 className={`font-semibold mb-3 flex items-center gap-2 capitalize ${colors[st]}`}>
+                    <Home className="h-4 w-4" /> {st} ({group.length})
+                  </h3>
+                  <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                    {group.map(room => (
+                      <div key={room.id} className="p-3 border rounded-lg text-center hover:bg-muted transition-colors">
+                        <p className="font-bold">{room.room_number}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{room.type}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {rooms.length === 0 && (
+              <Card><CardContent className="text-center py-12">
+                <BedDouble className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No rooms found</p>
+              </CardContent></Card>
+            )}
+          </TabsContent>
+
           {/* Performance Tab */}
           <TabsContent value="performance" className="space-y-6">
             <Card>
@@ -890,22 +1038,28 @@ export default function CleanerDashboard() {
             {/* Checklist */}
             <div>
               <h3 className="font-semibold mb-3 flex items-center gap-2"><ListChecks className="h-4 w-4" />Cleaning Checklist</h3>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {CHECKLIST_ITEMS.map(item => (
-                  <div key={item.id} className="flex items-start space-x-3 p-3 rounded-lg hover:bg-muted">
+                  <div key={item.id} className={`flex items-start space-x-3 p-2.5 rounded-lg hover:bg-muted ${item.required && !checklistItems[item.id] ? 'border border-dashed border-orange-300' : ''}`}>
                     <Checkbox
                       id={item.id}
                       checked={checklistItems[item.id] || false}
                       onCheckedChange={v => setChecklistItems(p => ({ ...p, [item.id]: v as boolean }))}
-                      className="mt-1"
+                      className="mt-0.5"
                     />
-                    <label htmlFor={item.id} className="text-sm font-medium cursor-pointer flex-1">{item.label}</label>
+                    <label htmlFor={item.id} className="text-sm cursor-pointer flex-1 leading-snug">
+                      {item.label}
+                      {!item.required && <span className="ml-1.5 text-xs text-muted-foreground">(optional)</span>}
+                    </label>
                   </div>
                 ))}
               </div>
-              <div className="mt-3 p-3 bg-muted rounded-md">
-                <span className="text-sm font-medium">Progress: </span>
-                <span className="font-bold">{Object.values(checklistItems).filter(Boolean).length} / {CHECKLIST_ITEMS.length}</span>
+              <div className="mt-3 p-3 bg-muted rounded-md flex items-center justify-between">
+                <span className="text-sm font-medium">Required: </span>
+                <span className={`font-bold ${requiredAllChecked ? 'text-green-600' : 'text-orange-600'}`}>
+                  {requiredItems.filter(i => checklistItems[i.id]).length} / {requiredItems.length}
+                  {requiredAllChecked ? ' ✓ All done' : ' — complete to finish'}
+                </span>
               </div>
             </div>
 
@@ -964,7 +1118,7 @@ export default function CleanerDashboard() {
             <Button
               onClick={handleInspectionComplete}
               className="h-12 font-semibold"
-              disabled={!allChecked || submittingCompletion}
+              disabled={!requiredAllChecked || submittingCompletion}
             >
               {submittingCompletion ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-5 w-5 mr-2" />}
               Complete Cleaning
@@ -1099,6 +1253,68 @@ export default function CleanerDashboard() {
             <Button onClick={handleLinenMovement} disabled={submittingLinen}>
               {submittingLinen && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Record Movement
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Headcount Dialog */}
+      <Dialog open={showHeadcount} onOpenChange={setShowHeadcount}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5" /> Physical Headcount
+            </DialogTitle>
+            <DialogDescription>
+              Count every item physically and enter the actual numbers below. This updates the system to match reality.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {linenItems.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No linen items configured. Ask manager to add items first.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-5 gap-2 text-xs font-semibold text-muted-foreground border-b pb-2">
+                  <span className="col-span-1">Item</span>
+                  <span className="text-center">Total</span>
+                  <span className="text-center">In Use</span>
+                  <span className="text-center">Laundry</span>
+                  <span className="text-center">Damaged</span>
+                </div>
+                {linenItems.map(item => {
+                  const counts = headcountData[item.id] ?? { total: item.total_quantity, in_use: item.in_use_quantity, laundry: item.in_laundry_quantity, damaged: item.damaged_quantity };
+                  const setCount = (field: string, val: number) =>
+                    setHeadcountData(p => ({ ...p, [item.id]: { ...counts, [field]: Math.max(0, val) } }));
+                  return (
+                    <div key={item.id} className="grid grid-cols-5 gap-2 items-center py-1 border-b last:border-0">
+                      <div className="col-span-1">
+                        <p className="text-sm font-medium leading-tight">{item.item_name}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{item.category}</p>
+                      </div>
+                      <Input type="number" min={0} className="text-center h-8 text-sm" value={counts.total}
+                        onChange={e => setCount('total', parseInt(e.target.value) || 0)} />
+                      <Input type="number" min={0} className="text-center h-8 text-sm" value={counts.in_use}
+                        onChange={e => setCount('in_use', parseInt(e.target.value) || 0)} />
+                      <Input type="number" min={0} className="text-center h-8 text-sm" value={counts.laundry}
+                        onChange={e => setCount('laundry', parseInt(e.target.value) || 0)} />
+                      <Input type="number" min={0} className="text-center h-8 text-sm" value={counts.damaged}
+                        onChange={e => setCount('damaged', parseInt(e.target.value) || 0)} />
+                    </div>
+                  );
+                })}
+                <div className="space-y-1.5 pt-2">
+                  <Label>Notes (optional)</Label>
+                  <Input placeholder="e.g. After laundry collection, morning count..." value={headcountNotes}
+                    onChange={e => setHeadcountNotes(e.target.value)} />
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHeadcount(false)}>Cancel</Button>
+            <Button onClick={handleHeadcountSubmit} disabled={submittingHeadcount || linenItems.length === 0}>
+              {submittingHeadcount && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save Headcount
             </Button>
           </DialogFooter>
         </DialogContent>

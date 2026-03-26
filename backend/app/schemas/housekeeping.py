@@ -76,10 +76,10 @@ class TaskCompleteRequest(BaseModel):
 class RoomInspectionBase(BaseModel):
     room_id: str
     task_id: Optional[str] = None
-    cleanliness_score: int = Field(..., ge=1, le=5)
-    maintenance_score: int = Field(..., ge=1, le=5)
-    amenities_score: int = Field(..., ge=1, le=5)
-    overall_score: int = Field(..., ge=1, le=5)
+    cleanliness_score: int = Field(..., ge=1, le=10)
+    maintenance_score: int = Field(..., ge=1, le=10)
+    amenities_score: int = Field(..., ge=1, le=10)
+    overall_score: int = Field(..., ge=1, le=10)
     maintenance_issues: Optional[str] = None
     missing_items: Optional[str] = None
     damaged_items: Optional[str] = None
@@ -90,15 +90,16 @@ class RoomInspectionCreate(RoomInspectionBase):
     inspector_id: str
     checklist: Optional[Dict[str, Any]] = None
     photos: Optional[List[str]] = None
+    status: Optional[str] = Field(None, pattern='^(passed|failed|needs_attention|excellent)$')
     requires_follow_up: bool = False
     follow_up_notes: Optional[str] = None
 
 
 class RoomInspectionUpdate(BaseModel):
-    cleanliness_score: Optional[int] = Field(None, ge=1, le=5)
-    maintenance_score: Optional[int] = Field(None, ge=1, le=5)
-    amenities_score: Optional[int] = Field(None, ge=1, le=5)
-    overall_score: Optional[int] = Field(None, ge=1, le=5)
+    cleanliness_score: Optional[int] = Field(None, ge=1, le=10)
+    maintenance_score: Optional[int] = Field(None, ge=1, le=10)
+    amenities_score: Optional[int] = Field(None, ge=1, le=10)
+    overall_score: Optional[int] = Field(None, ge=1, le=10)
     status: Optional[str] = Field(None, pattern='^(passed|failed|needs_attention|excellent)$')
     maintenance_issues: Optional[str] = None
     missing_items: Optional[str] = None

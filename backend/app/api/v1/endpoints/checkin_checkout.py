@@ -74,6 +74,34 @@ async def get_registration(
         raise HTTPException(status_code=500, detail=f"Error fetching registration: {str(e)}")
 
 
+@router.patch("/registrations/{registration_id}/verify")
+async def verify_registration_id(
+    registration_id: str,
+    body: dict,
+    current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
+    supabase: Client = Depends(get_supabase)
+):
+    """Approve or reject guest ID verification"""
+    try:
+        verified = body.get("verified", False)
+        notes = body.get("notes", "")
+        updates = {
+            "id_verified": verified,
+            "verification_notes": notes,
+            "verified_by": current_user["id"],
+            "verified_at": datetime.now().isoformat(),
+            "status": "approved" if verified else "rejected",
+        }
+        result = supabase.table("guest_registrations").update(updates).eq("id", registration_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Registration not found")
+        return {"success": True, "verified": verified}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating verification: {str(e)}")
+
+
 # =====================================================
 # Check-in Endpoints
 # =====================================================

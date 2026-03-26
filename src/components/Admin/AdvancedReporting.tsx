@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { QuickBooksReporting } from './QuickBooksReporting';
@@ -11,6 +12,8 @@ import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClo
 import { BarChart, DollarSign, Archive, Users, MessageSquare, FileBarChart, TrendingUp, ShoppingBag, XCircle } from 'lucide-react';
 
 export function AdvancedReporting() {
+  const [activeTab, setActiveTab] = useState('financial');
+
   return (
     <div className="space-y-6">
       <Card>
@@ -24,7 +27,7 @@ export function AdvancedReporting() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="financial" className="space-y-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <div className="overflow-x-auto">
               <TabsList className="grid w-full grid-cols-8 min-w-max">
                 <TabsTrigger value="financial">
@@ -62,36 +65,38 @@ export function AdvancedReporting() {
               </TabsList>
             </div>
 
+            {/* Only render the active tab — prevents all 8 components from
+                mounting simultaneously and flooding the backend with requests */}
             <TabsContent value="financial" className="space-y-4">
-              <FinancialReports />
+              {activeTab === 'financial' && <FinancialReports />}
             </TabsContent>
 
             <TabsContent value="sales" className="space-y-4">
-              <SalesReports />
+              {activeTab === 'sales' && <SalesReports />}
             </TabsContent>
 
             <TabsContent value="item-summary" className="space-y-4">
-              <ItemSummaryReport />
+              {activeTab === 'item-summary' && <ItemSummaryReport />}
             </TabsContent>
 
             <TabsContent value="voids" className="space-y-4">
-              <VoidedItemsReport />
+              {activeTab === 'voids' && <VoidedItemsReport />}
             </TabsContent>
 
             <TabsContent value="closing-stock" className="space-y-4">
-              <InventoryClosingStock />
+              {activeTab === 'closing-stock' && <InventoryClosingStock />}
             </TabsContent>
 
             <TabsContent value="staff" className="space-y-4">
-              <StaffPerformanceReports />
+              {activeTab === 'staff' && <StaffPerformanceReports />}
             </TabsContent>
 
             <TabsContent value="customers" className="space-y-4">
-              <CustomerInsightsReports />
+              {activeTab === 'customers' && <CustomerInsightsReports />}
             </TabsContent>
 
             <TabsContent value="quickbooks" className="space-y-4">
-              <QuickBooksReporting />
+              {activeTab === 'quickbooks' && <QuickBooksReporting />}
             </TabsContent>
           </Tabs>
         </CardContent>

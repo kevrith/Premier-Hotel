@@ -88,11 +88,11 @@ export const ProfitLossStatement: React.FC = () => {
                 <TableBody>
                   <TableRow>
                     <TableCell>Inventory Usage</TableCell>
-                    <TableCell className="text-right text-red-600">
+                    <TableCell className="text-right text-red-500">
                       (KES {cogs.total_cogs.toLocaleString()})
                     </TableCell>
                   </TableRow>
-                  <TableRow className="font-bold bg-green-50">
+                  <TableRow className="font-bold bg-green-500/10">
                     <TableCell>Gross Profit</TableCell>
                     <TableCell className="text-right flex items-center justify-end gap-2">
                       KES {cogs.gross_profit.toLocaleString()}
@@ -111,14 +111,14 @@ export const ProfitLossStatement: React.FC = () => {
                   {Object.entries(operating_expenses.by_category).map(([category, amount]: [string, any]) => (
                     <TableRow key={category}>
                       <TableCell className="capitalize">{category}</TableCell>
-                      <TableCell className="text-right text-red-600">
+                      <TableCell className="text-right text-red-500">
                         (KES {amount.toLocaleString()})
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="font-bold bg-muted">
                     <TableCell>Total Operating Expenses</TableCell>
-                    <TableCell className="text-right text-red-600">
+                    <TableCell className="text-right text-red-500">
                       (KES {operating_expenses.total_expenses.toLocaleString()})
                     </TableCell>
                   </TableRow>
@@ -132,7 +132,7 @@ export const ProfitLossStatement: React.FC = () => {
                 <TableBody>
                   <TableRow className="font-bold text-lg">
                     <TableCell>Net Profit</TableCell>
-                    <TableCell className={`text-right flex items-center justify-end gap-2 ${profit.net_profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <TableCell className={`text-right flex items-center justify-end gap-2 ${profit.net_profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                       {profit.net_profit >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
                       KES {profit.net_profit.toLocaleString()}
                       <span className="text-sm text-muted-foreground">({profit.net_margin.toFixed(1)}%)</span>

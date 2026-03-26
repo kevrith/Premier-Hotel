@@ -149,19 +149,33 @@ async def get_my_tasks(
     """
     try:
         user_id = current_user["id"]
-        # Return tasks assigned to this user OR unassigned tasks (so cleaners can pick them up)
-        query = supabase.table("housekeeping_tasks").select("*").or_(
-            f"assigned_to.eq.{user_id},assigned_to.is.null"
-        )
 
+        # Fetch tasks assigned to this user
+        q1 = supabase.table("housekeeping_tasks").select("*").eq("assigned_to", user_id)
         if status_filter:
-            query = query.eq("status", status_filter)
+            q1 = q1.eq("status", status_filter)
+        r1 = q1.execute()
 
-        query = query.order("priority", desc=True).order("scheduled_time", desc=False)
+        # Fetch unassigned tasks (assigned_to IS NULL) so cleaners can pick them up
+        q2 = supabase.table("housekeeping_tasks").select("*").is_("assigned_to", "null")
+        if status_filter:
+            q2 = q2.eq("status", status_filter)
+        r2 = q2.execute()
 
-        result = query.execute()
+        # Merge, deduplicate, sort by priority then scheduled_time
+        priority_order = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
+        seen = set()
+        combined = []
+        for item in (r1.data or []) + (r2.data or []):
+            if item["id"] not in seen:
+                seen.add(item["id"])
+                combined.append(item)
+        combined.sort(key=lambda t: (
+            priority_order.get(t.get("priority", "normal"), 2),
+            t.get("scheduled_time") or ""
+        ))
 
-        return [HousekeepingTaskResponse(**item) for item in result.data]
+        return [HousekeepingTaskResponse(**item) for item in combined]
 
     except Exception as e:
         raise HTTPException(
@@ -311,7 +325,14 @@ async def complete_task(
                 detail="Task not found"
             )
 
-        return HousekeepingTaskResponse(**result.data[0])
+        task_record = result.data[0]
+        # If this was a cleaning task, mark the room available
+        if task_record.get("task_type") == "cleaning" and task_record.get("room_id"):
+            supabase.table("rooms").update({"status": "available"}).eq(
+                "id", task_record["room_id"]
+            ).eq("status", "cleaning").execute()
+
+        return HousekeepingTaskResponse(**task_record)
 
     except HTTPException:
         raise
@@ -358,7 +379,7 @@ async def delete_task(
 @router.post("/inspections", response_model=RoomInspectionResponse)
 async def create_inspection(
     inspection: RoomInspectionCreate,
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """
@@ -377,6 +398,8 @@ async def create_inspection(
 
         return RoomInspectionResponse(**result.data[0])
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -485,16 +508,23 @@ async def list_supplies(
         if status_filter:
             query = query.eq("status", status_filter)
 
-        # Low stock filter - supplies where current_stock <= minimum_stock
+        # Low stock filter applied in Python after fetch (column-to-column comparison)
+        # NOTE: Supabase .lte() compares against a literal value, not another column.
+
+        result = query.order("name", desc=False).execute()
+        items = result.data
+
+        # Apply low-stock filter in Python (column-to-column comparison)
         if low_stock:
-            # Note: This requires a custom filter that Supabase supports
-            query = query.lte("current_stock", "minimum_stock")
+            items = [
+                s for s in items
+                if float(s.get("current_stock", 0)) <= float(s.get("minimum_stock", 0))
+            ]
 
-        query = query.range(skip, skip + limit - 1).order("name", desc=False)
+        # Apply pagination after filtering
+        items = items[skip: skip + limit]
 
-        result = query.execute()
-
-        return [HousekeepingSupplyResponse(**item) for item in result.data]
+        return [HousekeepingSupplyResponse(**item) for item in items]
 
     except Exception as e:
         raise HTTPException(
@@ -893,3 +923,318 @@ async def get_supply_stats(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching supply stats: {str(e)}"
         )
+
+
+# ============================================
+# Housekeeping Schedule Endpoints
+# ============================================
+
+FREQUENCY_DAYS = {"daily": 1, "weekly": 7, "biweekly": 14, "monthly": 30, "quarterly": 90}
+
+
+@router.post("/schedules", response_model=HousekeepingScheduleResponse)
+async def create_schedule(
+    schedule: HousekeepingScheduleCreate,
+    current_user: dict = Depends(require_role(["admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Create a new housekeeping schedule."""
+    try:
+        data = schedule.model_dump()
+        if data.get("preferred_time") and hasattr(data["preferred_time"], "isoformat"):
+            data["preferred_time"] = data["preferred_time"].isoformat()
+
+        # Calculate next_scheduled_at based on frequency
+        from datetime import timedelta
+        days = FREQUENCY_DAYS.get(data["frequency"], 30)
+        data["next_scheduled_at"] = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+        data["is_active"] = True
+
+        result = supabase.table("housekeeping_schedules").insert(data).execute()
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to create schedule")
+        return HousekeepingScheduleResponse(**result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating schedule: {str(e)}")
+
+
+@router.get("/schedules", response_model=List[HousekeepingScheduleResponse])
+async def list_schedules(
+    room_id: Optional[str] = None,
+    task_type: Optional[str] = None,
+    frequency: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """List housekeeping schedules with optional filters."""
+    try:
+        query = supabase.table("housekeeping_schedules").select("*")
+        if room_id:
+            query = query.eq("room_id", room_id)
+        if task_type:
+            query = query.eq("task_type", task_type)
+        if frequency:
+            query = query.eq("frequency", frequency)
+        if is_active is not None:
+            query = query.eq("is_active", is_active)
+        result = query.order("next_scheduled_at", desc=False).execute()
+        return [HousekeepingScheduleResponse(**s) for s in result.data]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching schedules: {str(e)}")
+
+
+@router.get("/schedules/{schedule_id}", response_model=HousekeepingScheduleResponse)
+async def get_schedule(
+    schedule_id: str,
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Get a single housekeeping schedule."""
+    result = supabase.table("housekeeping_schedules").select("*").eq("id", schedule_id).maybe_single().execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return HousekeepingScheduleResponse(**result.data)
+
+
+@router.put("/schedules/{schedule_id}", response_model=HousekeepingScheduleResponse)
+async def update_schedule(
+    schedule_id: str,
+    update: HousekeepingScheduleUpdate,
+    current_user: dict = Depends(require_role(["admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Update a housekeeping schedule."""
+    try:
+        data = {k: v for k, v in update.model_dump().items() if v is not None}
+        if "preferred_time" in data and hasattr(data["preferred_time"], "isoformat"):
+            data["preferred_time"] = data["preferred_time"].isoformat()
+        if "frequency" in data:
+            from datetime import timedelta
+            days = FREQUENCY_DAYS.get(data["frequency"], 30)
+            data["next_scheduled_at"] = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        result = supabase.table("housekeeping_schedules").update(data).eq("id", schedule_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        return HousekeepingScheduleResponse(**result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating schedule: {str(e)}")
+
+
+@router.patch("/schedules/{schedule_id}/complete", response_model=HousekeepingScheduleResponse)
+async def complete_schedule(
+    schedule_id: str,
+    current_user: dict = Depends(require_role(["admin", "manager", "cleaner", "housekeeping", "staff"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Mark a schedule as last executed now and advance next_scheduled_at."""
+    try:
+        existing = supabase.table("housekeeping_schedules").select("*").eq("id", schedule_id).maybe_single().execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        rec = existing.data
+        from datetime import timedelta
+        days = FREQUENCY_DAYS.get(rec["frequency"], 30)
+        now = datetime.now(timezone.utc)
+        update_data = {
+            "last_executed_at": now.isoformat(),
+            "next_scheduled_at": (now + timedelta(days=days)).isoformat(),
+            "updated_at": now.isoformat(),
+        }
+        result = supabase.table("housekeeping_schedules").update(update_data).eq("id", schedule_id).execute()
+        return HousekeepingScheduleResponse(**result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error completing schedule: {str(e)}")
+
+
+@router.delete("/schedules/{schedule_id}", status_code=204)
+async def delete_schedule(
+    schedule_id: str,
+    current_user: dict = Depends(require_role(["admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Delete a housekeeping schedule."""
+    result = supabase.table("housekeeping_schedules").delete().eq("id", schedule_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+
+# ============================================
+# Performance Analytics Endpoint
+# ============================================
+
+@router.get("/stats/performance")
+async def get_performance_analytics(
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    current_user: dict = Depends(require_role(["admin", "manager"])),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """
+    Real performance analytics derived from actual task and inspection data.
+    Returns: metrics summary, staff_performance list, time_analytics by room type, quality_trends by day.
+    """
+    try:
+        # ── Fetch tasks ──────────────────────────────────────────────────────
+        task_query = supabase.table("housekeeping_tasks").select(
+            "id, assigned_to, status, task_type, actual_duration, scheduled_time, completed_at, created_at"
+        )
+        if from_date:
+            task_query = task_query.gte("created_at", from_date.isoformat())
+        if to_date:
+            task_query = task_query.lte("created_at", to_date.isoformat())
+        tasks = task_query.execute().data
+
+        # ── Fetch inspections ────────────────────────────────────────────────
+        insp_query = supabase.table("room_inspections").select(
+            "id, inspector_id, overall_score, cleanliness_score, status, inspection_date, created_at"
+        )
+        if from_date:
+            insp_query = insp_query.gte("created_at", from_date.isoformat())
+        if to_date:
+            insp_query = insp_query.lte("created_at", to_date.isoformat())
+        inspections = insp_query.execute().data
+
+        # ── Fetch users for name lookup ──────────────────────────────────────
+        users_res = supabase.table("users").select("id, full_name, first_name, last_name, email").execute()
+        user_map = {}
+        for u in users_res.data:
+            name = u.get("full_name") or f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or u.get("email", u["id"])
+            user_map[u["id"]] = name
+
+        # ── Fetch rooms for type lookup ──────────────────────────────────────
+        rooms_res = supabase.table("rooms").select("id, room_number, room_type").execute()
+        room_map = {r["id"]: r for r in rooms_res.data}
+
+        # ── Overall metrics ──────────────────────────────────────────────────
+        completed = [t for t in tasks if t["status"] == "completed"]
+        total = len(tasks)
+        completion_rate = round(len(completed) / total * 100, 1) if total else 0
+
+        durations = [t["actual_duration"] for t in completed if t.get("actual_duration")]
+        avg_cleaning_time = round(sum(durations) / len(durations), 1) if durations else 0
+
+        scores = [i["overall_score"] for i in inspections if i.get("overall_score")]
+        avg_quality_score = round(sum(scores) / len(scores), 2) if scores else 0
+
+        now = datetime.now(timezone.utc)
+        on_time = [
+            t for t in completed
+            if t.get("scheduled_time") and t.get("completed_at")
+            and datetime.fromisoformat(t["completed_at"].replace("Z", "+00:00"))
+            <= datetime.fromisoformat(t["scheduled_time"].replace("Z", "+00:00"))
+        ]
+        on_time_rate = round(len(on_time) / len(completed) * 100, 1) if completed else 0
+
+        metrics = {
+            "avg_cleaning_time": avg_cleaning_time,
+            "avg_quality_score": avg_quality_score,
+            "tasks_completed": len(completed),
+            "completion_rate": completion_rate,
+            "on_time_rate": on_time_rate,
+            "total_tasks": total,
+            "total_inspections": len(inspections),
+        }
+
+        # ── Staff performance ────────────────────────────────────────────────
+        staff_tasks: dict = {}
+        for t in tasks:
+            uid = t.get("assigned_to")
+            if not uid:
+                continue
+            if uid not in staff_tasks:
+                staff_tasks[uid] = []
+            staff_tasks[uid].append(t)
+
+        staff_performance = []
+        for uid, staff_t in staff_tasks.items():
+            s_completed = [t for t in staff_t if t["status"] == "completed"]
+            s_durations = [t["actual_duration"] for t in s_completed if t.get("actual_duration")]
+            s_avg_time = round(sum(s_durations) / len(s_durations), 1) if s_durations else 0
+
+            # Quality: average of inspections done by this cleaner (as inspector)
+            s_inspections = [i for i in inspections if i.get("inspector_id") == uid]
+            s_scores = [i["overall_score"] for i in s_inspections if i.get("overall_score")]
+            s_avg_quality = round(sum(s_scores) / len(s_scores), 2) if s_scores else 0
+
+            s_on_time = [
+                t for t in s_completed
+                if t.get("scheduled_time") and t.get("completed_at")
+                and datetime.fromisoformat(t["completed_at"].replace("Z", "+00:00"))
+                <= datetime.fromisoformat(t["scheduled_time"].replace("Z", "+00:00"))
+            ]
+            s_on_time_rate = round(len(s_on_time) / len(s_completed) * 100, 1) if s_completed else 0
+
+            staff_performance.append({
+                "staff_id": uid,
+                "staff_name": user_map.get(uid, uid),
+                "tasks_completed": len(s_completed),
+                "total_tasks": len(staff_t),
+                "avg_time": s_avg_time,
+                "avg_quality": s_avg_quality,
+                "completion_rate": round(len(s_completed) / len(staff_t) * 100, 1) if staff_t else 0,
+                "on_time_rate": s_on_time_rate,
+                "rooms_cleaned": len({t.get("room_id") for t in s_completed if t.get("room_id")}),
+            })
+        staff_performance.sort(key=lambda x: x["tasks_completed"], reverse=True)
+
+        # ── Time analytics by room type ──────────────────────────────────────
+        type_times: dict = {}
+        for t in completed:
+            if not t.get("actual_duration") or not t.get("room_id"):
+                continue
+            room = room_map.get(t["room_id"], {})
+            rtype = room.get("room_type", "Unknown")
+            type_times.setdefault(rtype, []).append(t["actual_duration"])
+
+        time_analytics = []
+        for rtype, times in type_times.items():
+            time_analytics.append({
+                "room_type": rtype,
+                "avg_time": round(sum(times) / len(times), 1),
+                "min_time": min(times),
+                "max_time": max(times),
+                "sample_size": len(times),
+            })
+        time_analytics.sort(key=lambda x: x["avg_time"])
+
+        # ── Quality trends by day ────────────────────────────────────────────
+        daily: dict = {}
+        for insp in inspections:
+            day = (insp.get("inspection_date") or insp.get("created_at") or "")[:10]
+            if not day:
+                continue
+            daily.setdefault(day, []).append(insp)
+
+        quality_trends = []
+        for day in sorted(daily.keys()):
+            day_i = daily[day]
+            day_scores = [i["overall_score"] for i in day_i if i.get("overall_score")]
+            passed = len([i for i in day_i if i.get("status") in ("passed", "excellent")])
+            failed = len([i for i in day_i if i.get("status") == "failed"])
+            quality_trends.append({
+                "date": day,
+                "avg_score": round(sum(day_scores) / len(day_scores), 2) if day_scores else 0,
+                "inspections": len(day_i),
+                "passed": passed,
+                "failed": failed,
+            })
+
+        return {
+            "metrics": metrics,
+            "staff_performance": staff_performance,
+            "time_analytics": time_analytics,
+            "quality_trends": quality_trends,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching performance analytics: {str(e)}")

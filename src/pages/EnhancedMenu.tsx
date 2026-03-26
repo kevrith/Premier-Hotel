@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import menuService from '@/lib/api/services/menuService';
 import { ordersApi } from '@/lib/api/orders';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { MenuItem } from '@/types';
 
 // Mock menu data - will be replaced with API call
@@ -110,8 +111,8 @@ export default function EnhancedMenu() {
   // Check if user is staff (should stay on menu after order)
   const isStaff = role && ['waiter', 'chef', 'manager', 'admin'].includes(role);
 
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(mockMenuData);
-  const [filteredItems, setFilteredItems] = useState<MenuItem[]>(mockMenuData);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [filteredItems, setFilteredItems] = useState<MenuItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('default');
@@ -158,37 +159,38 @@ export default function EnhancedMenu() {
 
   // Fetch menu items from API
   useEffect(() => {
+    let cancelled = false;
     const fetchMenuItems = async () => {
       try {
         setLoading(true);
-        const response = await menuService.getAllMenuItems();
+        const raw = await menuService.getAllMenuItems();
+        const response: any[] = (raw as any) || [];
+        if (cancelled) return;
         if (response && response.length > 0) {
-          // Transform API response to match frontend types
-          const transformedItems = response.map(item => ({
+          const transformedItems: any[] = response.map((item: any) => ({
             ...item,
-            // Map backend field names to frontend expectations
-            price: parseFloat(item.base_price) || 0, // backend uses base_price, frontend expects price
-            available: item.is_available ?? item.available ?? true, // handle both field names
-            // Ensure other fields exist
+            price: parseFloat(item.base_price) || 0,
+            available: item.is_available ?? item.available ?? true,
             preparation_time: item.preparation_time || 20,
             ingredients: item.ingredients || [],
             customization_options: item.customization_options || []
           }));
-          setMenuItems(transformedItems);
+          setMenuItems(transformedItems as unknown as MenuItem[]);
         } else {
-          // Fallback to mock data if no items in database
-          setMenuItems(mockMenuData);
+          setMenuItems(mockMenuData as unknown as MenuItem[]);
         }
       } catch (error) {
+        if (cancelled) return;
         console.error('Error fetching menu items:', error);
         toast.error('Failed to load menu, showing sample data');
-        setMenuItems(mockMenuData);
+        setMenuItems(mockMenuData as unknown as MenuItem[]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchMenuItems();
+    return () => { cancelled = true; };
   }, []);
 
   // Clear invalid cart items when menu loads
@@ -509,7 +511,22 @@ export default function EnhancedMenu() {
 
             {/* Menu Items Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredItems.length > 0 ? (
+              {loading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="rounded-lg border bg-card overflow-hidden">
+                    <Skeleton className="h-48 w-full rounded-none" />
+                    <div className="p-4 space-y-2">
+                      <Skeleton className="h-5 w-3/4" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-2/3" />
+                      <div className="flex justify-between pt-2">
+                        <Skeleton className="h-6 w-20" />
+                        <Skeleton className="h-8 w-24" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : filteredItems.length > 0 ? (
                 filteredItems.map((item) => (
                   <MenuItemCard
                     key={item.id}

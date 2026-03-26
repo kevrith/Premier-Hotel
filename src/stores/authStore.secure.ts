@@ -264,6 +264,7 @@ const useAuthStore = create<AuthState>()(
             // Use direct axios call to bypass interceptor and prevent refresh loops
             const response = await axios.get(`${API_BASE_URL}/auth/me`, {
               withCredentials: true,
+              timeout: 8000, // 8 s — prevents infinite spinner if backend is slow
               headers: { 'Cache-Control': 'no-store' },
             });
 
@@ -290,8 +291,16 @@ const useAuthStore = create<AuthState>()(
               return false;
             }
           } catch (error: any) {
-            // Distinguish network error from auth error
-            const isNetworkError = !error.response && (!navigator.onLine || error.code === 'ERR_NETWORK');
+            // Distinguish network error from auth error.
+            // A network error has no response object; also cover cases where
+            // navigator.onLine is true but the backend is unreachable (LAN with
+            // no internet, backend down, connection refused, request timed out).
+            const networkErrorCodes = ['ERR_NETWORK', 'ERR_CONNECTION_REFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT'];
+            const isNetworkError = !error.response && (
+              !navigator.onLine ||
+              networkErrorCodes.includes(error.code) ||
+              error.message === 'Network Error'
+            );
 
             if (isNetworkError) {
               // Network error - keep cached state if valid
@@ -336,13 +345,19 @@ const useAuthStore = create<AuthState>()(
           // Use direct axios call to bypass interceptor
           await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
             withCredentials: true,
+            timeout: 8000,
           });
 
           // Check if still authenticated
           return await get().checkAuth();
         } catch (error: any) {
-          // Don't logout on network errors
-          const isNetworkError = !error.response && (!navigator.onLine || error.code === 'ERR_NETWORK');
+          // Don't logout on network errors (same set of codes as checkAuth)
+          const networkErrorCodes = ['ERR_NETWORK', 'ERR_CONNECTION_REFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT'];
+          const isNetworkError = !error.response && (
+            !navigator.onLine ||
+            networkErrorCodes.includes(error.code) ||
+            error.message === 'Network Error'
+          );
 
           if (isNetworkError) {
             set({ isOfflineSession: true });

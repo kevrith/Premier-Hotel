@@ -204,10 +204,10 @@ export const VoidedItemsReport: React.FC = () => {
             <>
               {/* Summary badges */}
               <div className="flex gap-3 mb-4 flex-wrap">
-                <Badge variant="outline" className="text-sm px-3 py-1 border-red-300 text-red-700">
+                <Badge variant="outline" className="text-sm px-3 py-1 border-red-400 text-red-400 dark:border-red-400 dark:text-red-400">
                   Total Voids: <strong className="ml-1">{data.summary.total_voids}</strong>
                 </Badge>
-                <Badge variant="outline" className="text-sm px-3 py-1 border-red-300 text-red-700">
+                <Badge variant="outline" className="text-sm px-3 py-1 border-red-400 text-red-400 dark:border-red-400 dark:text-red-400">
                   Total Amount: <strong className="ml-1">{fmtCurrency(data.summary.total_voided_amount)}</strong>
                 </Badge>
               </div>
@@ -233,40 +233,40 @@ export const VoidedItemsReport: React.FC = () => {
                         <CardHeader className="pb-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <UserX className="h-5 w-5 text-red-600" />
-                              <span className="font-semibold">{group.voided_by}</span>
+                              <UserX className="h-5 w-5 text-red-500" />
+                              <span className="font-semibold text-foreground">{group.voided_by}</span>
                               <Badge variant="outline" className="text-xs capitalize">{group.role}</Badge>
                             </div>
                             <div className="text-right text-sm">
-                              <span className="font-bold text-red-700">{fmtCurrency(group.total_amount)}</span>
+                              <span className="font-bold text-red-500">{fmtCurrency(group.total_amount)}</span>
                               <span className="text-muted-foreground ml-2">({group.count} voids)</span>
                             </div>
                           </div>
                         </CardHeader>
                         <CardContent className="pt-0">
-                          <div className="border rounded overflow-hidden">
+                          <div className="border border-border rounded overflow-hidden">
                             <table className="w-full text-sm">
                               <thead>
-                                <tr className="bg-gray-100">
-                                  <th className="text-left px-3 py-2">Date</th>
-                                  <th className="text-left px-3 py-2">Order #</th>
-                                  <th className="text-left px-3 py-2">Items</th>
-                                  <th className="text-left px-3 py-2">Waiter</th>
-                                  <th className="text-left px-3 py-2">Reason</th>
-                                  <th className="text-right px-3 py-2">Amount</th>
+                                <tr className="bg-muted text-muted-foreground">
+                                  <th className="text-left px-3 py-2 font-medium">Date</th>
+                                  <th className="text-left px-3 py-2 font-medium">Order #</th>
+                                  <th className="text-left px-3 py-2 font-medium">Items</th>
+                                  <th className="text-left px-3 py-2 font-medium">Waiter</th>
+                                  <th className="text-left px-3 py-2 font-medium">Reason</th>
+                                  <th className="text-right px-3 py-2 font-medium">Amount</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {group.records.map((r, ri) => (
-                                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                  <tr key={ri} className={`border-t border-border ${ri % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}>
                                     <td className="px-3 py-1.5 text-xs text-muted-foreground">
                                       {format(new Date(r.date), 'dd/MM HH:mm')}
                                     </td>
-                                    <td className="px-3 py-1.5 font-mono text-xs">{r.order_number}</td>
-                                    <td className="px-3 py-1.5">{r.items_summary}</td>
-                                    <td className="px-3 py-1.5">{r.original_waiter}</td>
+                                    <td className="px-3 py-1.5 font-mono text-xs text-foreground">{r.order_number}</td>
+                                    <td className="px-3 py-1.5 text-foreground">{r.items_summary}</td>
+                                    <td className="px-3 py-1.5 text-foreground">{r.original_waiter}</td>
                                     <td className="px-3 py-1.5 text-xs text-muted-foreground">{r.reason || '—'}</td>
-                                    <td className="px-3 py-1.5 text-right font-semibold text-red-700">
+                                    <td className="px-3 py-1.5 text-right font-semibold text-red-500">
                                       {fmtCurrency(r.amount)}
                                     </td>
                                   </tr>
@@ -288,43 +288,43 @@ export const VoidedItemsReport: React.FC = () => {
                         <CardHeader className="pb-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <User className="h-5 w-5 text-orange-600" />
-                              <span className="font-semibold">{group.waiter}</span>
+                              <User className="h-5 w-5 text-orange-500" />
+                              <span className="font-semibold text-foreground">{group.waiter}</span>
                               <Badge variant="outline" className="text-xs">Waiter</Badge>
                             </div>
                             <div className="text-right text-sm">
-                              <span className="font-bold text-orange-700">{fmtCurrency(group.total_amount)}</span>
+                              <span className="font-bold text-orange-500">{fmtCurrency(group.total_amount)}</span>
                               <span className="text-muted-foreground ml-2">({group.count} voids)</span>
                             </div>
                           </div>
                         </CardHeader>
                         <CardContent className="pt-0">
-                          <div className="border rounded overflow-hidden">
+                          <div className="border border-border rounded overflow-hidden">
                             <table className="w-full text-sm">
                               <thead>
-                                <tr className="bg-gray-100">
-                                  <th className="text-left px-3 py-2">Date</th>
-                                  <th className="text-left px-3 py-2">Order #</th>
-                                  <th className="text-left px-3 py-2">Items</th>
-                                  <th className="text-left px-3 py-2">Voided By</th>
-                                  <th className="text-left px-3 py-2">Reason</th>
-                                  <th className="text-right px-3 py-2">Amount</th>
+                                <tr className="bg-muted text-muted-foreground">
+                                  <th className="text-left px-3 py-2 font-medium">Date</th>
+                                  <th className="text-left px-3 py-2 font-medium">Order #</th>
+                                  <th className="text-left px-3 py-2 font-medium">Items</th>
+                                  <th className="text-left px-3 py-2 font-medium">Voided By</th>
+                                  <th className="text-left px-3 py-2 font-medium">Reason</th>
+                                  <th className="text-right px-3 py-2 font-medium">Amount</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {group.records.map((r, ri) => (
-                                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                  <tr key={ri} className={`border-t border-border ${ri % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}>
                                     <td className="px-3 py-1.5 text-xs text-muted-foreground">
                                       {format(new Date(r.date), 'dd/MM HH:mm')}
                                     </td>
-                                    <td className="px-3 py-1.5 font-mono text-xs">{r.order_number}</td>
-                                    <td className="px-3 py-1.5">{r.items_summary}</td>
-                                    <td className="px-3 py-1.5">
+                                    <td className="px-3 py-1.5 font-mono text-xs text-foreground">{r.order_number}</td>
+                                    <td className="px-3 py-1.5 text-foreground">{r.items_summary}</td>
+                                    <td className="px-3 py-1.5 text-foreground">
                                       {r.voided_by}
                                       <span className="text-xs text-muted-foreground ml-1">({r.voided_by_role})</span>
                                     </td>
                                     <td className="px-3 py-1.5 text-xs text-muted-foreground">{r.reason || '—'}</td>
-                                    <td className="px-3 py-1.5 text-right font-semibold text-orange-700">
+                                    <td className="px-3 py-1.5 text-right font-semibold text-orange-500">
                                       {fmtCurrency(r.amount)}
                                     </td>
                                   </tr>
@@ -340,41 +340,41 @@ export const VoidedItemsReport: React.FC = () => {
 
                 {/* All Records */}
                 <TabsContent value="all">
-                  <div className="border rounded-lg overflow-hidden">
+                  <div className="border border-border rounded-lg overflow-hidden">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-gray-800 text-white">
-                          <th className="text-left px-3 py-2">Date</th>
-                          <th className="text-left px-3 py-2">Order #</th>
-                          <th className="text-left px-3 py-2">Items</th>
-                          <th className="text-left px-3 py-2">Voided By</th>
-                          <th className="text-left px-3 py-2">Waiter</th>
-                          <th className="text-left px-3 py-2">Reason</th>
-                          <th className="text-right px-3 py-2">Amount</th>
+                        <tr className="bg-muted text-foreground">
+                          <th className="text-left px-3 py-2 font-medium">Date</th>
+                          <th className="text-left px-3 py-2 font-medium">Order #</th>
+                          <th className="text-left px-3 py-2 font-medium">Items</th>
+                          <th className="text-left px-3 py-2 font-medium">Voided By</th>
+                          <th className="text-left px-3 py-2 font-medium">Waiter</th>
+                          <th className="text-left px-3 py-2 font-medium">Reason</th>
+                          <th className="text-right px-3 py-2 font-medium">Amount</th>
                         </tr>
                       </thead>
                       <tbody>
                         {data.records.map((r, ri) => (
-                          <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <tr key={ri} className={`border-t border-border ${ri % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}>
                             <td className="px-3 py-1.5 text-xs text-muted-foreground">
                               {format(new Date(r.date), 'dd/MM/yyyy HH:mm')}
                             </td>
-                            <td className="px-3 py-1.5 font-mono text-xs">{r.order_number}</td>
-                            <td className="px-3 py-1.5">{r.items_summary}</td>
-                            <td className="px-3 py-1.5">
+                            <td className="px-3 py-1.5 font-mono text-xs text-foreground">{r.order_number}</td>
+                            <td className="px-3 py-1.5 text-foreground">{r.items_summary}</td>
+                            <td className="px-3 py-1.5 text-foreground">
                               {r.voided_by}
                               <span className="text-xs text-muted-foreground ml-1">({r.voided_by_role})</span>
                             </td>
-                            <td className="px-3 py-1.5">{r.original_waiter}</td>
+                            <td className="px-3 py-1.5 text-foreground">{r.original_waiter}</td>
                             <td className="px-3 py-1.5 text-xs text-muted-foreground">{r.reason || '—'}</td>
-                            <td className="px-3 py-1.5 text-right font-semibold text-red-700">
+                            <td className="px-3 py-1.5 text-right font-semibold text-red-500">
                               {fmtCurrency(r.amount)}
                             </td>
                           </tr>
                         ))}
-                        <tr className="bg-red-50 border-t-2 border-red-300">
-                          <td colSpan={6} className="px-3 py-2 font-bold text-red-900">TOTAL</td>
-                          <td className="px-3 py-2 text-right font-bold text-red-900">
+                        <tr className="border-t-2 border-red-500/50 bg-red-500/10">
+                          <td colSpan={6} className="px-3 py-2 font-bold text-foreground">TOTAL</td>
+                          <td className="px-3 py-2 text-right font-bold text-red-500">
                             {fmtCurrency(data.summary.total_voided_amount)}
                           </td>
                         </tr>

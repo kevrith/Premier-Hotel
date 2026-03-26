@@ -107,6 +107,67 @@ export interface LostAndFound {
   updated_at: string;
 }
 
+export interface HousekeepingSchedule {
+  id: string;
+  room_id?: string;
+  task_type: string;
+  frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly';
+  preferred_time?: string;
+  assigned_to?: string;
+  is_active: boolean;
+  last_executed_at?: string;
+  next_scheduled_at?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HousekeepingScheduleCreate {
+  room_id?: string;
+  task_type: string;
+  frequency: HousekeepingSchedule['frequency'];
+  preferred_time?: string;
+  assigned_to?: string;
+  notes?: string;
+}
+
+export interface PerformanceAnalytics {
+  metrics: {
+    avg_cleaning_time: number;
+    avg_quality_score: number;
+    tasks_completed: number;
+    completion_rate: number;
+    on_time_rate: number;
+    total_tasks: number;
+    total_inspections: number;
+  };
+  staff_performance: Array<{
+    staff_id: string;
+    staff_name: string;
+    tasks_completed: number;
+    total_tasks: number;
+    avg_time: number;
+    avg_quality: number;
+    completion_rate: number;
+    on_time_rate: number;
+    rooms_cleaned: number;
+  }>;
+  time_analytics: Array<{
+    room_type: string;
+    avg_time: number;
+    min_time: number;
+    max_time: number;
+    sample_size: number;
+  }>;
+  quality_trends: Array<{
+    date: string;
+    avg_score: number;
+    inspections: number;
+    passed: number;
+    failed: number;
+  }>;
+}
+
 export interface HousekeepingStats {
   total_tasks: number;
   pending_tasks: number;
@@ -482,6 +543,59 @@ class HousekeepingService {
   calculateOverallScore(inspection: Partial<RoomInspection>): number {
     const { cleanliness_score = 0, maintenance_score = 0, amenities_score = 0 } = inspection;
     return Math.round((cleanliness_score + maintenance_score + amenities_score) / 3);
+  }
+
+  // ============================================
+  // Schedule Management
+  // ============================================
+
+  async getSchedules(params?: {
+    room_id?: string;
+    task_type?: string;
+    frequency?: string;
+    is_active?: boolean;
+  }): Promise<HousekeepingSchedule[]> {
+    const q = new URLSearchParams();
+    if (params?.room_id) q.append('room_id', params.room_id);
+    if (params?.task_type) q.append('task_type', params.task_type);
+    if (params?.frequency) q.append('frequency', params.frequency);
+    if (params?.is_active !== undefined) q.append('is_active', String(params.is_active));
+    const response = await api.get<HousekeepingSchedule[]>(`/housekeeping/schedules?${q.toString()}`);
+    return response.data;
+  }
+
+  async createSchedule(data: HousekeepingScheduleCreate): Promise<HousekeepingSchedule> {
+    const response = await api.post<HousekeepingSchedule>('/housekeeping/schedules', data);
+    return response.data;
+  }
+
+  async updateSchedule(id: string, data: Partial<HousekeepingScheduleCreate> & { is_active?: boolean }): Promise<HousekeepingSchedule> {
+    const response = await api.put<HousekeepingSchedule>(`/housekeeping/schedules/${id}`, data);
+    return response.data;
+  }
+
+  async completeSchedule(id: string): Promise<HousekeepingSchedule> {
+    const response = await api.patch<HousekeepingSchedule>(`/housekeeping/schedules/${id}/complete`, {});
+    return response.data;
+  }
+
+  async deleteSchedule(id: string): Promise<void> {
+    await api.delete(`/housekeeping/schedules/${id}`);
+  }
+
+  // ============================================
+  // Performance Analytics
+  // ============================================
+
+  async getPerformanceAnalytics(params?: {
+    from_date?: string;
+    to_date?: string;
+  }): Promise<PerformanceAnalytics> {
+    const q = new URLSearchParams();
+    if (params?.from_date) q.append('from_date', params.from_date);
+    if (params?.to_date) q.append('to_date', params.to_date);
+    const response = await api.get<PerformanceAnalytics>(`/housekeeping/stats/performance?${q.toString()}`);
+    return response.data;
   }
 }
 

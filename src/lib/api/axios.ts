@@ -1,24 +1,11 @@
-import axios from 'axios';
+/**
+ * axios.ts — compatibility re-export
+ *
+ * All modules that do `import api from './axios'` now get the single
+ * offline-aware apiClient from client.ts instead of a bare axios instance.
+ * This means their mutations are automatically queued when offline and
+ * their GETs are served from the IndexedDB cache when offline.
+ */
+import apiClient from './client';
 
-// Create axios instance with default configuration
-const api = axios.create({
-  baseURL: (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: true, // Send cookies with requests (for cookie-based auth)
-});
-
-// Response interceptor to handle common errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Unauthorized - redirect to login
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default api;
+export default apiClient;

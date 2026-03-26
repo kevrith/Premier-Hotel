@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
+import ImageUpload from '@/components/ui/ImageUpload';
 
 interface MenuItemFormProps {
   item?: any;
@@ -113,14 +114,12 @@ export default function MenuItemForm({ item, onSave, onCancel }: MenuItemFormPro
         </div>
       </div>
 
-      <div>
-        <label className="text-sm font-medium mb-2 block">Image URL</label>
-        <Input
-          value={formData.image_url || ''}
-          onChange={(e) => setFormData((prev: any) => ({ ...prev, image_url: e.target.value }))}
-          placeholder="https://..."
-        />
-      </div>
+      <ImageUpload
+        label="Image"
+        bucket="menu-images"
+        value={formData.image_url || ''}
+        onChange={(url) => setFormData((prev: any) => ({ ...prev, image_url: url }))}
+      />
 
       <div>
         <label className="text-sm font-medium mb-2 block">Dietary Information</label>

@@ -9,11 +9,14 @@ from decimal import Decimal
 
 class PaymentInitiate(BaseModel):
     """Payment initiation schema"""
-    payment_method: Literal["mpesa", "cash", "card"]
+    payment_method: Literal["mpesa", "cash", "card", "paystack", "paypal"]
     amount: Decimal = Field(..., gt=0)
     reference_type: Literal["booking", "order"]
     reference_id: str
     phone_number: Optional[str] = None  # Required for M-Pesa
+    email: Optional[str] = None          # Required for Paystack
+    return_url: Optional[str] = None     # Required for PayPal
+    cancel_url: Optional[str] = None     # Required for PayPal
     description: Optional[str] = None
 
 
@@ -47,6 +50,12 @@ class PaymentResponse(BaseModel):
     status: str
     transaction_id: Optional[str] = None
     mpesa_receipt: Optional[str] = None
+    # Paystack redirect fields
+    paystack_authorization_url: Optional[str] = None
+    paystack_reference: Optional[str] = None
+    # PayPal redirect fields
+    paypal_order_id: Optional[str] = None
+    paypal_approval_url: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 

@@ -109,7 +109,7 @@ export const ComparativeAnalysis: React.FC = () => {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <Card className="bg-blue-50">
+            <Card className="bg-blue-500/10 border-blue-500/30">
               <CardContent className="pt-6">
                 <h3 className="font-semibold mb-2">Current Period</h3>
                 <p className="text-sm text-muted-foreground">
@@ -117,7 +117,7 @@ export const ComparativeAnalysis: React.FC = () => {
                 </p>
               </CardContent>
             </Card>
-            <Card className="bg-gray-50">
+            <Card className="bg-muted/50">
               <CardContent className="pt-6">
                 <h3 className="font-semibold mb-2">Comparison Period</h3>
                 <p className="text-sm text-muted-foreground">

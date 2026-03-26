@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import useAuthStore from '@/stores/authStore.secure';
 import { Navbar } from '@/components/Navbar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
-import { toast } from 'react-hot-toast';
 import { RecentActivityFeed } from '@/components/Dashboard/RecentActivityFeed';
 import { NotificationCenter } from '@/components/Dashboard/NotificationCenter';
 import { DashboardCustomization } from '@/components/Dashboard/DashboardCustomization';
@@ -19,14 +17,16 @@ import { SystemConfiguration } from '@/components/Admin/SystemConfiguration';
 import { AdvancedReporting } from '@/components/Admin/AdvancedReporting';
 import { SystemHealth } from '@/components/Manager/SystemHealth';
 import { StockManagement } from '@/components/Manager/StockManagement';
+import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagement';
 import { ImportCenter } from '@/components/Admin/ImportCenter';
 import { DataExportCenter } from '@/components/Admin/DataExportCenter';
 import { LocationManagement } from '@/components/Admin/LocationManagement';
 import { NetworkInfo } from '@/components/Admin/NetworkInfo';
+import { BranchManagement } from '@/components/Admin/BranchManagement';
+import { TableManagement } from '@/components/Admin/TableManagement';
 
 export default function AdminDashboard() {
-  const navigate = useNavigate();
-  const { user, isAuthenticated, role, isLoading } = useAuth();
+  const { isLoading } = useAuth();
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -74,9 +74,10 @@ export default function AdminDashboard() {
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
           <div className="overflow-x-auto">
-            <TabsList className="grid w-full grid-cols-5 sm:grid-cols-11 gap-1 h-auto min-w-max">
+            <TabsList className="flex flex-wrap gap-1 h-auto w-full">
               <TabsTrigger value="overview" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Overview</TabsTrigger>
               <TabsTrigger value="users" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Users</TabsTrigger>
+              <TabsTrigger value="branches" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Branches</TabsTrigger>
               <TabsTrigger value="content" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Content</TabsTrigger>
               <TabsTrigger value="inventory" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Inventory</TabsTrigger>
               <TabsTrigger value="locations" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Locations</TabsTrigger>
@@ -85,6 +86,8 @@ export default function AdminDashboard() {
               <TabsTrigger value="reports" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Reports</TabsTrigger>
               <TabsTrigger value="health" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Health</TabsTrigger>
               <TabsTrigger value="network" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Network</TabsTrigger>
+              <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Housekeeping</TabsTrigger>
+              <TabsTrigger value="tables" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Tables</TabsTrigger>
               <TabsTrigger value="settings" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Settings</TabsTrigger>
             </TabsList>
           </div>
@@ -98,6 +101,11 @@ export default function AdminDashboard() {
           {/* Users Tab - Complete user management */}
           <TabsContent value="users" className="space-y-4 sm:space-y-6">
             <UserManagement />
+          </TabsContent>
+
+          {/* Branches Tab - View and edit branch details */}
+          <TabsContent value="branches" className="space-y-4 sm:space-y-6">
+            <BranchManagement />
           </TabsContent>
 
           {/* Content Tab - Menu, rooms, pricing, promotions */}
@@ -138,6 +146,16 @@ export default function AdminDashboard() {
           {/* Network Tab - Local network info for staff access */}
           <TabsContent value="network" className="space-y-4 sm:space-y-6">
             <NetworkInfo />
+          </TabsContent>
+
+          {/* Housekeeping Tab */}
+          <TabsContent value="housekeeping" className="space-y-4 sm:space-y-6">
+            <HousekeepingManagement />
+          </TabsContent>
+
+          {/* Tables Tab - Restaurant table management */}
+          <TabsContent value="tables" className="space-y-4 sm:space-y-6">
+            <TableManagement />
           </TabsContent>
 
           {/* Settings Tab - System configuration */}

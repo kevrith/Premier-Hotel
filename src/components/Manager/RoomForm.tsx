@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { X } from 'lucide-react';
+import ImageUpload from '@/components/ui/ImageUpload';
 
 export default function RoomForm({ room, onSave, onCancel }) {
   const [formData, setFormData] = useState(room || {
@@ -182,6 +183,51 @@ export default function RoomForm({ room, onSave, onCancel }) {
             <SelectItem value="reserved">Reserved</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Room Images */}
+      <div className="space-y-3">
+        <Label>Room Images</Label>
+        {/* Primary image */}
+        <ImageUpload
+          label="Primary Image"
+          bucket="room-images"
+          value={formData.images?.[0] || ''}
+          onChange={(url) => setFormData(prev => ({
+            ...prev,
+            images: url ? [url, ...(prev.images || []).slice(1)] : (prev.images || []).slice(1)
+          }))}
+        />
+        {/* Additional images */}
+        {(formData.images || []).slice(1).map((img, idx) => (
+          <div key={idx} className="relative">
+            <ImageUpload
+              label={`Additional Image ${idx + 2}`}
+              bucket="room-images"
+              value={img}
+              onChange={(url) => {
+                const imgs = [...(formData.images || [])];
+                if (url) {
+                  imgs[idx + 1] = url;
+                } else {
+                  imgs.splice(idx + 1, 1);
+                }
+                setFormData(prev => ({ ...prev, images: imgs }));
+              }}
+            />
+          </div>
+        ))}
+        {/* Add another image slot */}
+        {(formData.images || []).length < 5 && (formData.images?.[0]) && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setFormData(prev => ({ ...prev, images: [...(prev.images || []), ''] }))}
+          >
+            + Add Another Image
+          </Button>
+        )}
       </div>
 
       <div className="flex gap-2 justify-end pt-4">

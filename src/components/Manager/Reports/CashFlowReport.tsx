@@ -68,25 +68,25 @@ export const CashFlowReport: React.FC = () => {
                 <TableBody>
                   <TableRow>
                     <TableCell>M-Pesa</TableCell>
-                    <TableCell className="text-right text-green-600">
+                    <TableCell className="text-right text-green-500">
                       KES {cash_inflows.by_method.mpesa.toLocaleString()}
                     </TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Cash</TableCell>
-                    <TableCell className="text-right text-green-600">
+                    <TableCell className="text-right text-green-500">
                       KES {cash_inflows.by_method.cash.toLocaleString()}
                     </TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell>Card</TableCell>
-                    <TableCell className="text-right text-green-600">
+                    <TableCell className="text-right text-green-500">
                       KES {cash_inflows.by_method.card.toLocaleString()}
                     </TableCell>
                   </TableRow>
-                  <TableRow className="font-bold bg-green-50">
+                  <TableRow className="font-bold bg-green-500/10">
                     <TableCell>Total Inflows</TableCell>
-                    <TableCell className="text-right text-green-600">
+                    <TableCell className="text-right text-green-500">
                       KES {cash_inflows.total.toLocaleString()}
                     </TableCell>
                   </TableRow>
@@ -110,9 +110,9 @@ export const CashFlowReport: React.FC = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                  <TableRow className="font-bold bg-red-50">
+                  <TableRow className="font-bold bg-red-500/10">
                     <TableCell>Total Outflows</TableCell>
-                    <TableCell className="text-right text-red-600">
+                    <TableCell className="text-right text-red-500">
                       KES {cash_outflows.total.toLocaleString()}
                     </TableCell>
                   </TableRow>
@@ -123,11 +123,11 @@ export const CashFlowReport: React.FC = () => {
 
           {/* Net Cash Flow */}
           <div className="mt-6 border-t-2 pt-4">
-            <Card className={net_cash_flow >= 0 ? 'bg-green-50' : 'bg-red-50'}>
+            <Card className={net_cash_flow >= 0 ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}>
               <CardContent className="pt-6">
                 <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-xl">Net Cash Flow</h3>
-                  <div className={`text-2xl font-bold ${net_cash_flow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <h3 className="font-bold text-xl text-foreground">Net Cash Flow</h3>
+                  <div className={`text-2xl font-bold ${net_cash_flow >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                     KES {net_cash_flow.toLocaleString()}
                   </div>
                 </div>

@@ -4,11 +4,14 @@
 import api from './client';
 
 export interface PaymentInitiate {
-  payment_method: 'mpesa' | 'cash' | 'card';
+  payment_method: 'mpesa' | 'cash' | 'card' | 'paystack' | 'paypal';
   amount: number;
   reference_type: 'booking' | 'order';
   reference_id: string;
-  phone_number?: string; // Required for M-Pesa
+  phone_number?: string;  // Required for M-Pesa
+  email?: string;          // Required for Paystack
+  return_url?: string;     // Required for PayPal
+  cancel_url?: string;     // Required for PayPal
   description?: string;
 }
 
@@ -17,15 +20,19 @@ export interface Payment {
   user_id: string;
   reference_type: 'booking' | 'order';
   reference_id: string;
-  payment_method: 'mpesa' | 'cash' | 'card';
+  payment_method: 'mpesa' | 'cash' | 'card' | 'paystack' | 'paypal';
   amount: number;
   currency: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   mpesa_checkout_request_id?: string;
   mpesa_transaction_id?: string;
   mpesa_phone_number?: string;
-  card_last_four?: string;
-  card_brand?: string;
+  // Paystack
+  paystack_authorization_url?: string;
+  paystack_reference?: string;
+  // PayPal
+  paypal_order_id?: string;
+  paypal_approval_url?: string;
   description?: string;
   metadata?: Record<string, any>;
   error_message?: string;
@@ -41,7 +48,7 @@ class PaymentService {
    * Initiate a payment
    */
   async initiatePayment(data: PaymentInitiate): Promise<Payment> {
-    const response = await api.post<Payment>('/payments/initiate', data);
+    const response = await api.post<Payment>('/pos-payments/initiate', data);
     return response.data;
   }
 
@@ -49,7 +56,7 @@ class PaymentService {
    * Get payment status
    */
   async getPaymentStatus(paymentId: string): Promise<Payment> {
-    const response = await api.get<Payment>(`/payments/status/${paymentId}`);
+    const response = await api.get<Payment>(`/pos-payments/status/${paymentId}`);
     return response.data;
   }
 
@@ -64,7 +71,7 @@ class PaymentService {
     if (filters?.reference_type) params.append('reference_type', filters.reference_type);
     if (filters?.payment_status) params.append('payment_status', filters.payment_status);
 
-    const response = await api.get<Payment[]>(`/payments/my-payments?${params.toString()}`);
+    const response = await api.get<Payment[]>(`/pos-payments/my-payments?${params.toString()}`);
     return response.data;
   }
 
@@ -73,7 +80,7 @@ class PaymentService {
    */
   async getAllPayments(filters?: {
     reference_type?: 'booking' | 'order';
-    payment_method?: 'mpesa' | 'cash' | 'card';
+    payment_method?: 'mpesa' | 'cash' | 'card' | 'paystack' | 'paypal';
     payment_status?: string;
   }): Promise<Payment[]> {
     const params = new URLSearchParams();
@@ -81,7 +88,7 @@ class PaymentService {
     if (filters?.payment_method) params.append('payment_method', filters.payment_method);
     if (filters?.payment_status) params.append('payment_status', filters.payment_status);
 
-    const response = await api.get<Payment[]>(`/payments/all?${params.toString()}`);
+    const response = await api.get<Payment[]>(`/pos-payments/all?${params.toString()}`);
     return response.data;
   }
 
@@ -93,7 +100,7 @@ class PaymentService {
     if (transactionReference) params.append('transaction_reference', transactionReference);
 
     const response = await api.patch<Payment>(
-      `/payments/${paymentId}/confirm?${params.toString()}`
+      `/pos-payments/${paymentId}/confirm?${params.toString()}`
     );
     return response.data;
   }
@@ -102,7 +109,15 @@ class PaymentService {
    * Cancel a pending payment
    */
   async cancelPayment(paymentId: string): Promise<Payment> {
-    const response = await api.patch<Payment>(`/payments/${paymentId}/cancel`);
+    const response = await api.patch<Payment>(`/pos-payments/${paymentId}/cancel`);
+    return response.data;
+  }
+
+  /**
+   * Capture a PayPal order after buyer approval
+   */
+  async capturePayPalOrder(orderId: string): Promise<{ status: string; capture_id: string }> {
+    const response = await api.post('/pos-payments/paypal/capture', { order_id: orderId });
     return response.data;
   }
 

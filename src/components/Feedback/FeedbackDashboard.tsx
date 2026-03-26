@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-hot-toast';
+import apiClient from '@/lib/api/client';
 import {
   Star,
   TrendingUp,
@@ -155,8 +156,35 @@ export function FeedbackDashboard() {
         submitData.append(`photo_${index}`, photo);
       });
 
-      // TODO: Replace with actual API call
-      // await feedbackService.submitFeedback(submitData);
+      // Build payload for the reviews API
+      const aspectRatings: Record<string, number> = {};
+      formData.aspects.forEach(a => { aspectRatings[a.id] = a.rating; });
+
+      const payload: Record<string, any> = {
+        review_type: selectedTab === 'issue' ? 'complaint' : 'overall',
+        overall_rating: formData.overall_rating,
+        comment: [
+          formData.what_went_well ? `What went well: ${formData.what_went_well}` : '',
+          formData.what_needs_improvement ? `Needs improvement: ${formData.what_needs_improvement}` : '',
+          formData.additional_comments || '',
+        ].filter(Boolean).join('\n\n') || null,
+        is_anonymous: formData.anonymous,
+        ratings: aspectRatings,
+      };
+
+      if (selectedTab === 'issue') {
+        payload.issue_type = formData.issue_type;
+        payload.issue_description = formData.issue_description;
+        payload.issue_urgency = formData.issue_urgency;
+      }
+
+      if (formData.contact_me) {
+        payload.contact_name = formData.contact_name;
+        payload.contact_email = formData.contact_email;
+        payload.contact_phone = formData.contact_phone;
+      }
+
+      await apiClient.post('/reviews/', payload);
 
       toast.success(t('feedback_submitted'));
 

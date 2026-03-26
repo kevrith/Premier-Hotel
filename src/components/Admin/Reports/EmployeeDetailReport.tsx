@@ -51,6 +51,8 @@ interface EmployeeDetailReportProps {
   employeeName?: string;
   open: boolean;
   onClose: () => void;
+  initialStartDate?: string;
+  initialEndDate?: string;
 }
 
 export function EmployeeDetailReport({
@@ -58,15 +60,17 @@ export function EmployeeDetailReport({
   employeeName,
   open,
   onClose,
+  initialStartDate,
+  initialEndDate,
 }: EmployeeDetailReportProps) {
   const [data, setData] = useState<EmployeeDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [startDate, setStartDate] = useState(
-    new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]
+    initialStartDate ?? new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]
   );
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dateRange, setDateRange] = useState('30days');
+  const [endDate, setEndDate] = useState(initialEndDate ?? new Date().toISOString().split('T')[0]);
+  const [dateRange, setDateRange] = useState(initialStartDate ? 'custom' : '30days');
 
   // Void state
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
@@ -76,16 +80,28 @@ export function EmployeeDetailReport({
   const [voidReason, setVoidReason] = useState('');
   const [voidLoading, setVoidLoading] = useState(false);
 
+  // Single effect: when dialog opens, resolve the correct dates and fetch immediately.
+  // Using initialStartDate/End directly avoids a React state race where setStartDate
+  // and fetchEmployeeDetails run in the same render cycle with stale state.
   useEffect(() => {
-    if (open && employeeId) {
-      fetchEmployeeDetails();
-    }
-  }, [open, employeeId, startDate, endDate]);
+    if (!open || !employeeId) return;
+    const sd = initialStartDate ?? startDate;
+    const ed = initialEndDate ?? endDate;
+    if (initialStartDate) { setStartDate(initialStartDate); setDateRange('custom'); }
+    if (initialEndDate) setEndDate(initialEndDate);
+    fetchEmployeeDetailsWithDates(sd, ed);
+  }, [open, employeeId, initialStartDate, initialEndDate]);
 
-  const fetchEmployeeDetails = async () => {
+  // Re-fetch when user manually changes dates inside the dialog
+  useEffect(() => {
+    if (!open || !employeeId) return;
+    fetchEmployeeDetailsWithDates(startDate, endDate);
+  }, [startDate, endDate]);
+
+  const fetchEmployeeDetailsWithDates = async (sd: string, ed: string) => {
     setLoading(true);
     try {
-      const response = await reportsService.getEmployeeDetails(employeeId, startDate, endDate);
+      const response = await reportsService.getEmployeeDetails(employeeId, sd, ed);
       setData(response);
       if (response.items_by_category) {
         setExpandedCategories(new Set(response.items_by_category.map((c) => c.category)));
@@ -98,12 +114,24 @@ export function EmployeeDetailReport({
     }
   };
 
+  const fetchEmployeeDetails = () => fetchEmployeeDetailsWithDates(startDate, endDate);
+
   const handleDateRangeChange = (range: string) => {
     setDateRange(range);
     const end = new Date();
     let start = new Date();
 
     switch (range) {
+      case 'today':
+        // start and end are both today — no adjustment needed
+        break;
+      case 'yesterday': {
+        const yesterday = new Date(end);
+        yesterday.setDate(end.getDate() - 1);
+        start = yesterday;
+        end.setDate(end.getDate() - 1);
+        break;
+      }
       case '7days':
         start.setDate(end.getDate() - 7);
         break;
@@ -315,6 +343,8 @@ export function EmployeeDetailReport({
                     <Label>Quick Ranges</Label>
                     <div className="flex gap-2 mt-2">
                       {[
+                        { label: 'Today', value: 'today' },
+                        { label: 'Yesterday', value: 'yesterday' },
                         { label: 'Last 7 Days', value: '7days' },
                         { label: 'Last 30 Days', value: '30days' },
                         { label: 'Last 90 Days', value: '90days' },
