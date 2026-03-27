@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Heart, Clock, Flame, Leaf, Plus, Minus } from 'lucide-react';
+import { Heart, Clock, Flame, Leaf, Plus, UtensilsCrossed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ItemCustomizationModal from './ItemCustomizationModal';
 import type { MenuItem } from '@/types';
@@ -40,6 +40,8 @@ export default function MenuItemCard({
     setShowCustomization(false);
   };
 
+  const [imgError, setImgError] = useState(false);
+
   return (
     <Card className={cn(
       "group hover:shadow-elegant transition-all duration-300 overflow-hidden",
@@ -47,12 +49,20 @@ export default function MenuItemCard({
       className
     )}>
       {/* Item Image */}
-      <div className="relative overflow-hidden">
-        <img
-          src={item.image_url || '/placeholder-food.jpg'}
-          alt={item.name}
-          className="w-full h-48 sm:h-56 object-cover transition-transform duration-300 group-hover:scale-105"
-        />
+      <div className="relative overflow-hidden h-44 sm:h-48 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30">
+        {imgError || !item.image_url ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-orange-200 dark:text-orange-800">
+            <UtensilsCrossed className="h-10 w-10" />
+            <span className="text-xs font-medium text-orange-300 dark:text-orange-700 px-2 text-center line-clamp-1">{item.name}</span>
+          </div>
+        ) : (
+          <img
+            src={item.image_url}
+            alt={item.name}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            onError={() => setImgError(true)}
+          />
+        )}
         
         {/* Badges Overlay */}
         <div className="absolute top-2 left-2 flex gap-1">

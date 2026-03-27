@@ -563,74 +563,54 @@ export default function WaiterDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background">
       <Navbar />
 
       <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 mt-16">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-gradient-gold flex items-center justify-center">
-                <Utensils className="h-6 w-6 text-primary" />
+              <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-gradient-gold flex items-center justify-center flex-shrink-0">
+                <Utensils className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
               </div>
               <div>
-                <h1 className="text-3xl md:text-4xl font-bold">Waiter Dashboard</h1>
-                <p className="text-muted-foreground">Welcome, {user?.full_name || user?.email}!</p>
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold leading-tight">Waiter Dashboard</h1>
+                <p className="text-sm text-muted-foreground truncate max-w-[200px] sm:max-w-none">Welcome, {user?.full_name || user?.email}!</p>
               </div>
             </div>
-            <div className="flex gap-2 items-center">
-              {/* Connection Status */}
+            <div className="flex flex-wrap gap-2 items-center">
               {isConnected ? (
-                <Badge variant="outline" className="flex items-center gap-1">
-                  <Wifi className="h-3 w-3 text-green-500" />
-                  Live
+                <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                  <Wifi className="h-3 w-3 text-green-500" />Live
                 </Badge>
               ) : (
-                <Badge variant="outline" className="flex items-center gap-1">
-                  <WifiOff className="h-3 w-3 text-red-500" />
-                  Offline
+                <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                  <WifiOff className="h-3 w-3 text-red-500" />Offline
                 </Badge>
               )}
-
-              {/* New Orders Badge */}
               {newOrderCount > 0 && (
-                <Badge
-                  variant="destructive"
-                  className="cursor-pointer"
-                  onClick={clearNewOrderCount}
-                >
+                <Badge variant="destructive" className="cursor-pointer text-xs" onClick={clearNewOrderCount}>
                   {newOrderCount} new
                 </Badge>
               )}
-
-              <Button
-                variant={soundEnabled ? "default" : "outline"}
-                size="sm"
-                onClick={toggleSound}
-              >
+              <Button variant={soundEnabled ? "default" : "outline"} size="sm" onClick={toggleSound}>
                 {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
               </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refreshOrders}
-                disabled={loading}
-              >
+              <Button variant="outline" size="sm" onClick={refreshOrders} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </Button>
-
-              <Button onClick={() => setShowNewOrderDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Order
+              <Button size="sm" onClick={() => setShowNewOrderDialog(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                <span className="hidden xs:inline">New Order</span>
+                <span className="xs:hidden">New</span>
               </Button>
             </div>
           </div>
         </div>
 
         {/* Quick Stats */}
-        <div className="grid gap-4 md:grid-cols-4 mb-8">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 mb-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Ready for Pickup</CardTitle>
@@ -677,20 +657,20 @@ export default function WaiterDashboard() {
         </div>
 
         {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="tables">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto gap-1">
+            <TabsTrigger value="tables" className="text-xs sm:text-sm py-2">
               Tables ({tableOrders.length})
             </TabsTrigger>
-            <TabsTrigger value="room-service">
-              Room Service ({roomOrders.length})
+            <TabsTrigger value="room-service" className="text-xs sm:text-sm py-2">
+              Room ({roomOrders.length})
             </TabsTrigger>
-            <TabsTrigger value="bills">
-              <Receipt className="h-4 w-4 mr-2" />
-              Bills & Payments
+            <TabsTrigger value="bills" className="text-xs sm:text-sm py-2">
+              <Receipt className="h-3.5 w-3.5 mr-1" />
+              Bills
             </TabsTrigger>
-            <TabsTrigger value="stock-take">
-              Stock Take
+            <TabsTrigger value="stock-take" className="text-xs sm:text-sm py-2">
+              Stock
             </TabsTrigger>
           </TabsList>
 
@@ -714,11 +694,11 @@ export default function WaiterDashboard() {
                 {/* Ready Orders Section */}
                 {tableOrders.filter(o => o.status === 'ready').length > 0 && (
                   <div>
-                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
                       <Bell className="h-5 w-5 text-green-500" />
                       Ready for Pickup
                     </h2>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                       {tableOrders.filter(o => o.status === 'ready').map(order => (
                         <OrderCard key={order.id} order={order} />
                       ))}
@@ -729,11 +709,11 @@ export default function WaiterDashboard() {
                 {/* In Progress Orders */}
                 {tableOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).length > 0 && (
                   <div>
-                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
                       <Clock className="h-5 w-5 text-blue-500" />
                       In Progress
                     </h2>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                       {tableOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).map(order => (
                         <OrderCard key={order.id} order={order} />
                       ))}
@@ -744,11 +724,11 @@ export default function WaiterDashboard() {
                 {/* Served Orders */}
                 {tableOrders.filter(o => o.status === 'served').length > 0 && (
                   <div className="pb-8">
-                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
                       <CheckCircle2 className="h-5 w-5 text-orange-500" />
                       Awaiting Payment
                     </h2>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pb-8">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 pb-8">
                       {tableOrders.filter(o => o.status === 'served').map(order => (
                         <OrderCard key={order.id} order={order} />
                       ))}
@@ -779,11 +759,11 @@ export default function WaiterDashboard() {
                 {/* Ready for Delivery */}
                 {roomOrders.filter(o => o.status === 'ready').length > 0 && (
                   <div>
-                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
                       Ready for Delivery
                     </h2>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                       {roomOrders.filter(o => o.status === 'ready').map(order => (
                         <OrderCard key={order.id} order={order} />
                       ))}
@@ -794,11 +774,11 @@ export default function WaiterDashboard() {
                 {/* Served Orders - Awaiting Payment */}
                 {roomOrders.filter(o => o.status === 'served').length > 0 && (
                   <div>
-                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
                       <CheckCircle2 className="h-5 w-5 text-orange-500" />
                       Awaiting Payment
                     </h2>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                       {roomOrders.filter(o => o.status === 'served').map(order => (
                         <OrderCard key={order.id} order={order} />
                       ))}
@@ -809,11 +789,11 @@ export default function WaiterDashboard() {
                 {/* In Kitchen */}
                 {roomOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).length > 0 && (
                   <div className="pb-8">
-                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
                       <Clock className="h-5 w-5 text-blue-500" />
                       In Preparation
                     </h2>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pb-8">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 pb-8">
                       {roomOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status)).map(order => (
                         <OrderCard key={order.id} order={order} />
                       ))}

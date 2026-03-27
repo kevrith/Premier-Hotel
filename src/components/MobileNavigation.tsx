@@ -23,9 +23,11 @@ export function MobileNavigation() {
       case 'cleaner':
       case 'housekeeping':
         return '/cleaner';
+      case 'owner':
+        return '/owner';
       case 'customer':
       default:
-        return '/menu';
+        return '/profile';
     }
   };
 
@@ -54,7 +56,7 @@ export function MobileNavigation() {
       name: 'Dashboard',
       href: dashboardRoute,
       icon: LayoutDashboard,
-      show: isAuthenticated && user
+      show: isAuthenticated && user && user.role !== 'customer'
     },
     {
       name: 'Profile',

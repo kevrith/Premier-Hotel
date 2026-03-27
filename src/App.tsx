@@ -111,6 +111,7 @@ const App = () => {
                 <AppErrorBoundary>
             <OfflineBanner />
             <OfflineSessionBanner />
+            <div className="pb-28 sm:pb-0">
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<Index />} />
@@ -220,6 +221,7 @@ const App = () => {
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </div>
 
             {/* Global Toast Notifications */}
             <Toaster
