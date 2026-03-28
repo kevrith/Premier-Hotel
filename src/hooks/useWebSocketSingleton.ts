@@ -268,12 +268,21 @@ class WebSocketSingleton {
     try {
       const apiBase = import.meta.env.VITE_API_BASE_URL
         || (window.location.hostname === 'localhost' ? 'http://localhost:8000/api/v1' : `${window.location.protocol}//${window.location.hostname}:8000/api/v1`);
+
+      // Read Bearer token from localStorage for cross-origin / mobile requests
+      let bearerToken = '';
+      try {
+        const raw = localStorage.getItem('auth-storage');
+        if (raw) bearerToken = JSON.parse(raw)?.state?.token || '';
+      } catch { /* ignore */ }
+
       const response = await fetch(`${apiBase}/auth/ws-token`, {
         method: 'GET',
         credentials: 'include',
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
         }
       });
       

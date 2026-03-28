@@ -5,7 +5,6 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import useAuthStore from '@/stores/authStore';
-import { api } from '@/lib/api/client';
 
 export interface WebSocketMessage {
   type: string;
@@ -70,24 +69,37 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     }
   }, [hasHydrated, isAuthenticated, token]);
 
-  // Get auth token - for cookie-based auth, we need to get a WebSocket token from the API
+  // Get auth token - supports both cookie and Bearer token (cross-origin / mobile)
   const getToken = useCallback(async (): Promise<string | null> => {
-    // For cookie-based auth, get a WebSocket-specific token from the API
     try {
-      const response = await api.get('/auth/ws-token');
-      if (response.status === 200) {
-        const data = response.data as any;
+      const apiBase = import.meta.env.VITE_API_BASE_URL
+        || (window.location.hostname === 'localhost' ? 'http://localhost:8000/api/v1' : `${window.location.protocol}//${window.location.hostname}:8000/api/v1`);
+
+      let bearerToken = '';
+      try {
+        const raw = localStorage.getItem('auth-storage');
+        if (raw) bearerToken = JSON.parse(raw)?.state?.token || '';
+      } catch { /* ignore */ }
+
+      const response = await fetch(`${apiBase}/auth/ws-token`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
         console.log('[WebSocket] Got WebSocket token from API');
         return data.ws_token;
       }
       console.log('[WebSocket] Failed to get WebSocket token, status:', response.status);
+      if (response.status === 401) console.log('[WebSocket] Authentication required - user may need to login again');
       return null;
-    } catch (error: any) {
-      if (error?.response?.status === 401) {
-        console.log('[WebSocket] Authentication required - user may need to login again');
-      } else {
-        console.error('[WebSocket] Error getting WebSocket token:', error);
-      }
+    } catch (error) {
+      console.error('[WebSocket] Error getting WebSocket token:', error);
       return null;
     }
   }, []);

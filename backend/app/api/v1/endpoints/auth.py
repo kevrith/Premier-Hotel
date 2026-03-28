@@ -338,6 +338,21 @@ async def change_password(
         )
 
 
+@router.get("/ws-token")
+async def get_ws_token(current_user: dict = Depends(get_current_user)):
+    """
+    Get a short-lived WebSocket authentication token.
+    Accepts both Bearer token (Authorization header) and httpOnly cookie.
+    """
+    from app.core.security import create_access_token
+    from datetime import timedelta
+    ws_token = create_access_token(
+        data={"sub": current_user["id"], "email": current_user.get("email"), "role": current_user.get("role")},
+        expires_delta=timedelta(minutes=5),
+    )
+    return {"ws_token": ws_token}
+
+
 @router.post("/forgot-password")
 async def forgot_password(email: str, supabase: Client = Depends(get_supabase)):
     """
