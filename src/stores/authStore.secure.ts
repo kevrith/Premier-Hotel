@@ -277,8 +277,18 @@ const useAuthStore = create<AuthState>()(
               return false;
             }
 
-            // Get token from Zustand state (persisted via localStorage by zustand/persist)
-            const { token: bearerToken } = get();
+            // Get token from Zustand state OR directly from localStorage
+            // (localStorage fallback handles the case where Zustand hasn't rehydrated yet)
+            let bearerToken = get().token || '';
+            if (!bearerToken) {
+              try {
+                const raw = localStorage.getItem('auth-storage');
+                if (raw) {
+                  const parsed = JSON.parse(raw);
+                  bearerToken = parsed.state?.token || '';
+                }
+              } catch { /* ignore */ }
+            }
 
             const response = await axios.get(`${API_BASE_URL}/auth/me`, {
               withCredentials: true,
@@ -357,20 +367,27 @@ const useAuthStore = create<AuthState>()(
       // Refresh Access Token
       refreshAccessToken: async () => {
         try {
-          // Skip refresh when offline
           if (!navigator.onLine) {
             set({ isOfflineSession: true });
             return true;
           }
 
-          // Use direct axios call to bypass interceptor
-          await axios.post(`${API_BASE_URL}/auth/refresh`, {}, {
-            withCredentials: true,
-            timeout: 8000,
-          });
+          const { refreshToken: storedRefreshToken } = get();
 
-          // Check if still authenticated
-          return await get().checkAuth();
+          const res = await axios.post(`${API_BASE_URL}/auth/refresh`,
+            storedRefreshToken ? { refresh_token: storedRefreshToken } : {},
+            { withCredentials: true, timeout: 8000 }
+          );
+
+          // Save new tokens if returned
+          if (res.data?.access_token) {
+            set({
+              token: res.data.access_token,
+              refreshToken: res.data.refresh_token || storedRefreshToken,
+            });
+          }
+
+          return true;
         } catch (error: any) {
           // Don't logout on network errors (same set of codes as checkAuth)
           const networkErrorCodes = ['ERR_NETWORK', 'ERR_CONNECTION_REFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT'];

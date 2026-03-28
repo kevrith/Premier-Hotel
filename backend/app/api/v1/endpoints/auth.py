@@ -195,6 +195,7 @@ async def logout(
 @router.post("/refresh", response_model=AuthResponse)
 async def refresh_token(
     refresh_data: RefreshToken,
+    response: Response,
     supabase: Client = Depends(get_supabase),
 ):
     """
@@ -226,14 +227,13 @@ async def refresh_token(
 
         user = profile_response.data[0]
 
-        # Create new tokens
-        access_token = create_access_token(data={"sub": user_id, "email": email})
-        new_refresh_token = create_refresh_token(data={"sub": user_id, "email": email})
+        # Create new tokens and set cookies
+        tokens = set_auth_cookies(response, user_id, email, user.get("role", "customer"))
 
         return AuthResponse(
             user=UserResponse(**user),
-            access_token=access_token,
-            refresh_token=new_refresh_token,
+            access_token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],
             token_type="bearer",
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )

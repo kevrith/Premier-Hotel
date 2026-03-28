@@ -256,7 +256,25 @@ apiClient.interceptors.response.use(
         if (!originalRequest._retry) {
           originalRequest._retry = true;
           try {
-            await axios.post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+            // Get refresh token from localStorage for cross-origin (mobile/PWA)
+            let refreshToken = '';
+            try {
+              const raw = localStorage.getItem('auth-storage');
+              if (raw) refreshToken = JSON.parse(raw).state?.refreshToken || '';
+            } catch { /* ignore */ }
+
+            await axios.post(`${API_BASE_URL}/auth/refresh`,
+              refreshToken ? { refresh_token: refreshToken } : {},
+              { withCredentials: true }
+            );
+            // Attach token to retried request
+            try {
+              const raw = localStorage.getItem('auth-storage');
+              if (raw) {
+                const token = JSON.parse(raw).state?.token || '';
+                if (token) originalRequest.headers.Authorization = `Bearer ${token}`;
+              }
+            } catch { /* ignore */ }
             return apiClient(originalRequest);
           } catch (refreshError: any) {
             if (refreshError.response) {

@@ -85,9 +85,15 @@ export function AuthProvider({ children }) {
     const initAuth = async () => {
       setHasInitialized(true);
       try {
-        // For cookie-based auth, just check if we can get current user.
-        // Race against a 10-second safety timeout so a slow/unreachable backend
-        // never leaves the app stuck on the loading spinner indefinitely.
+        // If already authenticated (e.g. just logged in or token in localStorage),
+        // skip the checkAuth network call to prevent race condition on mobile/PWA
+        // where Zustand rehydration hasn't completed yet when checkAuth fires.
+        const state = useAuthStore.getState();
+        if (state.isAuthenticated && state.user && state.token) {
+          setIsLoading(false);
+          return;
+        }
+
         await Promise.race([
           checkAuth(),
           new Promise<void>((_, reject) =>
@@ -95,7 +101,6 @@ export function AuthProvider({ children }) {
           ),
         ]);
       } catch (error) {
-        // Silently handle - user is not authenticated or backend is unavailable
         console.debug('Auth initialization: user not authenticated');
       } finally {
         setIsLoading(false);
