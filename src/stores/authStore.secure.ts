@@ -101,6 +101,9 @@ const useAuthStore = create<AuthState>()(
 
           const { user } = response;
 
+          const needsEmailVerification = !!(user.email && !user.email_verified);
+          const needsPhoneVerification = !!(user.phone && !user.phone_verified);
+
           // Store tokens in Zustand state + localStorage for PWA persistence
           if (response.access_token) {
             set({
