@@ -40,6 +40,8 @@ interface AuthState {
   hasHydrated: boolean;
   lastAuthenticatedAt: string | null;
   isOfflineSession: boolean;
+  token: string | null;
+  refreshToken: string | null;
 
   // Actions
   login: (identifier: string, password: string, type?: 'email' | 'phone') => Promise<any>;
@@ -74,6 +76,8 @@ const useAuthStore = create<AuthState>()(
       hasHydrated: false,
       lastAuthenticatedAt: null,
       isOfflineSession: false,
+      token: null,
+      refreshToken: null,
 
       // Login - Auto-detect email or phone
       login: async (identifier, password, type) => {
@@ -97,30 +101,32 @@ const useAuthStore = create<AuthState>()(
 
           const { user } = response;
 
-          // Store tokens in localStorage for cross-device/mobile access
-          // (httpOnly cookies don't work when phone accesses via LAN IP)
+          // Store tokens in Zustand state + localStorage for PWA persistence
           if (response.access_token) {
-            const existing = localStorage.getItem('auth-storage');
-            const parsed = existing ? JSON.parse(existing) : { state: {}, version: 0 };
-            parsed.state.token = response.access_token;
-            parsed.state.refreshToken = response.refresh_token;
-            localStorage.setItem('auth-storage', JSON.stringify(parsed));
+            set({
+              user,
+              role: user.role,
+              isAuthenticated: true,
+              isLoading: false,
+              lastAuthenticatedAt: new Date().toISOString(),
+              isOfflineSession: false,
+              token: response.access_token,
+              refreshToken: response.refresh_token || null,
+              needsVerification: needsEmailVerification || needsPhoneVerification,
+              verificationType: needsEmailVerification ? 'email' : needsPhoneVerification ? 'phone' : null,
+            });
+          } else {
+            set({
+              user,
+              role: user.role,
+              isAuthenticated: true,
+              isLoading: false,
+              lastAuthenticatedAt: new Date().toISOString(),
+              isOfflineSession: false,
+              needsVerification: needsEmailVerification || needsPhoneVerification,
+              verificationType: needsEmailVerification ? 'email' : needsPhoneVerification ? 'phone' : null,
+            });
           }
-
-          // Check if user needs verification
-          const needsEmailVerification = user.email && !user.email_verified;
-          const needsPhoneVerification = user.phone && !user.phone_verified;
-
-          set({
-            user,
-            role: user.role,
-            isAuthenticated: true,
-            isLoading: false,
-            lastAuthenticatedAt: new Date().toISOString(),
-            isOfflineSession: false,
-            needsVerification: needsEmailVerification || needsPhoneVerification,
-            verificationType: needsEmailVerification ? 'email' : needsPhoneVerification ? 'phone' : null,
-          });
 
           // Cache user and menu items for offline use (non-fatal)
           try {
@@ -213,7 +219,7 @@ const useAuthStore = create<AuthState>()(
           console.error('Logout API call failed:', error);
         }
 
-        // Clear local state
+        // Clear local state including tokens
         set({
           user: null,
           role: null,
@@ -223,16 +229,9 @@ const useAuthStore = create<AuthState>()(
           verificationType: null,
           lastAuthenticatedAt: null,
           isOfflineSession: false,
+          token: null,
+          refreshToken: null,
         });
-
-        // Clear token from localStorage
-        const existing = localStorage.getItem('auth-storage');
-        if (existing) {
-          const parsed = JSON.parse(existing);
-          delete parsed.state.token;
-          delete parsed.state.refreshToken;
-          localStorage.setItem('auth-storage', JSON.stringify(parsed));
-        }
       },
 
       // Update Profile
@@ -275,15 +274,8 @@ const useAuthStore = create<AuthState>()(
               return false;
             }
 
-            // Use direct axios call to bypass interceptor and prevent refresh loops
-            const authStorage = localStorage.getItem('auth-storage');
-            let bearerToken = '';
-            if (authStorage) {
-              try {
-                const parsed = JSON.parse(authStorage);
-                bearerToken = parsed.state?.token || '';
-              } catch { /* ignore */ }
-            }
+            // Get token from Zustand state (persisted via localStorage by zustand/persist)
+            const { token: bearerToken } = get();
 
             const response = await axios.get(`${API_BASE_URL}/auth/me`, {
               withCredentials: true,
@@ -515,12 +507,13 @@ const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      // Only persist user data, not tokens (tokens in httpOnly cookies)
       partialize: (state) => ({
         user: state.user,
         role: state.role,
         isAuthenticated: state.isAuthenticated,
         lastAuthenticatedAt: state.lastAuthenticatedAt,
+        token: (state as any).token || '',
+        refreshToken: (state as any).refreshToken || '',
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
