@@ -75,6 +75,16 @@ async def limit_request_size(request: Request, call_next):
     return response
 
 
+# Cross-Origin-Opener-Policy middleware
+# "same-origin-allow-popups" lets the Google OAuth popup communicate back
+# to the opener window (required for @react-oauth/google popup flow)
+@app.middleware("http")
+async def set_coop_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    return response
+
+
 # Request timing + tracking middleware
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
