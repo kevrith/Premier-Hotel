@@ -1,7 +1,7 @@
 """
 Authentication Endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from supabase import Client
 from app.core.supabase import get_supabase
@@ -21,6 +21,7 @@ from app.middleware.auth import (
     get_current_user,
     security,
 )
+from app.core.cookie_auth import set_auth_cookies
 from datetime import timedelta
 from app.core.config import settings
 
@@ -103,7 +104,7 @@ async def register(user_data: UserRegister, supabase: Client = Depends(get_supab
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(credentials: UserLogin, supabase: Client = Depends(get_supabase)):
+async def login(credentials: UserLogin, response: Response, supabase: Client = Depends(get_supabase)):
     """
     Login user
 
@@ -146,13 +147,10 @@ async def login(credentials: UserLogin, supabase: Client = Depends(get_supabase)
         # Construct full_name from first_name and last_name
         user["full_name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
 
-        # Create tokens
-        access_token = create_access_token(
-            data={"sub": user_id, "email": credentials.email}
-        )
-        refresh_token = create_refresh_token(
-            data={"sub": user_id, "email": credentials.email}
-        )
+        # Create tokens and set cookies
+        tokens = set_auth_cookies(response, user_id, credentials.email, user.get("role", "customer"))
+        access_token = tokens["access_token"]
+        refresh_token = tokens["refresh_token"]
 
         return AuthResponse(
             user=UserResponse(**user),
