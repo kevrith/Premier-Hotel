@@ -338,6 +338,80 @@ async def change_password(
         )
 
 
+@router.post("/social-login")
+async def social_login(
+    payload: dict,
+    response: Response,
+    supabase: Client = Depends(get_supabase),
+):
+    """
+    Social login (Google, etc.) via OAuth access token.
+    Verifies the token with Supabase, upserts the user profile, and returns auth tokens.
+    """
+    provider = payload.get("provider", "google")
+    access_token = payload.get("access_token") or payload.get("token")
+
+    if not access_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="access_token is required")
+
+    try:
+        # Exchange the OAuth access token with Supabase
+        auth_response = supabase.auth.sign_in_with_oauth_token({
+            "provider": provider,
+            "access_token": access_token,
+        })
+    except Exception:
+        # Fallback: get user info from Supabase using the token directly
+        try:
+            auth_response = supabase.auth.get_user(access_token)
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid social token")
+
+    supabase_user = getattr(auth_response, "user", None)
+    if not supabase_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Social authentication failed")
+
+    user_id = supabase_user.id
+    email = supabase_user.email or (supabase_user.user_metadata or {}).get("email", "")
+    full_name = (supabase_user.user_metadata or {}).get("full_name") or \
+                (supabase_user.user_metadata or {}).get("name") or email.split("@")[0]
+
+    # Upsert user profile
+    existing = supabase.table("users").select("*").eq("id", user_id).execute()
+    if existing.data:
+        user = existing.data[0]
+    else:
+        insert_resp = supabase.table("users").insert({
+            "id": user_id,
+            "email": email,
+            "full_name": full_name,
+            "first_name": full_name.split()[0] if full_name else "",
+            "last_name": " ".join(full_name.split()[1:]) if full_name and len(full_name.split()) > 1 else "",
+            "role": "customer",
+            "status": "active",
+            "email_verified": True,
+        }).execute()
+        if not insert_resp.data:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user profile")
+        user = insert_resp.data[0]
+
+    if user.get("status") != "active":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is not active")
+
+    user["full_name"] = user.get("full_name") or \
+        f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+
+    tokens = set_auth_cookies(response, user_id, email, user.get("role", "customer"))
+
+    return AuthResponse(
+        user=UserResponse(**user),
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        token_type="bearer",
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
 @router.get("/ws-token")
 async def get_ws_token(current_user: dict = Depends(get_current_user)):
     """

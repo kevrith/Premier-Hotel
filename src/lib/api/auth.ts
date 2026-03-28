@@ -232,7 +232,7 @@ export const resetPassword = async (data: ResetPasswordData) => {
  * Social Authentication (Google, Facebook, etc.)
  */
 export const socialAuth = async (data: SocialAuthData) => {
-  const response = await authApi.post('/social-auth', data);
+  const response = await authApi.post('/social-login', data);
   return response.data;
 };
 
@@ -311,7 +311,7 @@ export const confirmPasswordReset = async (token: string, newPassword: string) =
  * Social Login
  */
 export const socialLogin = async (provider: string, accessToken: string) => {
-  const response = await authApi.post('/social-auth', {
+  const response = await authApi.post('/social-login', {
     provider,
     access_token: accessToken,
   });
