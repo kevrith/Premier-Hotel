@@ -97,8 +97,15 @@ const useAuthStore = create<AuthState>()(
 
           const { user } = response;
 
-          // SECURITY: Tokens are stored in httpOnly cookies by the backend
-          // No localStorage.setItem() calls - prevents XSS token theft
+          // Store tokens in localStorage for cross-device/mobile access
+          // (httpOnly cookies don't work when phone accesses via LAN IP)
+          if (response.access_token) {
+            const existing = localStorage.getItem('auth-storage');
+            const parsed = existing ? JSON.parse(existing) : { state: {}, version: 0 };
+            parsed.state.token = response.access_token;
+            parsed.state.refreshToken = response.refresh_token;
+            localStorage.setItem('auth-storage', JSON.stringify(parsed));
+          }
 
           // Check if user needs verification
           const needsEmailVerification = user.email && !user.email_verified;
@@ -218,7 +225,14 @@ const useAuthStore = create<AuthState>()(
           isOfflineSession: false,
         });
 
-        // SECURITY: No localStorage.removeItem() needed - cookies cleared by backend
+        // Clear token from localStorage
+        const existing = localStorage.getItem('auth-storage');
+        if (existing) {
+          const parsed = JSON.parse(existing);
+          delete parsed.state.token;
+          delete parsed.state.refreshToken;
+          localStorage.setItem('auth-storage', JSON.stringify(parsed));
+        }
       },
 
       // Update Profile
@@ -262,10 +276,22 @@ const useAuthStore = create<AuthState>()(
             }
 
             // Use direct axios call to bypass interceptor and prevent refresh loops
+            const authStorage = localStorage.getItem('auth-storage');
+            let bearerToken = '';
+            if (authStorage) {
+              try {
+                const parsed = JSON.parse(authStorage);
+                bearerToken = parsed.state?.token || '';
+              } catch { /* ignore */ }
+            }
+
             const response = await axios.get(`${API_BASE_URL}/auth/me`, {
               withCredentials: true,
-              timeout: 8000, // 8 s — prevents infinite spinner if backend is slow
-              headers: { 'Cache-Control': 'no-store' },
+              timeout: 8000,
+              headers: {
+                'Cache-Control': 'no-store',
+                ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+              },
             });
 
             const user = response.data?.user || response.data;
