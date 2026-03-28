@@ -253,40 +253,44 @@ apiClient.interceptors.response.use(
       case 401:
         if (!navigator.onLine) return Promise.reject(error);
 
+        // Don't fire session-expired for auth endpoints themselves
+        if (originalRequest?.url?.includes('/auth/')) return Promise.reject(error);
+
         if (!originalRequest._retry) {
           originalRequest._retry = true;
           try {
-            // Get refresh token from localStorage for cross-origin (mobile/PWA)
             let refreshToken = '';
             try {
               const raw = localStorage.getItem('auth-storage');
               if (raw) refreshToken = JSON.parse(raw).state?.refreshToken || '';
             } catch { /* ignore */ }
 
-            await axios.post(`${API_BASE_URL}/auth/refresh`,
+            const refreshRes = await axios.post(
+              `${API_BASE_URL}/auth/refresh`,
               refreshToken ? { refresh_token: refreshToken } : {},
               { withCredentials: true }
             );
-            // Attach token to retried request
-            try {
-              const raw = localStorage.getItem('auth-storage');
-              if (raw) {
-                const token = JSON.parse(raw).state?.token || '';
-                if (token) originalRequest.headers.Authorization = `Bearer ${token}`;
-              }
-            } catch { /* ignore */ }
+
+            // Save new token and retry original request
+            if (refreshRes.data?.access_token) {
+              try {
+                const raw = localStorage.getItem('auth-storage');
+                const parsed = raw ? JSON.parse(raw) : { state: {} };
+                parsed.state.token = refreshRes.data.access_token;
+                parsed.state.refreshToken = refreshRes.data.refresh_token || refreshToken;
+                localStorage.setItem('auth-storage', JSON.stringify(parsed));
+              } catch { /* ignore */ }
+              originalRequest.headers.Authorization = `Bearer ${refreshRes.data.access_token}`;
+            }
             return apiClient(originalRequest);
           } catch (refreshError: any) {
-            if (refreshError.response) {
+            // Only fire session-expired if refresh also got a real 401/403
+            if (refreshError.response?.status === 401 || refreshError.response?.status === 403) {
               window.dispatchEvent(new CustomEvent('auth:session-expired'));
               toast.error('Session expired. Please login again.');
             }
             return Promise.reject(refreshError);
           }
-        }
-        if (error.response) {
-          window.dispatchEvent(new CustomEvent('auth:session-expired'));
-          toast.error('Session expired. Please login again.');
         }
         break;
 

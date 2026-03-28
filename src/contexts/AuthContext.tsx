@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '@/stores/authStore.secure';
 import { useDataPreCache } from '@/hooks/useDataPreCache';
@@ -41,154 +41,130 @@ export function AuthProvider({ children }) {
     hasHydrated,
     error,
     isOfflineSession,
+    token,
     login: storeLogin,
     logout: storeLogout,
     register: storeRegister,
     updateProfile: storeUpdateProfile,
     checkAuth,
     refreshAccessToken,
-    clearError
+    clearError,
   } = useAuthStore();
 
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const initDone = useRef(false);
 
-  // Pre-cache critical data for offline use once the user is authenticated
   useDataPreCache(user?.id, role);
 
-  // Listen for session-expired events from the API interceptor
+  // Session-expired handler — only fires for genuine 401s from the API
   useEffect(() => {
     const handleSessionExpired = () => {
-      // If we're in an offline session, don't log out — the interceptor
-      // can fire spuriously when the backend is temporarily unreachable.
       const state = useAuthStore.getState();
+      // Never log out during an offline session or if already on login page
       if (state.isOfflineSession) return;
-
-      // Only act if currently on a page other than /login to avoid loops
       if (window.location.pathname === '/login') return;
-
-      storeLogout().then(() => {
-        navigate('/login', { replace: true });
-      });
+      storeLogout().then(() => navigate('/login', { replace: true }));
     };
-
     window.addEventListener('auth:session-expired', handleSessionExpired);
     return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
   }, [storeLogout, navigate]);
 
-  // Check authentication on mount - only after hydration and only once
+  // One-time auth initialization after Zustand has rehydrated from localStorage
   useEffect(() => {
-    if (!hasHydrated) return; // Wait for Zustand to rehydrate from localStorage
-    if (hasInitialized) return; // Only run once
+    if (!hasHydrated) return;
+    if (initDone.current) return;
+    initDone.current = true;
 
-    const initAuth = async () => {
-      setHasInitialized(true);
+    const init = async () => {
       try {
-        // If already authenticated (e.g. just logged in or token in localStorage),
-        // skip the checkAuth network call to prevent race condition on mobile/PWA
-        // where Zustand rehydration hasn't completed yet when checkAuth fires.
         const state = useAuthStore.getState();
+
+        // If we already have a valid token + user in persisted state,
+        // trust it — no network call needed. This is the key fix for mobile/PWA.
         if (state.isAuthenticated && state.user && state.token) {
           setIsLoading(false);
           return;
         }
 
+        // No persisted session — try a network auth check
         await Promise.race([
           checkAuth(),
           new Promise<void>((_, reject) =>
-            setTimeout(() => reject(new Error('Auth check timed out')), 10000)
+            setTimeout(() => reject(new Error('timeout')), 10_000)
           ),
         ]);
-      } catch (error) {
-        console.debug('Auth initialization: user not authenticated');
+      } catch {
+        // Silently ignore — user simply isn't authenticated
       } finally {
         setIsLoading(false);
       }
     };
 
-    initAuth();
-  }, [hasHydrated, hasInitialized, checkAuth]);
+    init();
+  }, [hasHydrated, checkAuth]);
 
-  // Auto-refresh token before expiry (for cookie-based auth)
+  // Periodic token refresh every 25 minutes (token expires in 30)
   useEffect(() => {
-    // Only set up refresh interval if user is authenticated and initialization is complete
-    if (!isAuthenticated || !hasInitialized || isLoading) return;
+    if (!isAuthenticated) return;
 
-    const refreshInterval = setInterval(
-      async () => {
-        // Skip refresh when offline - store handles this gracefully
-        if (!navigator.onLine) {
-          console.debug('Offline: skipping scheduled token refresh');
-          return;
-        }
-        try {
-          const success = await refreshAccessToken();
-          if (!success) {
-            // Token refresh failed, user will be logged out by the store
-            console.debug('Token refresh failed, user session expired');
-          }
-        } catch (error) {
-          // Silently handle - refreshAccessToken already handles state cleanup
-          console.debug('Token refresh error:', error);
-        }
-      },
-      10 * 60 * 1000 // Check every 10 minutes
-    );
+    const interval = setInterval(async () => {
+      if (!navigator.onLine) return;
+      try {
+        await refreshAccessToken();
+      } catch {
+        // refreshAccessToken handles its own state cleanup
+      }
+    }, 25 * 60 * 1000);
 
-    return () => clearInterval(refreshInterval);
-  }, [isAuthenticated, hasInitialized, isLoading, refreshAccessToken]);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, refreshAccessToken]);
 
-  const login = async (email, password) => {
+  const login = async (email: string, password: string) => {
     try {
-      const result = await storeLogin(email, password);
-      return result;
-    } catch (error) {
-      console.error('Login error:', error);
+      return await storeLogin(email, password);
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   };
 
-  const logout = () => {
-    storeLogout();
-  };
+  const logout = () => storeLogout();
 
-  const register = async (userData) => {
+  const register = async (userData: any) => {
     try {
-      const result = await storeRegister(userData);
-      return result;
-    } catch (error) {
-      console.error('Register error:', error);
+      return await storeRegister(userData);
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   };
 
-  const updateProfile = async (data) => {
+  const updateProfile = async (data: any) => {
     try {
       await storeUpdateProfile(data);
       return { success: true };
-    } catch (error) {
-      console.error('Update profile error:', error);
+    } catch (error: any) {
       return { success: false, error: error.message };
     }
   };
 
-  const value = {
-    user,
-    userRole: role, // Alias for consistency with existing components
-    role,
-    isAuthenticated,
-    isLoading: isLoading || storeLoading,
-    isOfflineSession,
-    error,
-    login,
-    logout,
-    register,
-    updateProfile,
-    clearError
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{
+      user,
+      userRole: role,
+      role,
+      isAuthenticated,
+      isLoading: isLoading || storeLoading,
+      isOfflineSession,
+      error,
+      login,
+      logout,
+      register,
+      updateProfile,
+      clearError,
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 const AUTH_FALLBACK: AuthContextType = {
@@ -208,11 +184,9 @@ const AUTH_FALLBACK: AuthContextType = {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  // During Vite HMR a module reload can briefly detach the context reference.
-  // Return safe defaults rather than crashing the whole component tree.
   if (context === undefined) {
     if (process.env.NODE_ENV === 'development') {
-      console.warn('useAuth: context undefined — returning fallback (likely HMR transition)');
+      console.warn('useAuth: context undefined — returning fallback');
     }
     return AUTH_FALLBACK;
   }

@@ -322,10 +322,6 @@ const useAuthStore = create<AuthState>()(
               return false;
             }
           } catch (error: any) {
-            // Distinguish network error from auth error.
-            // A network error has no response object; also cover cases where
-            // navigator.onLine is true but the backend is unreachable (LAN with
-            // no internet, backend down, connection refused, request timed out).
             const networkErrorCodes = ['ERR_NETWORK', 'ERR_CONNECTION_REFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT'];
             const isNetworkError = !error.response && (
               !navigator.onLine ||
@@ -334,11 +330,10 @@ const useAuthStore = create<AuthState>()(
             );
 
             if (isNetworkError) {
-              // Network error - keep cached state if valid
               const { user, isAuthenticated, lastAuthenticatedAt } = get();
               if (user && isAuthenticated && lastAuthenticatedAt) {
                 const hoursSinceAuth = (Date.now() - new Date(lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
-                if (hoursSinceAuth < 168) { // 7 days
+                if (hoursSinceAuth < 168) {
                   set({ isOfflineSession: true });
                   return true;
                 }
@@ -346,13 +341,26 @@ const useAuthStore = create<AuthState>()(
               return false;
             }
 
-            // Genuine auth error (401, 403, etc.) - clear state
+            // Genuine auth error — but only clear state if we have no token
+            // (prevents Render cold-start 401s from logging out valid sessions)
+            const { token: currentToken, lastAuthenticatedAt } = get();
+            if (currentToken && lastAuthenticatedAt) {
+              const hoursSinceAuth = (Date.now() - new Date(lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
+              if (hoursSinceAuth < 0.5) {
+                // Token is less than 30 minutes old — likely a cold-start 401, keep session
+                set({ isOfflineSession: true });
+                return true;
+              }
+            }
+
             set({
               user: null,
               role: null,
               isAuthenticated: false,
               lastAuthenticatedAt: null,
               isOfflineSession: false,
+              token: null,
+              refreshToken: null,
             });
             return false;
           } finally {
