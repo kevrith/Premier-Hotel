@@ -479,13 +479,16 @@ const useAuthStore = create<AuthState>()(
 
           const { user } = response;
 
-          // SECURITY: Tokens in httpOnly cookies
-
           set({
             user,
             role: user.role,
             isAuthenticated: true,
             isLoading: false,
+            lastAuthenticatedAt: new Date().toISOString(),
+            isOfflineSession: false,
+            // Save tokens for mobile/cross-origin where cookies are blocked
+            token: (response as any).access_token || null,
+            refreshToken: (response as any).refresh_token || null,
           });
 
           return { success: true, user };

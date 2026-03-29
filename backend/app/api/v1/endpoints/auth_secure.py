@@ -630,6 +630,22 @@ async def confirm_password_reset(
 
 # ===== SOCIAL LOGIN (Google OAuth) =====
 
+async def _get_google_userinfo(access_token: str) -> dict:
+    """Verify a Google access token and return the user's profile from Google."""
+    import httpx
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google access token",
+        )
+    return resp.json()
+
+
 @router.post("/social-login")
 async def social_login(
     payload: dict,
@@ -637,9 +653,10 @@ async def social_login(
     supabase: Client = Depends(get_supabase),
 ):
     """
-    Social login via OAuth access token (Google, etc.).
-    Verifies token with Supabase, upserts user profile, sets httpOnly cookies,
-    and returns tokens in body for mobile/cross-origin clients.
+    Social login via Google OAuth access token.
+    Verifies the token directly with Google's userinfo endpoint,
+    upserts the user in our DB, sets httpOnly cookies, and returns
+    tokens in body for mobile/cross-origin clients.
     """
     provider = payload.get("provider", "google")
     access_token = payload.get("access_token") or payload.get("token")
@@ -651,37 +668,45 @@ async def social_login(
         )
 
     try:
-        # Try exchanging the OAuth token with Supabase
-        try:
-            auth_response = supabase.auth.sign_in_with_oauth_token({
-                "provider": provider,
-                "access_token": access_token,
-            })
-        except Exception:
-            # Fallback: validate token directly
-            auth_response = supabase.auth.get_user(access_token)
-
-        supabase_user = getattr(auth_response, "user", None)
-        if not supabase_user:
+        if provider == "google":
+            google_user = await _get_google_userinfo(access_token)
+            # Google sub is the stable unique identifier
+            google_id = google_user.get("sub")
+            email = google_user.get("email", "")
+            full_name = (
+                google_user.get("name")
+                or google_user.get("given_name", "")
+                or email.split("@")[0]
+            )
+            picture = google_user.get("picture")
+        else:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Social authentication failed",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported provider: {provider}",
             )
 
-        user_id = supabase_user.id
-        email = supabase_user.email or (supabase_user.user_metadata or {}).get("email", "")
-        metadata = supabase_user.user_metadata or {}
-        full_name = (
-            metadata.get("full_name")
-            or metadata.get("name")
-            or email.split("@")[0]
-        )
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not retrieve email from Google account",
+            )
 
-        # Upsert user profile in our users table
-        existing = supabase.table("users").select("*").eq("id", user_id).execute()
+        # Look up user by email — social accounts share the same users table
+        existing = supabase.table("users").select("*").eq("email", email).execute()
         if existing.data:
             user = existing.data[0]
+            user_id = user["id"]
+            # Update profile picture if we have one and it changed
+            updates = {"updated_at": datetime.now(timezone.utc).isoformat()}
+            if picture and not user.get("profile_picture"):
+                updates["profile_picture"] = picture
+            if not user.get("full_name"):
+                updates["full_name"] = full_name
+            if len(updates) > 1:
+                supabase.table("users").update(updates).eq("id", user_id).execute()
         else:
+            # New user — create profile
+            user_id = str(uuid.uuid4())
             name_parts = full_name.split()
             insert_resp = supabase.table("users").insert({
                 "id": user_id,
@@ -693,6 +718,8 @@ async def social_login(
                 "status": "active",
                 "email_verified": True,
                 "auth_providers": [provider],
+                "profile_picture": picture,
+                "password_hash": "",  # no password for social accounts
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
@@ -706,10 +733,9 @@ async def social_login(
         if user.get("status") != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Account is {user.get('status')}",
+                detail=f"Account is {user.get('status')}. Please contact support.",
             )
 
-        # Ensure full_name is set even for old records
         if not user.get("full_name"):
             user["full_name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
 

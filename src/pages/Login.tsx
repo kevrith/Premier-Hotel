@@ -262,6 +262,7 @@ export default function Login() {
 
   // Google OAuth Login
   const handleGoogleLogin = useGoogleLogin({
+    flow: 'implicit',
     onSuccess: async (tokenResponse) => {
       try {
         const result = await useAuthStore.getState().socialLogin('google', tokenResponse.access_token);
