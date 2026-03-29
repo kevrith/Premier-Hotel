@@ -22,6 +22,7 @@ import {
   LineChart, Cog, ClipboardList, UserSquare2, HeartHandshake, Bell, Download, Package, LogOut
 } from 'lucide-react';
 import api from '@/lib/api/client';
+import { formatKES } from '@/lib/utils/format';
 import { toast } from 'react-hot-toast';
 import { BalanceSheet } from '@/components/Manager/Reports/BalanceSheet';
 import { format } from 'date-fns';
@@ -70,8 +71,8 @@ interface Financials {
 }
 
 const EMPTY_BRANCH = { name: '', location: '', address: '', phone: '', email: '', notes: '', opened_at: '', status: 'active' };
-const fmt = (n: number) => `KES ${Number(n || 0).toLocaleString()}`;
-const fmtShort = fmt; // always show full numbers, no K/M abbreviation
+const fmt = formatKES;
+const fmtShort = formatKES;
 const fmtAxis = (n: number) => {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api/client';
+import { formatKES } from '@/lib/utils/format';
 import { toast } from 'react-hot-toast';
 import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClosingStock';
 
@@ -61,7 +62,7 @@ export type StockMode = 'owner' | 'manager' | 'admin';
 export type StockDepartment = 'kitchen' | 'bar';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const fmt = (n: number) => `KES ${Number(n || 0).toLocaleString()}`;
+const fmt = formatKES;
 const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 
 const STATUS_CFG = {

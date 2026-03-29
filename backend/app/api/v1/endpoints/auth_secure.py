@@ -35,6 +35,7 @@ from app.core.cookie_auth import (
     refresh_access_token_from_cookie,
     ACCESS_TOKEN_COOKIE_NAME,
 )
+from app.core.config import settings
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import uuid
@@ -624,4 +625,115 @@ async def confirm_password_reset(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Password reset failed: {str(e)}",
+        )
+
+
+# ===== SOCIAL LOGIN (Google OAuth) =====
+
+@router.post("/social-login")
+async def social_login(
+    payload: dict,
+    response: Response,
+    supabase: Client = Depends(get_supabase),
+):
+    """
+    Social login via OAuth access token (Google, etc.).
+    Verifies token with Supabase, upserts user profile, sets httpOnly cookies,
+    and returns tokens in body for mobile/cross-origin clients.
+    """
+    provider = payload.get("provider", "google")
+    access_token = payload.get("access_token") or payload.get("token")
+
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="access_token is required",
+        )
+
+    try:
+        # Try exchanging the OAuth token with Supabase
+        try:
+            auth_response = supabase.auth.sign_in_with_oauth_token({
+                "provider": provider,
+                "access_token": access_token,
+            })
+        except Exception:
+            # Fallback: validate token directly
+            auth_response = supabase.auth.get_user(access_token)
+
+        supabase_user = getattr(auth_response, "user", None)
+        if not supabase_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Social authentication failed",
+            )
+
+        user_id = supabase_user.id
+        email = supabase_user.email or (supabase_user.user_metadata or {}).get("email", "")
+        metadata = supabase_user.user_metadata or {}
+        full_name = (
+            metadata.get("full_name")
+            or metadata.get("name")
+            or email.split("@")[0]
+        )
+
+        # Upsert user profile in our users table
+        existing = supabase.table("users").select("*").eq("id", user_id).execute()
+        if existing.data:
+            user = existing.data[0]
+        else:
+            name_parts = full_name.split()
+            insert_resp = supabase.table("users").insert({
+                "id": user_id,
+                "email": email,
+                "full_name": full_name,
+                "first_name": name_parts[0] if name_parts else "",
+                "last_name": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
+                "role": "customer",
+                "status": "active",
+                "email_verified": True,
+                "auth_providers": [provider],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+            if not insert_resp.data:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create user profile",
+                )
+            user = insert_resp.data[0]
+
+        if user.get("status") != "active":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Account is {user.get('status')}",
+            )
+
+        # Ensure full_name is set even for old records
+        if not user.get("full_name"):
+            user["full_name"] = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+
+        tokens = set_auth_cookies(
+            response=response,
+            user_id=user_id,
+            email=email,
+            role=user.get("role", "customer"),
+        )
+
+        await log_auth_event(supabase, user_id, f"social_login_{provider}")
+
+        return {
+            "user": UserResponse(**user),
+            "message": "Social login successful.",
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Social login error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Social login failed. Please try again.",
         )

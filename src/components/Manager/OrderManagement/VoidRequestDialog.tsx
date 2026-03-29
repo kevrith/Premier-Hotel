@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { AlertCircle, DollarSign, User, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { orderManagementService, type VoidRequest } from '@/lib/api/order-management';
+import { formatKES } from '@/lib/utils/format';
 
 interface VoidRequestDialogProps {
   open: boolean;
@@ -61,12 +62,7 @@ export function VoidRequestDialog({
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
-  };
+  const formatCurrency = formatKES;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

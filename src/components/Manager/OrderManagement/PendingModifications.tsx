@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { orderManagementService, type OrderModification } from '@/lib/api/order-management';
+import { formatKES, formatDateTime } from '@/lib/utils/format';
 
 export function PendingModifications() {
   const [modifications, setModifications] = useState<OrderModification[]>([]);
@@ -57,16 +58,8 @@ export function PendingModifications() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES'
-    }).format(amount);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
+  const formatCurrency = formatKES;
+  const formatDate = (dateString: string) => formatDateTime(dateString);
 
   const getModificationTypeLabel = (type: string) => {
     switch (type) {
@@ -231,10 +224,7 @@ function ApproveDialog({
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold mb-4">Approve Modification</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              You are about to approve a modification for {new Intl.NumberFormat('en-KE', {
-                style: 'currency',
-                currency: 'KES'
-              }).format(amount)}
+              You are about to approve a modification for {formatKES(amount)}
             </p>
             <div className="space-y-2 mb-4">
               <label className="text-sm font-medium">Manager PIN</label>

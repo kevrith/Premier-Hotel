@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import useAuthStore from '@/stores/authStore';
+import useAuthStore from '@/stores/authStore.secure';
 
 export interface WebSocketMessage {
   type: string;

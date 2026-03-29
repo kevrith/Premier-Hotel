@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import roomService from '@/lib/api/services/roomService';
+import { formatNumber } from '@/lib/utils/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'react-hot-toast';
 
@@ -115,8 +116,7 @@ export default function Rooms() {
 
   const handleFilterChange = (key: string, value: any) => setFilters(prev => ({ ...prev, [key]: value }));
 
-  const formatPrice = (price: number) =>
-    Math.round(price).toLocaleString('en-KE');
+  const formatPrice = formatNumber;
 
   const FiltersContent = () => (
     <CardContent className="space-y-5 pt-0">
