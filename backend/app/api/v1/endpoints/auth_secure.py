@@ -736,13 +736,10 @@ async def social_login(
         else:
             # New user — create profile
             user_id = str(uuid.uuid4())
-            name_parts = full_name.split()
             insert_resp = supabase.table("users").insert({
                 "id": user_id,
                 "email": email,
                 "full_name": full_name,
-                "first_name": name_parts[0] if name_parts else "",
-                "last_name": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
                 "role": "customer",
                 "status": "active",
                 "email_verified": True,
