@@ -4,6 +4,7 @@ REPLACES: auth_enhanced.py token-based authentication
 SECURITY: Uses httpOnly cookies to prevent XSS token theft
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from supabase import Client
@@ -24,12 +25,15 @@ from app.core.security import (
     validate_email_deliverable,
     validate_phone_number,
     generate_reset_token,
+    create_access_token,
+    decode_token,
 )
 from app.core.cookie_auth import (
     set_auth_cookies,
     clear_auth_cookies,
     get_current_user_from_cookie,
     refresh_access_token_from_cookie,
+    ACCESS_TOKEN_COOKIE_NAME,
 )
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -37,6 +41,7 @@ import uuid
 import logging
 
 router = APIRouter()
+security = HTTPBearer(auto_error=False)
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -370,31 +375,42 @@ async def refresh(
 @router.get("/ws-token")
 async def get_websocket_token(
     request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     supabase: Client = Depends(get_supabase)
 ):
     """
-    Get a JWT token for WebSocket authentication
-    
-    WebSocket connections cannot use httpOnly cookies, so this endpoint
-    provides a short-lived JWT token specifically for WebSocket authentication.
-    
-    Security:
-    - Validates user via httpOnly cookie first
-    - Returns short-lived token (5 minutes)
-    - Token is only valid for WebSocket connections
-    
-    Returns:
-        JWT token for WebSocket authentication
+    Get a JWT token for WebSocket authentication.
+    Accepts both httpOnly cookie and Bearer token.
     """
     try:
-        # Validate user from cookie
-        user_data = get_current_user_from_cookie(request)
-        user_id = user_data.get("sub")
-        
-        # Create short-lived token for WebSocket (5 minutes)
-        from app.core.security import create_access_token
         from datetime import timedelta
-        
+
+        user_data = None
+
+        # Try cookie first
+        try:
+            cookie_token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+            if cookie_token:
+                payload = decode_token(cookie_token)
+                if payload and payload.get("type") == "access":
+                    user_data = payload
+        except Exception:
+            pass
+
+        # Fallback to Bearer token
+        if not user_data and credentials:
+            payload = decode_token(credentials.credentials)
+            if payload and payload.get("type") == "access":
+                user_data = payload
+
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated"
+            )
+
+        user_id = user_data.get("sub")
+
         ws_token = create_access_token(
             data={
                 "sub": user_id,
@@ -402,9 +418,9 @@ async def get_websocket_token(
                 "role": user_data.get("role"),
                 "type": "websocket"
             },
-            expires_delta=timedelta(minutes=5)
+            expires_delta=timedelta(minutes=30)
         )
-        
+
         return {"ws_token": ws_token}
         
     except HTTPException:
@@ -421,21 +437,40 @@ async def get_websocket_token(
 @router.get("/me")
 async def get_current_user(
     request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     supabase: Client = Depends(get_supabase)
 ):
     """
-    Get current authenticated user from cookie
-
-    Security:
-    - Validates access token from httpOnly cookie
-    - Returns user profile without exposing tokens
-
-    Returns:
-        Current user profile
+    Get current authenticated user.
+    Accepts httpOnly cookie (web) or Bearer token (mobile/cross-origin).
     """
     try:
-        # Get user data from cookie
-        user_data = get_current_user_from_cookie(request)
+
+        user_data = None
+
+        # Try cookie first
+        try:
+            cookie_token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
+            if cookie_token:
+                payload = decode_token(cookie_token)
+                if payload and payload.get("type") == "access":
+                    user_data = payload
+        except Exception:
+            pass
+
+        # Fallback to Bearer token
+        if not user_data and credentials:
+            payload = decode_token(credentials.credentials)
+            if payload and payload.get("type") == "access":
+                user_data = payload
+
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         user_id = user_data.get("sub")
 
         # Fetch full user profile from database
