@@ -116,6 +116,35 @@ async def log_auth_event(
         pass
 
 
+# ===== HELPERS =====
+
+def _build_user_response(user: dict) -> UserResponse:
+    """
+    Build a UserResponse from a DB row safely.
+    Handles NULL values that Pydantic won't auto-default when explicitly passed as None.
+    """
+    return UserResponse(
+        id=user.get("id", ""),
+        email=user.get("email"),
+        phone=user.get("phone"),
+        full_name=(
+            user.get("full_name")
+            or f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+            or "User"
+        ),
+        role=user.get("role", "customer"),
+        status=user.get("status", "active"),
+        email_verified=bool(user.get("email_verified") or False),
+        phone_verified=bool(user.get("phone_verified") or False),
+        is_verified=bool(user.get("is_verified") or False),
+        profile_picture=user.get("profile_picture"),
+        auth_providers=user.get("auth_providers") or [],
+        created_at=user.get("created_at"),
+        updated_at=user.get("updated_at"),
+        last_login=user.get("last_login"),
+    )
+
+
 # ===== REGISTRATION =====
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -196,7 +225,7 @@ async def register(
 
         # Return tokens in body for mobile/cross-origin clients where cookies are blocked
         return {
-            "user": UserResponse(**user),
+            "user": _build_user_response(user),
             "message": "Registration successful. Authentication cookies set.",
             "access_token": tokens["access_token"],
             "refresh_token": tokens["refresh_token"],
@@ -283,7 +312,7 @@ async def login(
 
         # Return tokens in body for mobile/cross-origin clients where cookies are blocked
         return {
-            "user": UserResponse(**user),
+            "user": _build_user_response(user),
             "message": "Login successful. Authentication cookies set.",
             "access_token": tokens["access_token"],
             "refresh_token": tokens["refresh_token"],
@@ -496,7 +525,7 @@ async def get_current_user(
                 detail=f"Account is {user.get('status')}",
             )
 
-        return {"user": UserResponse(**user)}
+        return {"user": _build_user_response(user)}
 
     except HTTPException:
         raise
@@ -749,7 +778,7 @@ async def social_login(
         await log_auth_event(supabase, user_id, f"social_login_{provider}")
 
         return {
-            "user": UserResponse(**user),
+            "user": _build_user_response(user),
             "message": "Social login successful.",
             "access_token": tokens["access_token"],
             "refresh_token": tokens["refresh_token"],
@@ -761,5 +790,5 @@ async def social_login(
         logging.error(f"Social login error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Social login failed. Please try again.",
+            detail=f"Social login failed: {str(e)}",
         )
