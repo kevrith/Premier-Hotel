@@ -178,6 +178,26 @@ export default function ChefDashboard() {
     }
   };
 
+  // Accept + immediately start preparing in one click
+  const handleAcceptAndPrepare = async (orderId: string) => {
+    if (!canTakeMoreOrders()) {
+      toast.error('Workload full — you already have 5 active orders');
+      return;
+    }
+    try {
+      setUpdating(orderId);
+      await ordersApi.updateStatus(orderId, { status: 'confirmed' as any });
+      await ordersApi.updateStatus(orderId, { status: 'preparing' as any });
+      toast.success('Order accepted and now being prepared');
+      await refreshOrders();
+    } catch (error) {
+      console.error('Failed to accept and prepare order:', error);
+      toast.error('Failed to update order status');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
   // Calculate prep time for an item based on name
   const getItemPrepTime = (itemName: string): number => {
     const nameLower = itemName.toLowerCase();
@@ -501,24 +521,36 @@ export default function ChefDashboard() {
         {/* Action Buttons - LARGE & TOUCH-FRIENDLY */}
         <div className="flex flex-col gap-3 pt-2">
           {order.status === 'pending' && (
-            <Button
-              onClick={() => handleStatusUpdate(order.id, 'confirmed')}
-              disabled={updating === order.id}
-              className="h-14 text-lg font-bold"
-              size="lg"
-            >
-              {updating === order.id ? (
-                <>
-                  <RefreshCw className="h-6 w-6 mr-2 animate-spin" />
-                  Confirming...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-6 w-6 mr-2" />
-                  Accept Order
-                </>
+            <>
+              <Button
+                onClick={() => handleAcceptAndPrepare(order.id)}
+                disabled={updating === order.id || !canTakeMoreOrders()}
+                className="h-14 text-lg font-bold bg-green-600 hover:bg-green-700"
+                size="lg"
+              >
+                {updating === order.id ? (
+                  <>
+                    <RefreshCw className="h-6 w-6 mr-2 animate-spin" />
+                    Accepting...
+                  </>
+                ) : !canTakeMoreOrders() ? (
+                  <>
+                    <AlertCircle className="h-6 w-6 mr-2" />
+                    Workload Full (5/5)
+                  </>
+                ) : (
+                  <>
+                    <ChefHat className="h-6 w-6 mr-2" />
+                    Accept &amp; Start Preparing
+                  </>
+                )}
+              </Button>
+              {!canTakeMoreOrders() && (
+                <div className="text-sm text-red-600 font-medium text-center">
+                  You have reached the maximum of 5 active orders
+                </div>
               )}
-            </Button>
+            </>
           )}
 
           {order.status === 'confirmed' && (
