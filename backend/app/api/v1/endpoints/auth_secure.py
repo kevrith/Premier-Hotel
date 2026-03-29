@@ -182,8 +182,8 @@ async def register(
             role=user_data.role,
         )
 
-        # Set httpOnly authentication cookies
-        set_auth_cookies(
+        # Set httpOnly authentication cookies and get tokens for mobile clients
+        tokens = set_auth_cookies(
             response=response,
             user_id=user["id"],
             email=user.get("email"),
@@ -193,10 +193,12 @@ async def register(
         # Log registration event
         await log_auth_event(supabase, user["id"], "register")
 
-        # Return user profile without tokens in response body for security
+        # Return tokens in body for mobile/cross-origin clients where cookies are blocked
         return {
             "user": UserResponse(**user),
-            "message": "Registration successful. Authentication cookies set."
+            "message": "Registration successful. Authentication cookies set.",
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
         }
 
     except HTTPException:
@@ -267,8 +269,8 @@ async def login(
             {"last_login": datetime.now(timezone.utc).isoformat()}
         ).eq("id", user["id"]).execute()
 
-        # Set httpOnly authentication cookies
-        set_auth_cookies(
+        # Set httpOnly authentication cookies and get tokens for mobile clients
+        tokens = set_auth_cookies(
             response=response,
             user_id=user["id"],
             email=user.get("email"),
@@ -278,10 +280,12 @@ async def login(
         # Log successful login
         await log_auth_event(supabase, user["id"], "login")
 
-        # Return user profile without tokens in response body for security
+        # Return tokens in body for mobile/cross-origin clients where cookies are blocked
         return {
             "user": UserResponse(**user),
-            "message": "Login successful. Authentication cookies set."
+            "message": "Login successful. Authentication cookies set.",
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
         }
 
     except HTTPException:
