@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navbar } from '@/components/Navbar';
@@ -18,12 +18,15 @@ import {
   Package,
   BarChart3,
   BookOpen,
-  Flag
+  Flag,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { useOrderUpdates, Order } from '@/hooks/useOrderUpdates';
 import { ordersApi } from '@/lib/api/orders';
+import { useOrderBell } from '@/hooks/useOrderBell';
 import OfflineService from '@/services/offlineService';
 import {
   Dialog,
@@ -88,10 +91,23 @@ export default function ChefDashboard() {
     clearNewOrderCount,
     setAllOrders
   } = useOrderUpdates({
-    playSound: true,
+    playSound: false, // we handle sound ourselves via useOrderBell
     showNotifications: true,
     showToasts: true
   });
+
+  // Kitchen bell sound + mute toggle
+  const { ring: ringBell, muted: bellMuted, toggleMute: toggleBellMute } = useOrderBell();
+
+  // Ring bell when new pending orders arrive
+  const prevPendingCountRef = useRef(0);
+  useEffect(() => {
+    const pendingCount = orders.filter(o => o.status === 'pending').length;
+    if (pendingCount > prevPendingCountRef.current) {
+      ringBell();
+    }
+    prevPendingCountRef.current = pendingCount;
+  }, [orders, ringBell]);
 
   // Preparation time management
   const [prepTimes, setPrepTimes] = useState<Record<string, number>>({});
@@ -676,6 +692,21 @@ export default function ChefDashboard() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Bell mute toggle */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleBellMute}
+              title={bellMuted ? 'Unmute order bell' : 'Mute order bell'}
+              className="flex items-center gap-2"
+            >
+              {bellMuted ? (
+                <><VolumeX className="h-4 w-4 text-red-500" /><span className="hidden sm:inline text-xs">Muted</span></>
+              ) : (
+                <><Volume2 className="h-4 w-4 text-green-600" /><span className="hidden sm:inline text-xs">Sound On</span></>
+              )}
+            </Button>
+
             {/* Current Chef Workload - Show for chef, manager, and admin */}
             {user?.id && (user?.role === 'chef' || user?.role === 'manager' || user?.role === 'admin') && (
               <Badge variant="outline" className="flex items-center gap-2 px-3 py-2 text-base">

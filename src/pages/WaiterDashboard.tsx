@@ -30,6 +30,7 @@ import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { toast } from 'react-hot-toast';
 import { ordersApi, Order } from '@/lib/api/orders';
 import { useOrderUpdates } from '@/hooks/useOrderUpdates';
+import { useOrderBell } from '@/hooks/useOrderBell';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Dialog,
@@ -71,14 +72,21 @@ export default function WaiterDashboard() {
     clearNewOrderCount,
     setAllOrders
   } = useOrderUpdates({
-    playSound: true,
+    playSound: false, // handled by useOrderBell
     showNotifications: true,
     showToasts: true
   });
 
-  // Sound notifications
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Kitchen bell sound + mute toggle
+  const { ring: ringBell, muted: bellMuted, toggleMute: toggleBellMute } = useOrderBell();
+  const prevPendingCountRef = useRef(0);
+  useEffect(() => {
+    const pendingCount = orders.filter(o => o.status === 'pending').length;
+    if (pendingCount > prevPendingCountRef.current) {
+      ringBell();
+    }
+    prevPendingCountRef.current = pendingCount;
+  }, [orders, ringBell]);
 
   // Create new order dialog
   const [showNewOrderDialog, setShowNewOrderDialog] = useState(false);
@@ -168,18 +176,6 @@ export default function WaiterDashboard() {
     }
   }, [isAuthenticated, user?.id]);
 
-  // Sound notification setup
-  useEffect(() => {
-    audioRef.current = new Audio('/notification.mp3');
-    audioRef.current.volume = 0.5;
-
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
-  }, []);
 
   // Offline/online detection
   useEffect(() => {
@@ -206,10 +202,9 @@ export default function WaiterDashboard() {
     return null;
   }
 
-  // Toggle sound
   const toggleSound = () => {
-    setSoundEnabled(!soundEnabled);
-    toast.success(soundEnabled ? 'Sound alerts disabled' : 'Sound alerts enabled');
+    toggleBellMute();
+    toast.success(bellMuted ? 'Sound alerts enabled' : 'Sound alerts disabled');
   };
 
   // Refresh orders
@@ -594,8 +589,8 @@ export default function WaiterDashboard() {
                   {newOrderCount} new
                 </Badge>
               )}
-              <Button variant={soundEnabled ? "default" : "outline"} size="sm" onClick={toggleSound}>
-                {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              <Button variant={bellMuted ? "outline" : "default"} size="sm" onClick={toggleSound} title={bellMuted ? 'Unmute order bell' : 'Mute order bell'}>
+                {bellMuted ? <VolumeX className="h-4 w-4 text-red-500" /> : <Volume2 className="h-4 w-4" />}
               </Button>
               <Button variant="outline" size="sm" onClick={refreshOrders} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
