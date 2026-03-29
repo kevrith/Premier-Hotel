@@ -80,11 +80,16 @@ export function AuthProvider({ children }) {
       try {
         const state = useAuthStore.getState();
 
-        // If we already have a valid token + user in persisted state,
-        // trust it — no network call needed. This is the key fix for mobile/PWA.
-        if (state.isAuthenticated && state.user && state.token) {
-          setIsLoading(false);
-          return;
+        // If we already have a valid authenticated session in persisted state,
+        // trust it — no network call needed on startup.
+        // We check lastAuthenticatedAt within 7 days; token may be empty for
+        // sessions that pre-date the Bearer-token login flow.
+        if (state.isAuthenticated && state.user && state.lastAuthenticatedAt) {
+          const hoursSince = (Date.now() - new Date(state.lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
+          if (hoursSince < 168) { // 7 days
+            setIsLoading(false);
+            return;
+          }
         }
 
         // No persisted session — try a network auth check

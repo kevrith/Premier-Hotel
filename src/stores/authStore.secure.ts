@@ -341,13 +341,13 @@ const useAuthStore = create<AuthState>()(
               return false;
             }
 
-            // Genuine auth error — but only clear state if we have no token
-            // (prevents Render cold-start 401s from logging out valid sessions)
-            const { token: currentToken, lastAuthenticatedAt } = get();
-            if (currentToken && lastAuthenticatedAt) {
+            // Genuine auth error — protect recently-authenticated sessions from cold-start 401s.
+            // This covers both token-based sessions and old cookie-only sessions (token: "").
+            const { user: currentUser, isAuthenticated: currentlyAuth, lastAuthenticatedAt } = get();
+            if (currentlyAuth && currentUser && lastAuthenticatedAt) {
               const hoursSinceAuth = (Date.now() - new Date(lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
-              if (hoursSinceAuth < 0.5) {
-                // Token is less than 30 minutes old — likely a cold-start 401, keep session
+              if (hoursSinceAuth < 168) {
+                // Session is within 7 days — treat as temporarily unreachable, keep alive
                 set({ isOfflineSession: true });
                 return true;
               }

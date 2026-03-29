@@ -169,6 +169,11 @@ registerRoute(
   )
 );
 
+// ── On install: skip waiting so the new SW takes over immediately ─────────────
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+
 // ── On activate: immediately claim all open tabs ──────────────────────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
