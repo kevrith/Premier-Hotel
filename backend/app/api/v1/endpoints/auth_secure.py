@@ -659,20 +659,35 @@ async def confirm_password_reset(
 
 # ===== SOCIAL LOGIN (Google OAuth) =====
 
-async def _get_google_userinfo(access_token: str) -> dict:
-    """Verify a Google access token and return the user's profile from Google."""
+async def _get_google_userinfo(token: str) -> dict:
+    """
+    Verify a Google token and return the user's profile.
+    Accepts both:
+      - ID tokens (JWT with 3 dot-separated parts) from GoogleLogin component
+      - Access tokens (opaque) from the implicit flow
+    """
     import httpx
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(
-            "https://www.googleapis.com/oauth2/v3/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
+        if token.count(".") == 2:
+            # JWT — treat as ID token, verify via Google's tokeninfo endpoint
+            resp = await client.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"id_token": token},
+            )
+        else:
+            # Opaque access token — verify via userinfo endpoint
+            resp = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {token}"},
+            )
     if resp.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google access token",
+            detail="Invalid Google token",
         )
-    return resp.json()
+    data = resp.json()
+    # Normalise field names (tokeninfo uses 'picture' differently; both return same keys)
+    return data
 
 
 @router.post("/social-login")
