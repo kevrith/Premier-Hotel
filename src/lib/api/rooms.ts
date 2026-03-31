@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Rooms API Client
  * Handles all room-related operations

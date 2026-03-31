@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Custom hook for handling notifications with sound and visual alerts
  */

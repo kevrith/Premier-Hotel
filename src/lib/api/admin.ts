@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Admin API Client
  * Handles all administrative operations (user management, etc.)

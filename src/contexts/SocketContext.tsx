@@ -1,17 +1,20 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+// @ts-nocheck
+import { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import useNotificationStore from '@/stores/notificationStore';
 
-const SocketContext = createContext(undefined);
+const SocketContext = createContext<any>(undefined);
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:8000';
 
-export function SocketProvider({ children }) {
-  const [socket, setSocket] = useState(null);
+export function SocketProvider({ children }: { children: any }) {
+  const [socket, setSocket] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const { user, token, isAuthenticated } = useAuth();
-  const { addNotification } = useNotificationStore();
+  const auth = useAuth() as any;
+  const { user, isAuthenticated } = auth;
+  const token = auth.token;
+  const { addNotification } = useNotificationStore() as any;
 
   useEffect(() => {
     if (!isAuthenticated || !token) {

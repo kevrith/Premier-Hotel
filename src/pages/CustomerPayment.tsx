@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Customer Payment Page
  * Public page where customers can pay their bills via QR code

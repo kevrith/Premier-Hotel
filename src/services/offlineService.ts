@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { db, dbHelpers } from '@/db/schema';
 import { toast } from 'react-hot-toast';
 

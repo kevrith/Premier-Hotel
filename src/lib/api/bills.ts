@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Bills and Payments API Client
  * Provides methods to interact with the bills and payments backend

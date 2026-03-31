@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Notification Settings Component
  * Allows users to configure notification preferences

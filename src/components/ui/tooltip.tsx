@@ -9,7 +9,7 @@ const Tooltip = TooltipPrimitive.Root;
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
 const TooltipContent = React.forwardRef(
-  ({ className, sideOffset = 4, ...props }, ref) => (
+  ({ className, sideOffset = 4, ...props }: any, ref: any) => (
     <TooltipPrimitive.Content
       ref={ref}
       sideOffset={sideOffset}

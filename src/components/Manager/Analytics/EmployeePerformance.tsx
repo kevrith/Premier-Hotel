@@ -5,11 +5,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { 
-  TrendingUp, 
-  Users, 
-  BarChart3, 
+  TrendingUp,
+  Users,
+  BarChart3,
   Star,
-  TrendingDown,
   Calendar,
   Target
 } from 'lucide-react';
@@ -20,7 +19,7 @@ import { analyticsService, type EmployeePerformance, type AnalyticsFilters } fro
 export function EmployeePerformance() {
   const [employeeData, setEmployeeData] = useState<EmployeePerformance | null>(null);
   const [teamData, setTeamData] = useState<EmployeePerformance[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [_isLoading, setIsLoading] = useState(false);
   const [filters, setFilters] = useState<AnalyticsFilters>({
     start_date: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'),
     end_date: format(new Date(), 'yyyy-MM-dd'),

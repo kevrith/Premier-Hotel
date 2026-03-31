@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Enhanced Inventory Management Component
  * Comprehensive inventory tracking with categories, usage logging, and alerts

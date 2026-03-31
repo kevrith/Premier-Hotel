@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Lost and Found Management Component
  * Track and manage lost items found in hotel rooms

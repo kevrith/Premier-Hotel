@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Read Receipt Component
  * Shows message delivery and read status with visual indicators

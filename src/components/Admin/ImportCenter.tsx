@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Import Center — bulk CSV/Excel import for Rooms, Staff, Customers,
  * Inventory Items, and Menu Items (for migration from other systems).

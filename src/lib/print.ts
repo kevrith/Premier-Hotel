@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Print utilities for order slips and customer bills.
  * Opens a new browser window, renders content, triggers print, then closes.

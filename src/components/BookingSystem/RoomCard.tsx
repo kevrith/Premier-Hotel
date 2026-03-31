@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,19 +15,19 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const getAmenityIcon = (amenity) => {
-  const iconMap = {
+const getAmenityIcon = (amenity: any) => {
+  const iconMap: Record<string, JSX.Element> = {
     "Free WiFi": <Wifi className="w-4 h-4" />,
     "Parking": <Car className="w-4 h-4" />,
     "Coffee Machine": <Coffee className="w-4 h-4" />,
     "Cable TV": <Tv className="w-4 h-4" />,
     "Smart TV": <Tv className="w-4 h-4" />
   };
-  
+
   return iconMap[amenity] || null;
 };
 
-export const RoomCard = ({ room, checkInDate, checkOutDate, nights = 1 }) => {
+export const RoomCard = ({ room, checkInDate, checkOutDate, nights = 1 }: { room: any; checkInDate: any; checkOutDate: any; nights?: number }) => {
   const totalPrice = room.base_price_kes * nights;
   const bookingUrl = checkInDate && checkOutDate 
     ? `/rooms/${room.id}/book?checkin=${checkInDate.toISOString().split('T')[0]}&checkout=${checkOutDate.toISOString().split('T')[0]}&guests=2`

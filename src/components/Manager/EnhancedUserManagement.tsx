@@ -12,7 +12,6 @@ import {
   UserCheck,
   UserX,
   Edit,
-  Trash2,
   Clock,
   Calendar,
   TrendingUp,
@@ -43,7 +42,7 @@ export function EnhancedUserManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
+  const [_selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
 
   useEffect(() => {
     loadStaffData();

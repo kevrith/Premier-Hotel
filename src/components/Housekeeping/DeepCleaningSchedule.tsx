@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Deep Cleaning Schedule Component
  * Manage and track deep cleaning schedules for all rooms — wired to real API

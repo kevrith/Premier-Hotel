@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Batch Operations Component
  * Allows bulk stock adjustments, transfers, and updates

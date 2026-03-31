@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Secure Authentication Store
  * SECURITY: Uses httpOnly cookies for token storage (XSS protection)

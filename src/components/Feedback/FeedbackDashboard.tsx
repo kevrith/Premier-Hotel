@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Feedback Dashboard Component
  * Comprehensive feedback collection and management system

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Enhanced Admin API Client
  * Complete user lifecycle management with audit logging

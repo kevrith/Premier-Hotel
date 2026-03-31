@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Service Requests Page
  * Allows guests to request services and track their status

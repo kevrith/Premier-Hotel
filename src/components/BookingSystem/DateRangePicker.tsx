@@ -12,6 +12,11 @@ export const DateRangePicker = ({
   checkOutDate,
   onCheckInChange,
   onCheckOutChange
+}: {
+  checkInDate: Date | undefined;
+  checkOutDate: Date | undefined;
+  onCheckInChange: (date: any) => void;
+  onCheckOutChange: (date: any) => void;
 }) => {
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [checkOutOpen, setCheckOutOpen] = useState(false);
@@ -19,7 +24,7 @@ export const DateRangePicker = ({
   const today = startOfToday();
   const minCheckOut = checkInDate ? addDays(checkInDate, 1) : addDays(today, 1);
 
-  const handleCheckInSelect = (date) => {
+  const handleCheckInSelect = (date: any) => {
     onCheckInChange(date);
     setCheckInOpen(false);
     
@@ -29,7 +34,7 @@ export const DateRangePicker = ({
     }
   };
 
-  const handleCheckOutSelect = (date) => {
+  const handleCheckOutSelect = (date: any) => {
     onCheckOutChange(date);
     setCheckOutOpen(false);
   };

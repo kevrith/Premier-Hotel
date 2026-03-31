@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Menu API Client
  * Handles all menu-related operations

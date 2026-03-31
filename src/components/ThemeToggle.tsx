@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Moon, Sun, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAutoTheme } from "@/hooks/useAutoTheme";

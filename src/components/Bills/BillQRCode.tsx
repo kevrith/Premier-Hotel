@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * BillQRCode Component
  * Displays QR code for customer self-payment

@@ -5,14 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { 
-  TrendingUp, 
-  DollarSign, 
-  ShoppingCart, 
+  TrendingUp,
+  DollarSign,
+  ShoppingCart,
   Clock,
-  BarChart3,
-  Users,
-  Calendar,
-  TrendingDown
+  Calendar
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -20,7 +17,7 @@ import { analyticsService, type SalesAnalytics, type AnalyticsFilters } from '@/
 
 export function SalesAnalytics() {
   const [analytics, setAnalytics] = useState<SalesAnalytics | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [_isLoading, setIsLoading] = useState(false);
   const [filters, setFilters] = useState<AnalyticsFilters>({
     start_date: format(new Date(), 'yyyy-MM-dd'),
     end_date: format(new Date(), 'yyyy-MM-dd'),

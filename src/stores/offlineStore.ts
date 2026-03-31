@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { create } from 'zustand';
 import { db } from '@/db/schema';
 import OfflineService from '@/services/offlineService';

@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 
 const Separator = React.forwardRef(
   (
-    { className, orientation = "horizontal", decorative = true, ...props },
-    ref
+    { className, orientation = "horizontal", decorative = true, ...props }: any,
+    ref: any
   ) => (
     <SeparatorPrimitive.Root
       ref={ref}

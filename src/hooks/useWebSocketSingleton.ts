@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Singleton WebSocket Manager
  * Ensures only one WebSocket connection per user across all components

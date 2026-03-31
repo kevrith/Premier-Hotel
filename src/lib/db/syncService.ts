@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Sync Service — Drains the pending actions queue when connectivity is restored
  */

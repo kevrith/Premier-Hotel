@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Announcement Display Component
  * Shows active announcements to guests

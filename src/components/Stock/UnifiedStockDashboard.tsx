@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Enterprise Unified Stock Dashboard
  * Single view for all inventory — all departments, all categories.

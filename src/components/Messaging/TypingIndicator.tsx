@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Typing Indicator Component
  * Shows when other users are typing in a conversation

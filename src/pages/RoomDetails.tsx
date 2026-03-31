@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Bed,
   Users,
   Wifi,
   Coffee,
@@ -22,7 +21,6 @@ import {
   Phone,
   Mail,
   CheckCircle,
-  X,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -259,15 +257,15 @@ const amenityDetails = {
 export default function RoomDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [room, setRoom] = useState(null);
+  const [room, setRoom] = useState<any | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [_isImageModalOpen, setIsImageModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchRoom = async () => {
       try {
         const response = await api.get(`/rooms/${id}`);
-        setRoom(response.data);
+        setRoom((response as any).data);
       } catch (error) {
         console.error('Error fetching room:', error);
         navigate('/rooms');
@@ -375,7 +373,7 @@ export default function RoomDetails() {
 
           {/* Thumbnail strip */}
           <div className="flex gap-2 mt-4 overflow-x-auto">
-            {room.images?.map((image, index) => (
+            {room.images?.map((image: any, index: any) => (
               <button
                 key={index}
                 onClick={() => setCurrentImageIndex(index)}
@@ -443,8 +441,8 @@ export default function RoomDetails() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {room.amenities?.map((amenity) => {
-                        const detail = amenityDetails[amenity];
+                      {room.amenities?.map((amenity: any) => {
+                        const detail = (amenityDetails as any)[amenity];
                         if (!detail) return null;
                         const Icon = detail.icon;
                         return (
@@ -482,7 +480,7 @@ export default function RoomDetails() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {room.reviews?.map((review) => (
+                    {room.reviews?.map((review: any) => (
                       <div key={review.id} className="border-b last:border-0 pb-4 last:pb-0">
                         <div className="flex items-start justify-between mb-2">
                           <div>

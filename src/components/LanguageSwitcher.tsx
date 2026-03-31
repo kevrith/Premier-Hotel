@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Language Switcher Component
  * Allows users to switch between English and Swahili

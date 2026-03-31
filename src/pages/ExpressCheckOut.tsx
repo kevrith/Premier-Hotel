@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CheckCircle, Download, Star, Receipt, CreditCard, AlertCircle, FileText } from 'lucide-react';

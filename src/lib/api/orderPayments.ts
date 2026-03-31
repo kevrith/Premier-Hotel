@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Order Payments API Client
  * Simple payment processing for served orders

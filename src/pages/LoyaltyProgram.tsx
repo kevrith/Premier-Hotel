@@ -4,7 +4,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Navbar } from '@/components/Navbar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -12,39 +11,33 @@ import {
   TrendingUp,
   Gift,
   Star,
-  CreditCard,
-  Calendar,
   Trophy,
   Sparkles,
-  ArrowUp,
   Clock,
   Check,
-  X,
   Loader2,
   Share2,
-  History,
   Ticket,
-  Target,
   Zap,
   Crown
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { loyaltyService } from '@/lib/api/loyalty';
+import { loyaltyService, MemberSummary, LoyaltyTier, Reward, LoyaltyTransaction, RewardRedemption, Referral } from '@/lib/api/loyalty';
 
 export default function LoyaltyProgram() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
 
   // Data states
-  const [summary, setSummary] = useState(null);
-  const [tiers, setTiers] = useState([]);
-  const [rewards, setRewards] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [redemptions, setRedemptions] = useState([]);
-  const [referrals, setReferrals] = useState([]);
+  const [summary, setSummary] = useState<MemberSummary | null>(null);
+  const [tiers, setTiers] = useState<LoyaltyTier[]>([]);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [transactions, setTransactions] = useState<LoyaltyTransaction[]>([]);
+  const [redemptions, setRedemptions] = useState<RewardRedemption[]>([]);
+  const [referrals, setReferrals] = useState<Referral[]>([]);
 
   // Filter states
   const [rewardFilter, setRewardFilter] = useState('all');
@@ -85,14 +78,14 @@ export default function LoyaltyProgram() {
     }
   };
 
-  const handleRedeemReward = async (rewardId) => {
+  const handleRedeemReward = async (rewardId: string) => {
     try {
       await loyaltyService.redeemReward(rewardId);
       toast.success('Reward redeemed successfully!');
       loadData();
     } catch (error) {
       console.error('Error redeeming reward:', error);
-      toast.error(error.response?.data?.detail || 'Failed to redeem reward');
+      toast.error((error as any).response?.data?.detail || 'Failed to redeem reward');
     }
   };
 
@@ -110,7 +103,7 @@ export default function LoyaltyProgram() {
     }
   };
 
-  const getTierIcon = (tierName) => {
+  const getTierIcon = (tierName: string) => {
     const icons = {
       bronze: Award,
       silver: Star,
@@ -118,10 +111,10 @@ export default function LoyaltyProgram() {
       platinum: Sparkles,
       diamond: Crown
     };
-    return icons[tierName.toLowerCase()] || Award;
+    return (icons as any)[tierName.toLowerCase()] || Award;
   };
 
-  const formatDate = (date) => {
+  const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -280,7 +273,7 @@ export default function LoyaltyProgram() {
                     <p className="text-gray-500 text-center py-8">No rewards available with your current points</p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {summary.available_rewards.slice(0, 6).map((reward) => (
+                      {summary.available_rewards.slice(0, 6).map((reward: any) => (
                         <Card key={reward.id} className="hover:shadow-lg transition-shadow">
                           <CardContent className="pt-6">
                             <div className="flex items-start justify-between mb-3">
@@ -312,7 +305,7 @@ export default function LoyaltyProgram() {
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
                   <div className="space-y-3">
-                    {summary.recent_transactions.map((txn) => (
+                    {summary.recent_transactions.map((txn: any) => (
                       <div key={txn.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                         <div className="flex items-center gap-3">
                           {txn.transaction_type === 'earn' || txn.transaction_type === 'bonus' ? (
@@ -538,7 +531,7 @@ export default function LoyaltyProgram() {
                               <div className="mt-4 pt-4 border-t">
                                 <p className="text-xs font-medium text-gray-600 mb-2">Benefits:</p>
                                 <ul className="space-y-1">
-                                  {tier.benefits.benefits.map((benefit, idx) => (
+                                  {tier.benefits.benefits.map((benefit: any, idx: number) => (
                                     <li key={idx} className="flex items-start gap-2 text-xs">
                                       <Check className="h-3 w-3 text-green-600 mt-0.5 flex-shrink-0" />
                                       <span>{benefit}</span>

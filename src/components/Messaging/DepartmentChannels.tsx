@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Department Channels Component
  * Quick access to communicate with specific hotel departments

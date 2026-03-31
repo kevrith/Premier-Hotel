@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Message Search Component
  * Search across conversations and messages

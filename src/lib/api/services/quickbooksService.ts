@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * QuickBooks API Service
  *

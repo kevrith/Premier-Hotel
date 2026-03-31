@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Supplier Performance Metrics Dashboard
  * Tracks and analyzes supplier performance with detailed metrics

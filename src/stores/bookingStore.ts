@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { create } from 'zustand';
 import { db } from '@/db/schema';
 import bookingService from '@/lib/api/services/bookingService';

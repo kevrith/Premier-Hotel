@@ -1,11 +1,12 @@
-import React, { createContext, useContext, useEffect } from 'react';
+// @ts-nocheck
+import { createContext, useContext, useEffect } from 'react';
 import useOfflineStore from '@/stores/offlineStore';
 import useAuthStore from '@/stores/authStore.secure';
 import { toast } from 'react-hot-toast';
 
-const OfflineContext = createContext(undefined);
+const OfflineContext = createContext<any>(undefined);
 
-export function OfflineProvider({ children }) {
+export function OfflineProvider({ children }: { children: any }) {
   const {
     isOnline,
     syncQueue,

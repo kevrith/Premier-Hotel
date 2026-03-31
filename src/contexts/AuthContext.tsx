@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '@/stores/authStore.secure';
 import { useDataPreCache } from '@/hooks/useDataPreCache';
@@ -32,7 +32,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }) {
+export function AuthProvider({ children }: { children: any }) {
   const {
     user,
     role,
@@ -41,7 +41,6 @@ export function AuthProvider({ children }) {
     hasHydrated,
     error,
     isOfflineSession,
-    token,
     login: storeLogin,
     logout: storeLogout,
     register: storeRegister,

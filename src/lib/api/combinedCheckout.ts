@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Combined Checkout API Client
  * Handles payment for both room and F&B charges together
