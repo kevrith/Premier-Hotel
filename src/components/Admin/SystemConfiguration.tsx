@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2 } from 'lucide-react';
+import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as hotToast } from 'react-hot-toast';
 import TaxSettings from './TaxSettings';
@@ -99,6 +99,20 @@ export function SystemConfiguration() {
   const [system,       setSystem]       = useState<SystemConfig>(DEFAULT_SYSTEM);
   const [localization, setLocalization] = useState<LocalizationConfig>(DEFAULT_LOCALIZATION);
 
+  // POS settings — stored in localStorage (device-level settings)
+  const [posAutoLogout, setPosAutoLogout] = useState<boolean>(
+    () => localStorage.getItem('pos:auto_logout_desktop') === 'true'
+  );
+  const [posPrintOnOrder, setPosPrintOnOrder] = useState<boolean>(
+    () => localStorage.getItem('pos:print_on_order') !== 'false' // default ON
+  );
+
+  const savePosSettings = () => {
+    localStorage.setItem('pos:auto_logout_desktop', String(posAutoLogout));
+    localStorage.setItem('pos:print_on_order', String(posPrintOnOrder));
+    hotToast.success('POS settings saved');
+  };
+
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState<string | null>(null); // which section is saving
 
@@ -163,12 +177,13 @@ export function SystemConfiguration() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="payment" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="payment"><CreditCard className="h-4 w-4 mr-2" />Payment</TabsTrigger>
-              <TabsTrigger value="tax"><Receipt className="h-4 w-4 mr-2" />Tax</TabsTrigger>
-              <TabsTrigger value="notifications"><Bell className="h-4 w-4 mr-2" />Notifications</TabsTrigger>
-              <TabsTrigger value="system"><Zap className="h-4 w-4 mr-2" />System</TabsTrigger>
-              <TabsTrigger value="localization"><Globe className="h-4 w-4 mr-2" />Localization</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="payment"><CreditCard className="h-4 w-4 mr-1" />Payment</TabsTrigger>
+              <TabsTrigger value="tax"><Receipt className="h-4 w-4 mr-1" />Tax</TabsTrigger>
+              <TabsTrigger value="notifications"><Bell className="h-4 w-4 mr-1" />Alerts</TabsTrigger>
+              <TabsTrigger value="system"><Zap className="h-4 w-4 mr-1" />System</TabsTrigger>
+              <TabsTrigger value="localization"><Globe className="h-4 w-4 mr-1" />Locale</TabsTrigger>
+              <TabsTrigger value="pos"><Monitor className="h-4 w-4 mr-1" />POS</TabsTrigger>
             </TabsList>
 
             {/* ── Payment ── */}
@@ -476,6 +491,56 @@ export function SystemConfiguration() {
                 >
                   {saving === 'Localization' && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Save Localization Settings
+                </Button>
+              </div>
+            </TabsContent>
+
+            {/* ── POS Settings ── */}
+            <TabsContent value="pos" className="space-y-4">
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Device-level POS settings. These apply to this browser/device only and take effect immediately.
+                </p>
+
+                {/* Auto-logout */}
+                <div className="p-4 border rounded-lg space-y-4">
+                  <div className="flex items-start gap-3">
+                    <Monitor className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Auto-logout after order (Desktop only)</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        When enabled, waiters are automatically logged out on desktop computers after
+                        successfully placing an order. On mobile devices they stay logged in.
+                        Useful for shared POS terminals.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={posAutoLogout}
+                      onCheckedChange={setPosAutoLogout}
+                    />
+                  </div>
+                </div>
+
+                {/* Print on order */}
+                <div className="p-4 border rounded-lg space-y-4">
+                  <div className="flex items-start gap-3">
+                    <Printer className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Auto-print order slip after order creation</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Automatically opens a print dialog with an order slip whenever a waiter
+                        creates a new order. Turn off if you do not have a receipt printer connected.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={posPrintOnOrder}
+                      onCheckedChange={setPosPrintOnOrder}
+                    />
+                  </div>
+                </div>
+
+                <Button onClick={savePosSettings}>
+                  Save POS Settings
                 </Button>
               </div>
             </TabsContent>

@@ -15,6 +15,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import menuService from '@/lib/api/services/menuService';
 import { ordersApi } from '@/lib/api/orders';
+import { printOrderSlip } from '@/lib/print';
+import useAuthStore from '@/stores/authStore.secure';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { MenuItem } from '@/types';
 
@@ -395,7 +397,27 @@ export default function EnhancedMenu() {
 
       // Different flow for staff vs customers
       if (isStaff) {
-        // Staff: stay on menu for creating more orders
+        // Print order slip if setting is enabled (default: on)
+        const shouldPrint = localStorage.getItem('pos:print_on_order') !== 'false';
+        if (shouldPrint) {
+          printOrderSlip(createdOrder);
+        }
+
+        // Auto-logout on desktop if setting is enabled
+        const autoLogout = localStorage.getItem('pos:auto_logout_desktop') === 'true';
+        const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+        if (autoLogout && !isMobile) {
+          toast.success(
+            `Order ${createdOrder.order_number} created! Logging out...`,
+            { duration: 2500, icon: '✅' }
+          );
+          setTimeout(async () => {
+            await useAuthStore.getState().logout();
+            navigate('/login');
+          }, 2500);
+          return;
+        }
+
         toast.success(
           `Order ${createdOrder.order_number} created successfully! Ready to take another order.`,
           { duration: 5000, icon: '✅' }

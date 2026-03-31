@@ -52,7 +52,8 @@ import {
 import { orderPaymentsApi, OrderPaymentRequest } from '@/lib/api/orderPayments';
 import { combinedCheckoutApi, CombinedCheckoutRequest } from '@/lib/api/combinedCheckout';
 import { Textarea } from '@/components/ui/textarea';
-import { Smartphone, Banknote } from 'lucide-react';
+import { Smartphone, Banknote, Printer } from 'lucide-react';
+import { printBill } from '@/lib/print';
 import { tablesAPI, RestaurantTable } from '@/lib/api/tables';
 import { useAcceptedPaymentMethods } from '@/hooks/useAcceptedPaymentMethods';
 import { paymentService } from '@/lib/api/payments';
@@ -542,15 +543,26 @@ export default function WaiterDashboard() {
                 )
               )}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full"
-              onClick={() => openTransferDialog(order.id, order.location)}
-            >
-              <ArrowRightLeft className="h-3 w-3 mr-2" />
-              Transfer
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => printBill(order)}
+              >
+                <Printer className="h-3 w-3 mr-2" />
+                Print Bill
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1"
+                onClick={() => openTransferDialog(order.id, order.location)}
+              >
+                <ArrowRightLeft className="h-3 w-3 mr-2" />
+                Transfer
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
