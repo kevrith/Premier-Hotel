@@ -268,6 +268,17 @@ class ReportsService {
   }
 
   /**
+   * Get item summary report (Sales by Item)
+   */
+  async getItemSummary(startDate?: string, endDate?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    const response = await api.get<any>(`/reports/item-summary?${params.toString()}`);
+    return response.data;
+  }
+
+  /**
    * Get employee sales report
    */
   async getEmployeeSales(

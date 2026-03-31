@@ -349,7 +349,7 @@ async def get_orders_statistics(
 
         # Get all orders in period (select only needed fields — avoids fetching heavy JSON blobs)
         orders = supabase.table("orders").select(
-            "id, status, total_amount, delivery_location, items, created_at"
+            "id, status, total_amount, location, location_type, items, created_at"
         ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
 
         # Calculate statistics
@@ -367,8 +367,8 @@ async def get_orders_statistics(
             if order.get("total_amount"):
                 total_revenue += float(order["total_amount"])
 
-            # Count by delivery location
-            location = order.get("delivery_location", "unknown")
+            # Count by location
+            location = order.get("location") or order.get("location_type", "unknown")
             delivery_location_counts[location] = delivery_location_counts.get(location, 0) + 1
 
         # Get order items from the JSON items field in each order

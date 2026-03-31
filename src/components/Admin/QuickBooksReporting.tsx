@@ -248,6 +248,9 @@ export function QuickBooksReporting() {
           return generateBalanceSheetData(); // Requires full accounting integration
         case 'Sales by Customer Summary':
           return await generateSalesByCustomerData();
+        case 'Sales by Item Summary':
+        case 'Sales by Item Detail':
+          return await generateItemSummaryData();
         case 'Inventory Valuation Summary':
           return await generateInventoryValuationData();
         case 'Daily Sales Summary':
@@ -459,6 +462,31 @@ export function QuickBooksReporting() {
         totalValue: 0,
         totalItems: 0,
         totalQty: 0,
+        error: 'Failed to load data'
+      };
+    }
+  };
+
+  const generateItemSummaryData = async () => {
+    try {
+      const data = await reportsService.getItemSummary(filters.startDate, filters.endDate);
+      return {
+        reportName: 'Sales by Item Summary',
+        period: `${filters.startDate} to ${filters.endDate}`,
+        categories: data.categories || [],
+        grand_total_qty: data.grand_total_qty || 0,
+        grand_total_revenue: data.grand_total_revenue || 0,
+        dataSource: 'Real API Data'
+      };
+    } catch (error) {
+      console.error('Failed to fetch item summary:', error);
+      toast.error('Failed to load Sales by Item Summary');
+      return {
+        reportName: 'Sales by Item Summary',
+        period: `${filters.startDate} to ${filters.endDate}`,
+        categories: [],
+        grand_total_qty: 0,
+        grand_total_revenue: 0,
         error: 'Failed to load data'
       };
     }
@@ -1024,6 +1052,50 @@ export function QuickBooksReporting() {
           </tbody>
         </table>
       `;
+    } else if (reportData.reportName === 'Sales by Item Summary') {
+      // Item Summary Report
+      reportData.categories?.forEach((cat: any) => {
+        htmlContent += `
+          <div class="section-title">${cat.category}</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="text-right">Qty</th>
+                <th class="text-right">Revenue (KES)</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        cat.items?.forEach((item: any) => {
+          htmlContent += `
+            <tr>
+              <td>${item.name}</td>
+              <td class="text-right">${item.qty}</td>
+              <td class="text-right">${(item.revenue || 0).toLocaleString()}</td>
+            </tr>
+          `;
+        });
+        htmlContent += `
+              <tr class="total-row">
+                <td><strong>${cat.category} Total</strong></td>
+                <td class="text-right"><strong>${cat.total_qty}</strong></td>
+                <td class="text-right"><strong>${(cat.total_revenue || 0).toLocaleString()}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      });
+      htmlContent += `
+        <div class="section-title">GRAND TOTAL</div>
+        <table><tbody>
+          <tr class="total-row">
+            <td><strong>Total Items Sold</strong></td>
+            <td class="text-right"><strong>${reportData.grand_total_qty || 0}</strong></td>
+            <td class="text-right"><strong>KES ${(reportData.grand_total_revenue || 0).toLocaleString()}</strong></td>
+          </tr>
+        </tbody></table>
+      `;
     } else if (reportData.reportName === 'Sales by Employee') {
       // Employee Summary Report
       htmlContent += `
@@ -1324,6 +1396,66 @@ export function QuickBooksReporting() {
           </TableRow>
         </TableBody>
       </Table>
+    </div>
+  );
+
+  const renderItemSummaryReport = (data: any) => (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center border-b pb-2">
+        <div>
+          <h3 className="text-xl font-bold">{data.reportName}</h3>
+          <p className="text-sm text-muted-foreground">{data.period}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-muted-foreground">Grand Total</p>
+          <p className="text-xl font-bold">KES {(data.grand_total_revenue || 0).toLocaleString()}</p>
+          <p className="text-sm text-muted-foreground">{data.grand_total_qty || 0} items sold</p>
+        </div>
+      </div>
+
+      {data.error && (
+        <div className="text-center py-8 text-muted-foreground">{data.error}</div>
+      )}
+
+      {(data.categories || []).length === 0 && !data.error && (
+        <div className="text-center py-8 text-muted-foreground">No sales data for this period.</div>
+      )}
+
+      {(data.categories || []).map((cat: any, idx: number) => (
+        <div key={idx} className="space-y-1">
+          <div className="flex justify-between items-center bg-muted/50 px-3 py-2 rounded font-semibold">
+            <span>{cat.category}</span>
+            <span className="text-sm text-muted-foreground">
+              {cat.total_qty} sold · KES {(cat.total_revenue || 0).toLocaleString()}
+            </span>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Item</TableHead>
+                <TableHead className="text-right">Qty Sold</TableHead>
+                <TableHead className="text-right">Revenue (KES)</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(cat.items || []).map((item: any, i: number) => (
+                <TableRow key={i}>
+                  <TableCell className="pl-6">{item.name}</TableCell>
+                  <TableCell className="text-right">{item.qty}</TableCell>
+                  <TableCell className="text-right">{(item.revenue || 0).toLocaleString()}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ))}
+
+      {(data.categories || []).length > 0 && (
+        <div className="flex justify-between font-bold text-lg border-t pt-3">
+          <span>Grand Total</span>
+          <span>KES {(data.grand_total_revenue || 0).toLocaleString()}</span>
+        </div>
+      )}
     </div>
   );
 
@@ -1666,6 +1798,8 @@ export function QuickBooksReporting() {
       return renderBalanceSheetReport(reportData);
     } else if (reportData.reportName === 'Sales by Customer Summary') {
       return renderSalesByCustomerReport(reportData);
+    } else if (reportData.reportName === 'Sales by Item Summary') {
+      return renderItemSummaryReport(reportData);
     } else if (reportData.reportName === 'Inventory Valuation Summary') {
       return renderInventoryValuationReport(reportData);
     } else if (reportData.reportName === 'Daily Sales Summary') {
