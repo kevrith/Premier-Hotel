@@ -38,6 +38,7 @@ from app.core.cookie_auth import (
 from app.core.config import settings
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from pydantic import BaseModel
 import uuid
 import logging
 
@@ -803,4 +804,112 @@ async def social_login(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Social login failed: {str(e)}",
+        )
+
+
+# ===== STAFF PIN LOGIN =====
+
+STAFF_ROLES = ["waiter", "chef", "cleaner", "housekeeping", "manager"]
+
+
+@router.get("/staff-list")
+async def get_staff_list(
+    supabase: Client = Depends(get_supabase)
+):
+    """
+    Return active staff members for the PIN login picker.
+    Only returns staff roles (not admin/owner) so the picker stays relevant.
+    """
+    try:
+        response = (
+            supabase.table("users")
+            .select("id, full_name, role, profile_picture")
+            .in_("role", STAFF_ROLES)
+            .eq("status", "active")
+            .order("full_name")
+            .execute()
+        )
+        return {"staff": response.data or []}
+    except Exception as e:
+        logging.error(f"Staff list error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch staff list")
+
+
+class PinLoginRequest(BaseModel):
+    user_id: str
+    pin: str  # 4–6 digit string
+
+
+@router.post("/pin-login")
+@limiter.limit("10/minute")
+async def pin_login(
+    request: Request,
+    response: Response,
+    credentials: PinLoginRequest,
+    supabase: Client = Depends(get_supabase),
+):
+    """
+    Fast PIN-based login for staff.
+    Requires a user_id (selected from the staff picker) and a 4–6 digit PIN.
+    """
+    try:
+        # Fetch staff member
+        result = (
+            supabase.table("users")
+            .select("*")
+            .eq("id", credentials.user_id)
+            .in_("role", STAFF_ROLES)
+            .eq("status", "active")
+            .execute()
+        )
+        user = result.data[0] if result.data else None
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+            )
+
+        pin_hash = user.get("pin_hash")
+        if not pin_hash:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="PIN not set for this account. Please ask your manager to set a PIN.",
+            )
+
+        if not verify_password(credentials.pin, pin_hash):
+            await log_auth_event(supabase, user["id"], "failed_pin_login", success=False)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid PIN",
+            )
+
+        # Update last login
+        supabase.table("users").update(
+            {"last_login": datetime.now(timezone.utc).isoformat()}
+        ).eq("id", user["id"]).execute()
+
+        tokens = set_auth_cookies(
+            response=response,
+            user_id=user["id"],
+            email=user.get("email"),
+            role=user.get("role"),
+        )
+
+        await log_auth_event(supabase, user["id"], "pin_login")
+
+        return {
+            "user": _build_user_response(user),
+            "message": "Login successful.",
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"PIN login error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Login failed. Please try again.",
         )

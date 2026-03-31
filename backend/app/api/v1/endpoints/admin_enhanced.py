@@ -827,3 +827,78 @@ async def get_all_audit_logs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching audit logs: {str(e)}"
         )
+
+
+# ============================================
+# Staff PIN Management
+# ============================================
+
+class SetPinRequest(BaseModel):
+    pin: str  # 4–6 digits
+
+
+@router.post("/users/{user_id}/set-pin", status_code=status.HTTP_200_OK)
+async def set_staff_pin(
+    user_id: str,
+    body: SetPinRequest,
+    request: Request,
+    supabase: Client = Depends(get_supabase),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Set or update the PIN for a staff member.
+    Callable by admin/manager, or by the user themselves.
+    PIN must be 4–6 digits.
+    """
+    admin_id = current_user.get("sub") or current_user.get("id")
+    admin_role = current_user.get("role", "")
+
+    # Allow if caller is admin/manager OR caller is the target user
+    if admin_role not in ("admin", "manager", "owner") and admin_id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorised to set PIN for this user")
+
+    pin = body.pin.strip()
+    if not pin.isdigit() or not (4 <= len(pin) <= 6):
+        raise HTTPException(status_code=400, detail="PIN must be 4–6 digits")
+
+    pin_hash = get_password_hash(pin)
+
+    supabase.table("users").update({"pin_hash": pin_hash}).eq("id", user_id).execute()
+
+    await log_audit(
+        supabase,
+        user_id=user_id,
+        action="set_pin",
+        performed_by_user_id=admin_id,
+        details={"note": "PIN updated"},
+        ip_address=get_client_ip(request),
+    )
+
+    return {"message": "PIN updated successfully"}
+
+
+@router.delete("/users/{user_id}/remove-pin", status_code=status.HTTP_200_OK)
+async def remove_staff_pin(
+    user_id: str,
+    request: Request,
+    supabase: Client = Depends(get_supabase),
+    current_user: dict = Depends(get_current_user),
+):
+    """Remove PIN from a staff member (admin/manager only)."""
+    admin_id = current_user.get("sub") or current_user.get("id")
+    admin_role = current_user.get("role", "")
+
+    if admin_role not in ("admin", "manager", "owner") and admin_id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorised")
+
+    supabase.table("users").update({"pin_hash": None}).eq("id", user_id).execute()
+
+    await log_audit(
+        supabase,
+        user_id=user_id,
+        action="remove_pin",
+        performed_by_user_id=admin_id,
+        ip_address=get_client_ip(request),
+    )
+
+    return {"message": "PIN removed"}

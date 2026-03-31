@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,8 +16,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Search, Shield, AlertCircle, Users, TrendingUp, MoreHorizontal, UserX, Trash2, RotateCcw, FileText, BarChart3 } from 'lucide-react';
+import { Search, Shield, AlertCircle, Users, TrendingUp, MoreHorizontal, UserX, Trash2, RotateCcw, FileText, BarChart3, KeyRound } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import api from '@/lib/api/client';
 import { adminAPI, User } from '@/lib/api/admin-enhanced';
 import { UserAddDialog } from './UserAddDialog';
 import { EmployeeSalesReport } from './EmployeeSalesReport';
@@ -37,6 +40,12 @@ export function UserManagement() {
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  // PIN dialog
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [pinTarget, setPinTarget] = useState<User | null>(null);
+  const [pinValue, setPinValue] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -83,6 +92,30 @@ export function UserManagement() {
       fetchUsers();
     } catch (error: any) {
       toast.error(error.message || 'Failed to reactivate user');
+    }
+  };
+
+  const handleSetPin = (user: User) => {
+    setPinTarget(user);
+    setPinValue('');
+    setPinDialogOpen(true);
+  };
+
+  const submitPin = async () => {
+    if (!pinTarget) return;
+    if (!/^\d{4,6}$/.test(pinValue)) {
+      toast.error('PIN must be 4–6 digits');
+      return;
+    }
+    setPinLoading(true);
+    try {
+      await api.post(`/admin/users/${pinTarget.id}/set-pin`, { pin: pinValue });
+      toast.success(`PIN set for ${pinTarget.full_name}`);
+      setPinDialogOpen(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to set PIN');
+    } finally {
+      setPinLoading(false);
     }
   };
 
@@ -277,6 +310,16 @@ export function UserManagement() {
 
                                 <DropdownMenuSeparator />
 
+                                {/* Set PIN — only for staff roles */}
+                                {['waiter','chef','cleaner','housekeeping','manager'].includes(user.role) && (
+                                  <DropdownMenuItem onClick={() => handleSetPin(user)}>
+                                    <KeyRound className="mr-2 h-4 w-4" />
+                                    Set PIN
+                                  </DropdownMenuItem>
+                                )}
+
+                                <DropdownMenuSeparator />
+
                                 {/* Status Actions */}
                                 {user.status === 'active' && (
                                   <DropdownMenuItem
@@ -345,6 +388,42 @@ export function UserManagement() {
         user={selectedUser}
         onSuccess={fetchUsers}
       />
+
+      {/* Set PIN Dialog */}
+      <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4" />
+              Set PIN for {pinTarget?.full_name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="pin-input">PIN (4–6 digits)</Label>
+              <Input
+                id="pin-input"
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                placeholder="e.g. 1234"
+                value={pinValue}
+                onChange={(e) => setPinValue(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The staff member will use this PIN on the login screen to sign in quickly.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPinDialogOpen(false)}>Cancel</Button>
+            <Button onClick={submitPin} disabled={pinLoading || pinValue.length < 4}>
+              {pinLoading ? 'Saving…' : 'Save PIN'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

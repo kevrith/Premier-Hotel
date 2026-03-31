@@ -13,6 +13,7 @@ import { Hotel, Lock, Mail, AlertCircle, Loader2, Phone, Eye, EyeOff, WifiOff } 
 import { toast } from 'react-hot-toast';
 import { useOffline } from '@/contexts/OfflineContext';
 import OTPVerification from '@/components/Auth/OTPVerification';
+import StaffPinLogin from '@/components/Auth/StaffPinLogin';
 
 // Password validation constants
 const MIN_PASSWORD_LENGTH = 6;
@@ -24,7 +25,7 @@ export default function Login() {
   const { login, needsVerification, verificationType, user } = useAuthStore();
   const { isOnline } = useOffline();
 
-  const [loginType, setLoginType] = useState<'email' | 'phone'>('email');
+  const [loginType, setLoginType] = useState<'email' | 'phone' | 'pin'>('email');
   const [showOTPVerification, setShowOTPVerification] = useState(false);
   const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [showPhonePassword, setShowPhonePassword] = useState(false);
@@ -188,7 +189,7 @@ export default function Login() {
       ? emailForm.password
       : phoneForm.password;
 
-    const result = await login(identifier, password, loginType);
+    const result = await login(identifier, password, loginType as 'email' | 'phone');
 
     if (result.success) {
       // Check if needs verification
@@ -367,10 +368,11 @@ export default function Login() {
             </div>
           )}
 
-          <Tabs value={loginType} onValueChange={(value) => setLoginType(value as 'email' | 'phone')} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-4">
+          <Tabs value={loginType} onValueChange={(value) => setLoginType(value as 'email' | 'phone' | 'pin')} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-4">
               <TabsTrigger value="email">Email</TabsTrigger>
               <TabsTrigger value="phone">Phone</TabsTrigger>
+              <TabsTrigger value="pin">Staff PIN</TabsTrigger>
             </TabsList>
 
             {/* Email Login Tab */}
@@ -560,6 +562,11 @@ export default function Login() {
                   )}
                 </Button>
               </form>
+            </TabsContent>
+
+            {/* Staff PIN Tab */}
+            <TabsContent value="pin">
+              <StaffPinLogin />
             </TabsContent>
           </Tabs>
 
