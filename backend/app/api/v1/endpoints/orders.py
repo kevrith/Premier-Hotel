@@ -834,7 +834,7 @@ async def update_order_status(
             "confirmed": ["preparing", "in-progress", "served", "cancelled"],  # bar orders: confirmed→served
             "preparing": ["ready", "cancelled"],
             "in-progress": ["preparing", "ready", "cancelled"],  # Handle old status
-            "ready": ["served", "delivered", "cancelled"],  # Allow old 'delivered'
+            "ready": ["served", "delivered", "completed", "cancelled"],  # bar orders can go ready→completed directly
             "served": ["completed"],
             "delivered": ["completed"],  # Handle old status
             "completed": [],
@@ -1023,6 +1023,22 @@ async def update_order_status(
                 import traceback
                 logging.error(f"[AUTO-BILL] Traceback: {traceback.format_exc()}")
                 # Don't fail the order status update if bill creation fails
+
+            # AUTO-COMPLETE bar-only orders: skip manual "completed" step
+            BAR_CATS = {
+                "drinks", "beverages", "beverage", "bar", "alcohol", "cocktails",
+                "cocktail", "spirits", "spirit", "beer", "wine", "wines",
+                "soda", "juice", "juices", "water", "soft drinks", "soft drink",
+            }
+            order_items_check = order.get("items", []) or []
+            if order_items_check and all(
+                (i.get("category") or "").lower().strip() in BAR_CATS
+                for i in order_items_check
+            ):
+                update_data["status"] = "completed"
+                update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+                logging.info(f"[BAR-AUTO] ✅ Bar-only order {order_id} auto-completed on serve")
+
         elif mapped_new_status == "completed":
             update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
             # Deduct stock if order skipped the 'served' step (e.g. went ready→completed directly)

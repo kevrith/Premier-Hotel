@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer } from 'lucide-react';
+import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer, ShieldCheck, KeyRound } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { toast as hotToast } from 'react-hot-toast';
 import TaxSettings from './TaxSettings';
@@ -106,6 +106,28 @@ export function SystemConfiguration() {
   const [posPrintOnOrder, setPosPrintOnOrder] = useState<boolean>(
     () => localStorage.getItem('pos:print_on_order') !== 'false' // default ON
   );
+
+  // Shift code — protects the staff PIN login screen
+  const shiftKey = () => `staff:shift_code:${new Date().toISOString().slice(0, 10)}`;
+  const [shiftCode, setShiftCode] = useState(() => localStorage.getItem(shiftKey()) || '');
+  const [shiftCodeInput, setShiftCodeInput] = useState('');
+
+  const saveShiftCode = () => {
+    const code = shiftCodeInput.trim();
+    if (!code) {
+      // Clear shift code (disable gate)
+      localStorage.removeItem(shiftKey());
+      setShiftCode('');
+      sessionStorage.removeItem('staff:shift_unlocked');
+      hotToast.success('Shift code cleared — staff PIN screen is open');
+      return;
+    }
+    localStorage.setItem(shiftKey(), code);
+    setShiftCode(code);
+    sessionStorage.removeItem('staff:shift_unlocked'); // force re-entry on next use
+    hotToast.success(`Today's shift code set: ${code}`);
+    setShiftCodeInput('');
+  };
 
   const savePosSettings = () => {
     localStorage.setItem('pos:auto_logout_desktop', String(posAutoLogout));
@@ -542,6 +564,39 @@ export function SystemConfiguration() {
                 <Button onClick={savePosSettings}>
                   Save POS Settings
                 </Button>
+
+                {/* Shift code */}
+                <div className="p-4 border rounded-lg space-y-3">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">Daily Shift Code</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Set a code that staff must enter before they can see the Staff PIN login screen.
+                        Change it each shift. Leave blank to remove the gate.
+                        {shiftCode && <span className="ml-1 font-medium text-green-600 dark:text-green-400">Active today.</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1 space-y-1">
+                      <Label htmlFor="shift-code" className="flex items-center gap-1 text-xs">
+                        <KeyRound className="h-3 w-3" /> New shift code
+                      </Label>
+                      <Input
+                        id="shift-code"
+                        placeholder={shiftCode ? 'Enter new code to replace…' : 'e.g. SHIFT1 or 2025'}
+                        value={shiftCodeInput}
+                        onChange={(e) => setShiftCodeInput(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button variant="outline" onClick={saveShiftCode}>
+                        {shiftCodeInput.trim() ? 'Set Code' : 'Clear Code'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </TabsContent>
           </Tabs>

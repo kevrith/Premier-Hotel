@@ -900,6 +900,24 @@ async def set_staff_pin(
     return {"message": "PIN updated successfully"}
 
 
+@router.post("/users/{user_id}/unlock-pin", status_code=status.HTTP_200_OK)
+async def unlock_pin(
+    user_id: str,
+    request: Request,
+    supabase: Client = Depends(get_supabase),
+    current_user: dict = Depends(get_current_user),
+):
+    """Reset PIN lockout for a staff member (admin/manager only)."""
+    admin_id = current_user.get("sub") or current_user.get("id")
+    if current_user.get("role", "") not in ("admin", "manager", "owner"):
+        raise HTTPException(status_code=403, detail="Not authorised")
+
+    supabase.table("users").update({"pin_attempts": 0, "pin_locked_until": None}).eq("id", user_id).execute()
+    await log_audit(supabase, user_id=user_id, action="unlock_pin", performed_by_user_id=admin_id,
+                    ip_address=get_client_ip(request))
+    return {"message": "PIN unlocked"}
+
+
 @router.delete("/users/{user_id}/remove-pin", status_code=status.HTTP_200_OK)
 async def remove_staff_pin(
     user_id: str,

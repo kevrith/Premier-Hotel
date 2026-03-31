@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Delete, ChevronLeft, User } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Delete, ChevronLeft, User, ShieldAlert, Lock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/api/client';
 import useAuthStore from '@/stores/authStore.secure';
@@ -21,6 +22,10 @@ const ROLE_COLORS: Record<string, string> = {
   housekeeping: 'bg-teal-100 text-teal-700',
 };
 
+// Shift code is stored per-day in localStorage by the manager
+const SHIFT_KEY = () => `staff:shift_code:${new Date().toISOString().slice(0, 10)}`;
+const SESSION_UNLOCKED_KEY = 'staff:shift_unlocked';
+
 export default function StaffPinLogin() {
   const navigate = useNavigate();
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -29,13 +34,46 @@ export default function StaffPinLogin() {
   const [loading, setLoading] = useState(false);
   const [loadingStaff, setLoadingStaff] = useState(true);
 
+  // Shift code gate
+  const [shiftUnlocked, setShiftUnlocked] = useState(() =>
+    sessionStorage.getItem(SESSION_UNLOCKED_KEY) === 'true'
+  );
+  const [shiftInput, setShiftInput] = useState('');
+  const [shiftError, setShiftError] = useState('');
+
+  // Check if a shift code has been set for today
+  const todayShiftCode = localStorage.getItem(SHIFT_KEY());
+  const shiftCodeRequired = !!todayShiftCode;
+
   useEffect(() => {
-    api
-      .get<{ staff: StaffMember[] }>('/auth/staff-list')
-      .then((r) => setStaff((r.data as any)?.staff ?? r.data))
-      .catch(() => toast.error('Could not load staff list'))
-      .finally(() => setLoadingStaff(false));
-  }, []);
+    if (!shiftCodeRequired || shiftUnlocked) {
+      api
+        .get<{ staff: StaffMember[] }>('/auth/staff-list')
+        .then((r) => setStaff((r.data as any)?.staff ?? r.data))
+        .catch(() => toast.error('Could not load staff list'))
+        .finally(() => setLoadingStaff(false));
+    } else {
+      setLoadingStaff(false);
+    }
+  }, [shiftUnlocked, shiftCodeRequired]);
+
+  const handleShiftCodeSubmit = () => {
+    if (!shiftInput.trim()) return;
+    if (shiftInput.trim() === todayShiftCode) {
+      sessionStorage.setItem(SESSION_UNLOCKED_KEY, 'true');
+      setShiftUnlocked(true);
+      setShiftError('');
+      setLoadingStaff(true);
+      api
+        .get<{ staff: StaffMember[] }>('/auth/staff-list')
+        .then((r) => setStaff((r.data as any)?.staff ?? r.data))
+        .catch(() => toast.error('Could not load staff list'))
+        .finally(() => setLoadingStaff(false));
+    } else {
+      setShiftError('Incorrect shift code. Please check with your manager.');
+      setShiftInput('');
+    }
+  };
 
   const handleDigit = (d: string) => {
     if (pin.length < 6) setPin((p) => p + d);
@@ -100,6 +138,39 @@ export default function StaffPinLogin() {
     }
   }, [pin]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // — Shift code gate —
+  if (shiftCodeRequired && !shiftUnlocked) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col items-center gap-2 py-2">
+          <div className="h-12 w-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+            <Lock className="h-6 w-6 text-amber-600" />
+          </div>
+          <p className="text-sm font-medium">Enter Today's Shift Code</p>
+          <p className="text-xs text-muted-foreground text-center">
+            Ask your manager for the shift code to access staff login.
+          </p>
+        </div>
+        <Input
+          type="password"
+          placeholder="Shift code"
+          value={shiftInput}
+          onChange={(e) => setShiftInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleShiftCodeSubmit()}
+          autoFocus
+        />
+        {shiftError && (
+          <p className="text-xs text-red-500 flex items-center gap-1">
+            <ShieldAlert className="h-3 w-3" /> {shiftError}
+          </p>
+        )}
+        <Button className="w-full" onClick={handleShiftCodeSubmit} disabled={!shiftInput.trim()}>
+          Continue
+        </Button>
+      </div>
+    );
+  }
+
   if (loadingStaff) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
@@ -117,7 +188,7 @@ export default function StaffPinLogin() {
     );
   }
 
-  // — Staff picker screen —
+  // — Staff picker —
   if (!selected) {
     return (
       <div className="space-y-3">
@@ -130,11 +201,7 @@ export default function StaffPinLogin() {
               className="flex flex-col items-center gap-2 p-3 rounded-xl border border-border hover:border-primary hover:bg-muted/50 transition-colors text-left"
             >
               {s.profile_picture ? (
-                <img
-                  src={s.profile_picture}
-                  alt={s.full_name}
-                  className="h-12 w-12 rounded-full object-cover"
-                />
+                <img src={s.profile_picture} alt={s.full_name} className="h-12 w-12 rounded-full object-cover" />
               ) : (
                 <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center text-lg font-semibold text-muted-foreground">
                   {s.full_name.charAt(0).toUpperCase()}
@@ -142,11 +209,7 @@ export default function StaffPinLogin() {
               )}
               <div className="text-center">
                 <p className="text-sm font-medium leading-tight">{s.full_name}</p>
-                <span
-                  className={`text-xs px-1.5 py-0.5 rounded-full capitalize ${
-                    ROLE_COLORS[s.role] ?? 'bg-gray-100 text-gray-600'
-                  }`}
-                >
+                <span className={`text-xs px-1.5 py-0.5 rounded-full capitalize ${ROLE_COLORS[s.role] ?? 'bg-gray-100 text-gray-600'}`}>
                   {s.role}
                 </span>
               </div>
@@ -157,15 +220,11 @@ export default function StaffPinLogin() {
     );
   }
 
-  // — PIN pad screen —
+  // — PIN pad —
   return (
     <div className="space-y-4">
-      {/* Back + selected user */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => { setSelected(null); setPin(''); }}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-        >
+        <button onClick={() => { setSelected(null); setPin(''); }} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
           <ChevronLeft className="h-4 w-4" />
         </button>
         <div className="flex items-center gap-2 flex-1">
@@ -183,59 +242,34 @@ export default function StaffPinLogin() {
         </div>
       </div>
 
-      {/* PIN dots */}
       <div className="flex justify-center gap-3 py-2">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div
-            key={i}
-            className={`h-3 w-3 rounded-full border-2 transition-colors ${
-              i < pin.length
-                ? 'bg-primary border-primary'
-                : 'border-muted-foreground/40'
-            }`}
-          />
+          <div key={i} className={`h-3 w-3 rounded-full border-2 transition-colors ${i < pin.length ? 'bg-primary border-primary' : 'border-muted-foreground/40'}`} />
         ))}
       </div>
       <p className="text-xs text-center text-muted-foreground">
         Enter your {pin.length > 0 ? `${pin.length}/6` : '4–6 digit'} PIN
       </p>
 
-      {/* Number pad */}
       <div className="grid grid-cols-3 gap-2">
         {['1','2','3','4','5','6','7','8','9'].map((d) => (
-          <button
-            key={d}
-            onClick={() => handleDigit(d)}
-            disabled={loading}
-            className="h-14 rounded-xl border border-border text-xl font-medium hover:bg-muted active:scale-95 transition-all disabled:opacity-50"
-          >
+          <button key={d} onClick={() => handleDigit(d)} disabled={loading}
+            className="h-14 rounded-xl border border-border text-xl font-medium hover:bg-muted active:scale-95 transition-all disabled:opacity-50">
             {d}
           </button>
         ))}
-        {/* Bottom row: empty, 0, delete */}
         <div />
-        <button
-          onClick={() => handleDigit('0')}
-          disabled={loading}
-          className="h-14 rounded-xl border border-border text-xl font-medium hover:bg-muted active:scale-95 transition-all disabled:opacity-50"
-        >
+        <button onClick={() => handleDigit('0')} disabled={loading}
+          className="h-14 rounded-xl border border-border text-xl font-medium hover:bg-muted active:scale-95 transition-all disabled:opacity-50">
           0
         </button>
-        <button
-          onClick={handleDelete}
-          disabled={loading || pin.length === 0}
-          className="h-14 rounded-xl border border-border flex items-center justify-center hover:bg-muted active:scale-95 transition-all disabled:opacity-50"
-        >
+        <button onClick={handleDelete} disabled={loading || pin.length === 0}
+          className="h-14 rounded-xl border border-border flex items-center justify-center hover:bg-muted active:scale-95 transition-all disabled:opacity-50">
           <Delete className="h-5 w-5" />
         </button>
       </div>
 
-      {/* Submit */}
-      <Button
-        className="w-full"
-        onClick={handleSubmit}
-        disabled={loading || pin.length < 4}
-      >
+      <Button className="w-full" onClick={handleSubmit} disabled={loading || pin.length < 4}>
         {loading ? 'Signing in…' : 'Sign In'}
       </Button>
     </div>

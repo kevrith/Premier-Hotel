@@ -877,17 +877,48 @@ async def pin_login(
                 detail="PIN not set for this account. Please ask your manager to set a PIN.",
             )
 
+        # Check lockout
+        PIN_MAX_ATTEMPTS = 5
+        PIN_LOCKOUT_MINUTES = 30
+        locked_until = user.get("pin_locked_until")
+        if locked_until:
+            locked_dt = datetime.fromisoformat(locked_until.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) < locked_dt:
+                remaining = int((locked_dt - datetime.now(timezone.utc)).total_seconds() / 60) + 1
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Account locked due to too many wrong PINs. Try again in {remaining} minute(s).",
+                )
+            else:
+                # Lockout expired — reset
+                supabase.table("users").update({"pin_attempts": 0, "pin_locked_until": None}).eq("id", user["id"]).execute()
+
         if not verify_password(credentials.pin, pin_hash):
+            attempts = (user.get("pin_attempts") or 0) + 1
+            update = {"pin_attempts": attempts}
+            if attempts >= PIN_MAX_ATTEMPTS:
+                update["pin_locked_until"] = (
+                    datetime.now(timezone.utc) + timedelta(minutes=PIN_LOCKOUT_MINUTES)
+                ).isoformat()
+                supabase.table("users").update(update).eq("id", user["id"]).execute()
+                await log_auth_event(supabase, user["id"], "pin_locked", success=False)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Too many wrong PINs. Account locked for {PIN_LOCKOUT_MINUTES} minutes.",
+                )
+            supabase.table("users").update(update).eq("id", user["id"]).execute()
             await log_auth_event(supabase, user["id"], "failed_pin_login", success=False)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid PIN",
+                detail=f"Invalid PIN. {PIN_MAX_ATTEMPTS - attempts} attempt(s) remaining.",
             )
 
-        # Update last login
-        supabase.table("users").update(
-            {"last_login": datetime.now(timezone.utc).isoformat()}
-        ).eq("id", user["id"]).execute()
+        # Update last login and reset lockout counters
+        supabase.table("users").update({
+            "last_login": datetime.now(timezone.utc).isoformat(),
+            "pin_attempts": 0,
+            "pin_locked_until": None,
+        }).eq("id", user["id"]).execute()
 
         tokens = set_auth_cookies(
             response=response,

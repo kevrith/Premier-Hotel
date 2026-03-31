@@ -224,164 +224,77 @@ export function EmployeeSalesReport() {
     }
   };
 
-  // Print report
+  // Print report — 80mm thermal printer format
   const printReport = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
+    const w = window.open('', '_blank', 'width=340,height=700,menubar=no,toolbar=no');
+    if (!w) {
       toast.error('Please allow popups to print the report');
       return;
     }
-
-    const reportHtml = generatePrintableReport();
-    printWindow.document.write(reportHtml);
-    printWindow.document.close();
-    printWindow.focus();
-
+    w.document.write(generatePrintableReport());
+    w.document.close();
+    w.focus();
     setTimeout(() => {
-      printWindow.print();
-      toast.success('Opening print dialog...');
-    }, 250);
+      w.print();
+      w.addEventListener('afterprint', () => w.close());
+    }, 300);
   };
 
-  // Generate printable HTML report
+  // Generate printable HTML — 80mm thermal format
   const generatePrintableReport = () => {
-    const companyName = 'Premier Hotel';
-    const reportTitle = 'Employee Sales Performance Report';
     const reportDate = new Date().toLocaleDateString();
     const reportPeriod = `${filters.startDate} to ${filters.endDate}`;
-
-    const tableRows = filteredData.map(emp => {
-      const cells = enabledColumns.map(col => {
-        const value = emp[col.id as keyof EmployeeSalesData];
-        return `<td style="padding: 8px; border: 1px solid #ddd;">${formatValue(value, col.format)}</td>`;
-      }).join('');
-      return `<tr>${cells}</tr>`;
-    }).join('');
-
-    const tableHeaders = enabledColumns.map(col =>
-      `<th style="padding: 8px; border: 1px solid #ddd; background-color: #f5f5f5; font-weight: bold; text-align: left;">${col.label}</th>`
-    ).join('');
-
-    // Calculate totals
     const totalSales = filteredData.reduce((sum, emp) => sum + emp.total_sales, 0);
     const totalOrders = filteredData.reduce((sum, emp) => sum + emp.total_orders, 0);
-    const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
 
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${reportTitle}</title>
-        <style>
-          @page {
-            size: A4 landscape;
-            margin: 20mm;
-          }
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 10px;
-          }
-          .company-name {
-            font-size: 24px;
-            font-weight: bold;
-            color: #333;
-          }
-          .report-title {
-            font-size: 18px;
-            color: #666;
-            margin: 10px 0;
-          }
-          .report-info {
-            font-size: 12px;
-            color: #888;
-            margin: 5px 0;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            font-size: 11px;
-          }
-          .summary {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f9f9f9;
-            border: 1px solid #ddd;
-          }
-          .summary-item {
-            display: inline-block;
-            margin-right: 30px;
-            font-size: 12px;
-          }
-          .summary-label {
-            font-weight: bold;
-            color: #333;
-          }
-          .footer {
-            margin-top: 30px;
-            padding-top: 10px;
-            border-top: 1px solid #ddd;
-            font-size: 10px;
-            color: #888;
-            text-align: center;
-          }
-          @media print {
-            body {
-              padding: 0;
-            }
-            .no-print {
-              display: none;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="company-name">${companyName}</div>
-          <div class="report-title">${reportTitle}</div>
-          <div class="report-info">Period: ${reportPeriod}</div>
-          <div class="report-info">Generated: ${reportDate}</div>
-          <div class="report-info">Total Employees: ${filteredData.length}</div>
-        </div>
+    const divider = `<div class="divider"></div>`;
 
-        <table>
-          <thead>
-            <tr>${tableHeaders}</tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
+    const rows = filteredData.map((emp, i) => `
+      <div style="margin:6px 0;">
+        <div style="font-weight:bold;">${i + 1}. ${emp.employee_name}</div>
+        <div class="row"><span>Orders</span><span>${emp.total_orders}</span></div>
+        <div class="row"><span>Sales</span><span>KES ${emp.total_sales.toLocaleString()}</span></div>
+        ${emp.avg_order_value ? `<div class="row"><span>Avg Order</span><span>KES ${Number(emp.avg_order_value).toFixed(0)}</span></div>` : ''}
+      </div>
+      ${divider}
+    `).join('');
 
-        <div class="summary">
-          <div class="summary-item">
-            <span class="summary-label">Total Sales:</span> KES ${totalSales.toLocaleString()}
-          </div>
-          <div class="summary-item">
-            <span class="summary-label">Total Orders:</span> ${totalOrders.toLocaleString()}
-          </div>
-          <div class="summary-item">
-            <span class="summary-label">Average Order Value:</span> KES ${avgOrderValue.toFixed(0).toLocaleString()}
-          </div>
-          <div class="summary-item">
-            <span class="summary-label">Top Performer:</span> ${filteredData[0]?.employee_name || 'N/A'}
-          </div>
-        </div>
-
-        <div class="footer">
-          <p>This is a computer-generated report from Premier Hotel Management System</p>
-          <p>Report generated on ${new Date().toLocaleString()}</p>
-        </div>
-      </body>
-      </html>
-    `;
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Employee Sales Report</title>
+<style>
+  @page { size: 80mm auto; margin: 0; }
+  body {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    width: 280px;
+    margin: 0 auto;
+    padding: 8px 4px;
+    color: #000;
+  }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .divider { border-top: 1px dashed #000; margin: 6px 0; }
+  .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
+  .row { display: flex; justify-content: space-between; margin: 2px 0; }
+  @media print { body { padding: 2px; } }
+</style>
+</head><body>
+  <div class="center bold" style="font-size:14px;">PREMIER HOTEL</div>
+  <div class="center" style="font-size:11px;">Employee Sales Report</div>
+  <div class="center" style="font-size:10px;">${reportPeriod}</div>
+  <div class="center" style="font-size:10px;">Printed: ${reportDate}</div>
+  <div class="divider-solid"></div>
+  ${rows}
+  <div class="bold" style="margin-top:4px;">SUMMARY</div>
+  <div class="row"><span>Employees</span><span>${filteredData.length}</span></div>
+  <div class="row"><span>Total Orders</span><span>${totalOrders.toLocaleString()}</span></div>
+  <div class="row bold"><span>Total Sales</span><span>KES ${totalSales.toLocaleString()}</span></div>
+  ${filteredData[0] ? `<div class="row"><span>Top Performer</span><span>${filteredData[0].employee_name}</span></div>` : ''}
+  <div class="divider-solid"></div>
+  <div class="center" style="font-size:10px;margin-top:4px;">*** End of Report ***</div>
+</body></html>`;
   };
 
   // Export to CSV
