@@ -13,7 +13,7 @@ from app.schemas.booking import (
     BookingCheckIn,
     BookingCheckOut,
 )
-from app.middleware.auth import get_current_user, require_staff
+from app.middleware.auth_secure import get_current_user, require_staff
 from datetime import datetime, timezone
 import random
 import string
