@@ -9,11 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Hotel, Lock, Mail, AlertCircle, Loader2, Phone, Eye, EyeOff, WifiOff } from 'lucide-react';
+import { Hotel, Lock, Mail, AlertCircle, Loader2, Phone, Eye, EyeOff, WifiOff, MapPin, Loader } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useOffline } from '@/contexts/OfflineContext';
 import OTPVerification from '@/components/Auth/OTPVerification';
 import StaffPinLogin from '@/components/Auth/StaffPinLogin';
+import { useGeoGate } from '@/hooks/useGeoGate';
 
 // Password validation constants
 const MIN_PASSWORD_LENGTH = 6;
@@ -26,6 +27,15 @@ export default function Login() {
   const { isOnline } = useOffline();
 
   const [loginType, setLoginType] = useState<'email' | 'phone' | 'pin'>('email');
+  const { status: geoStatus, distance: geoDistance } = useGeoGate();
+  const staffPinAllowed = geoStatus === 'allowed' || geoStatus === 'disabled';
+
+  // If user was on Staff PIN tab but moves out of range, kick them back to email
+  useEffect(() => {
+    if (!staffPinAllowed && loginType === 'pin') {
+      setLoginType('email');
+    }
+  }, [staffPinAllowed]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showOTPVerification, setShowOTPVerification] = useState(false);
   const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [showPhonePassword, setShowPhonePassword] = useState(false);
@@ -368,12 +378,37 @@ export default function Login() {
             </div>
           )}
 
-          <Tabs value={loginType} onValueChange={(value) => setLoginType(value as 'email' | 'phone' | 'pin')} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-4">
+          <Tabs
+            value={loginType}
+            onValueChange={(value) => setLoginType(value as 'email' | 'phone' | 'pin')}
+            className="w-full"
+          >
+            <TabsList className={`grid w-full mb-4 ${staffPinAllowed ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <TabsTrigger value="email">Email</TabsTrigger>
               <TabsTrigger value="phone">Phone</TabsTrigger>
-              <TabsTrigger value="pin">Staff PIN</TabsTrigger>
+              {staffPinAllowed && <TabsTrigger value="pin">Staff PIN</TabsTrigger>}
             </TabsList>
+
+            {/* Geo status banner — only show while checking or when out of range */}
+            {geoStatus === 'checking' && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3 px-1">
+                <Loader className="h-3 w-3 animate-spin" />
+                Checking location for Staff PIN access…
+              </div>
+            )}
+            {geoStatus === 'out_of_range' && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3 px-1 p-2 rounded-md bg-muted/50">
+                <MapPin className="h-3 w-3 shrink-0" />
+                Staff PIN login is only available on hotel premises
+                {geoDistance != null && ` (${geoDistance} m away)`}.
+              </div>
+            )}
+            {geoStatus === 'denied' && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3 px-1 p-2 rounded-md bg-muted/50">
+                <MapPin className="h-3 w-3 shrink-0" />
+                Location access denied — Staff PIN login unavailable.
+              </div>
+            )}
 
             {/* Email Login Tab */}
             <TabsContent value="email">

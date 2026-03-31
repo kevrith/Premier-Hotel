@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer, ShieldCheck, KeyRound } from 'lucide-react';
+import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer, ShieldCheck, KeyRound, MapPin, Navigation } from 'lucide-react';
+import { GEO_DEFAULTS } from '@/hooks/useGeoGate';
 import { useToast } from '@/hooks/use-toast';
 import { toast as hotToast } from 'react-hot-toast';
 import TaxSettings from './TaxSettings';
@@ -127,6 +128,44 @@ export function SystemConfiguration() {
     sessionStorage.removeItem('staff:shift_unlocked'); // force re-entry on next use
     hotToast.success(`Today's shift code set: ${code}`);
     setShiftCodeInput('');
+  };
+
+  // Geo gate — location-based Staff PIN visibility
+  const [geoEnabled, setGeoEnabled] = useState<boolean>(
+    () => localStorage.getItem('pos:geo_enabled') !== 'false'
+  );
+  const [geoLat, setGeoLat] = useState(
+    () => localStorage.getItem('pos:geo_lat') ?? String(GEO_DEFAULTS.lat)
+  );
+  const [geoLon, setGeoLon] = useState(
+    () => localStorage.getItem('pos:geo_lon') ?? String(GEO_DEFAULTS.lon)
+  );
+  const [geoRadius, setGeoRadius] = useState(
+    () => localStorage.getItem('pos:geo_radius') ?? String(GEO_DEFAULTS.radius)
+  );
+
+  const saveGeoSettings = () => {
+    localStorage.setItem('pos:geo_enabled', String(geoEnabled));
+    localStorage.setItem('pos:geo_lat', geoLat);
+    localStorage.setItem('pos:geo_lon', geoLon);
+    localStorage.setItem('pos:geo_radius', geoRadius);
+    hotToast.success('Location settings saved');
+  };
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      hotToast.error('Geolocation not available on this device');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGeoLat(String(pos.coords.latitude));
+        setGeoLon(String(pos.coords.longitude));
+        hotToast.success('Current location captured — save to apply');
+      },
+      () => hotToast.error('Could not get location. Check browser permissions.'),
+      { enableHighAccuracy: true, timeout: 10_000 }
+    );
   };
 
   const savePosSettings = () => {
@@ -596,6 +635,67 @@ export function SystemConfiguration() {
                       </Button>
                     </div>
                   </div>
+                </div>
+
+                {/* Geo gate */}
+                <div className="p-4 border rounded-lg space-y-4">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Location-based Staff PIN Access</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        The Staff PIN login tab is only shown when the device is within the set radius of the hotel.
+                        Staff logging in from outside the premises won't see the tab.
+                      </p>
+                    </div>
+                    <Switch checked={geoEnabled} onCheckedChange={setGeoEnabled} />
+                  </div>
+
+                  {geoEnabled && (
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="geo-lat" className="text-xs">Latitude</Label>
+                          <Input
+                            id="geo-lat"
+                            value={geoLat}
+                            onChange={(e) => setGeoLat(e.target.value)}
+                            placeholder="-0.071158"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="geo-lon" className="text-xs">Longitude</Label>
+                          <Input
+                            id="geo-lon"
+                            value={geoLon}
+                            onChange={(e) => setGeoLon(e.target.value)}
+                            placeholder="37.667504"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="geo-radius" className="text-xs">Allowed radius (metres)</Label>
+                        <Input
+                          id="geo-radius"
+                          type="number"
+                          min={10}
+                          max={5000}
+                          value={geoRadius}
+                          onChange={(e) => setGeoRadius(e.target.value)}
+                          placeholder="100"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Recommended: 50–150 m to account for GPS drift. Hotel: WMH8+JX4, Nkubu.
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={useCurrentLocation} className="flex items-center gap-2">
+                        <Navigation className="h-3.5 w-3.5" />
+                        Use my current location as hotel pin
+                      </Button>
+                    </div>
+                  )}
+
+                  <Button onClick={saveGeoSettings}>Save Location Settings</Button>
                 </div>
               </div>
             </TabsContent>
