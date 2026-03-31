@@ -20,8 +20,9 @@ const api = {
 // ============================================
 
 export interface UserCreate {
-  email: string;
-  password: string;
+  email?: string;
+  password?: string;
+  pin?: string;
   full_name: string;
   phone_number?: string;
   role: 'customer' | 'waiter' | 'chef' | 'cleaner' | 'manager' | 'owner' | 'admin';

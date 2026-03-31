@@ -20,8 +20,9 @@ router = APIRouter()
 # ============================================
 
 class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    pin: Optional[str] = None  # 4–6 digit PIN for staff login
     full_name: str
     phone_number: Optional[str] = None
     role: str = "customer"
@@ -204,17 +205,39 @@ async def create_user(
                 detail=f"{current_user['role']} cannot create {user_data.role} users"
             )
 
-        # Hash the password
-        password_hash = get_password_hash(user_data.password)
+        STAFF_ROLES = ["waiter", "chef", "cleaner", "housekeeping", "manager"]
+        is_staff = user_data.role in STAFF_ROLES
+
+        # Staff can use PIN only — email/password both optional
+        # Non-staff (customer, admin, owner) must provide email + password
+        if not is_staff:
+            if not user_data.email:
+                raise HTTPException(status_code=400, detail="Email is required for non-staff users")
+            if not user_data.password:
+                raise HTTPException(status_code=400, detail="Password is required for non-staff users")
+
+        # Validate PIN if provided
+        if user_data.pin:
+            if not user_data.pin.isdigit() or not (4 <= len(user_data.pin) <= 6):
+                raise HTTPException(status_code=400, detail="PIN must be 4–6 digits")
+
+        # Hash password (generate a random secure one for staff with no password)
+        import secrets as _secrets
+        raw_password = user_data.password or _secrets.token_urlsafe(16)
+        password_hash = get_password_hash(raw_password)
+
+        # Hash PIN if provided
+        pin_hash = get_password_hash(user_data.pin) if user_data.pin else None
 
         # Create user in users table
         user_insert = {
-            "email": user_data.email,
+            "email": user_data.email if user_data.email else None,
             "full_name": user_data.full_name,
-            "phone": user_data.phone_number if user_data.phone_number else None,  # Allow NULL for unique constraint
+            "phone": user_data.phone_number if user_data.phone_number else None,
             "password_hash": password_hash,
+            "pin_hash": pin_hash,
             "role": user_data.role,
-            "email_verified": True,
+            "email_verified": True if user_data.email else False,
             "phone_verified": True if user_data.phone_number else False,
             "is_verified": True,
             "status": "active",
@@ -237,13 +260,13 @@ async def create_user(
             created_user["id"],
             "user_created",
             current_user["id"],
-            {"role": user_data.role, "email": user_data.email},
+            {"role": user_data.role, "email": user_data.email, "pin_set": bool(pin_hash)},
             get_client_ip(request)
         )
 
         return UserResponse(
             id=created_user["id"],
-            email=created_user["email"],
+            email=created_user.get("email") or "",
             full_name=created_user["full_name"],
             phone_number=created_user.get("phone"),
             role=user_data.role,
