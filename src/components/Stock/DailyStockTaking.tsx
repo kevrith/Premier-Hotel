@@ -23,10 +23,25 @@ import {
   Settings2,
   Save,
   MapPin,
+  Pencil,
+  Printer,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import apiClient from '@/lib/api/client';
+
+// ── Constants ─────────────────────────────────────────────────────────────
+
+const REASON_CODES = [
+  '',
+  'Spoilage',
+  'Theft',
+  'Breakage',
+  'Transfer',
+  'Measurement Error',
+  'Returned',
+  'Other',
+];
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +60,7 @@ interface StockSheetItem {
   calculated_closing: number;
   physical_closing: number | null;
   lost: number;
+  reason: string | null;
   discrepancy: number | null;
   stock_status: 'in_stock' | 'low_stock' | 'out_of_stock';
   is_low_stock: boolean;
@@ -162,7 +178,9 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
   // Local editable state: keyed by menu_item_id
   const [physicalCounts, setPhysicalCounts] = useState<Record<string, string>>({});
   const [lostCounts, setLostCounts] = useState<Record<string, string>>({});
+  const [reasonCodes, setReasonCodes] = useState<Record<string, string>>({});
   const [sessionNotes, setSessionNotes] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const [reloadTick, setReloadTick] = useState(0);
   const [alertsOpen, setAlertsOpen] = useState(true);
@@ -264,6 +282,7 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
       // Pre-fill inputs from existing session data
       const pc: Record<string, string> = {};
       const lc: Record<string, string> = {};
+      const rc: Record<string, string> = {};
       for (const item of data.items) {
         if (item.physical_closing !== null && item.physical_closing !== undefined) {
           pc[item.menu_item_id] = String(item.physical_closing);
@@ -271,9 +290,14 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
         if (item.lost) {
           lc[item.menu_item_id] = String(item.lost);
         }
+        if (item.reason) {
+          rc[item.menu_item_id] = item.reason;
+        }
       }
       setPhysicalCounts(pc);
       setLostCounts(lc);
+      setReasonCodes(rc);
+      setIsEditMode(false);
       if (data.existing_session?.status === 'submitted') {
         setSessionNotes('');
       }
@@ -337,6 +361,7 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
         item_name: item.item_name,
         physical_closing: parseFloat(physicalCounts[item.menu_item_id] || '0'),
         lost: parseFloat(lostCounts[item.menu_item_id] || '0'),
+        reason: reasonCodes[item.menu_item_id] || null,
       }));
 
     if (itemsToSubmit.length === 0) {
@@ -355,6 +380,7 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
       if (selectedLocationId) submitPayload.location_id = selectedLocationId;
       await apiClient.post('/daily-stock/submit', submitPayload);
       toast.success(`Stock take for ${selectedDate} submitted (${itemsToSubmit.length} items)`);
+      setIsEditMode(false);
       fetchSheet();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to submit stock take');
@@ -380,6 +406,96 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
   const toggleHistory = () => {
     if (!historyOpen) fetchHistory();
     setHistoryOpen((p) => !p);
+  };
+
+  // ── Print functions ──────────────────────────────────────────────────────
+
+  const printSheet = (mode: 'blank' | 'variance') => {
+    if (!sheetData) return;
+    const title = mode === 'blank' ? 'Stock Count Sheet' : 'Stock Variance Report';
+    const dateLabel = selectedDate;
+    const typeLabel = sessionType.charAt(0).toUpperCase() + sessionType.slice(1);
+
+    const rows = liveItems.map((item, idx) => {
+      const physStr = physicalCounts[item.menu_item_id] ?? '';
+      const phys = physStr !== '' ? parseFloat(physStr) : null;
+      const disc = item.live_discrepancy;
+      const costVar = disc !== null ? (disc * item.cost_price) : null;
+      const reason = reasonCodes[item.menu_item_id] || '';
+
+      if (mode === 'blank') {
+        return `<tr>
+          <td>${idx + 1}</td>
+          <td>${item.item_name}<br/><small>${item.unit}</small></td>
+          <td class="num">${fmt(item.calculated_closing, 2)}</td>
+          <td class="num input-cell">________</td>
+          <td class="num input-cell">________</td>
+        </tr>`;
+      } else {
+        const discColor = disc === null ? '' : Math.abs(disc) < 0.01 ? 'color:#16a34a' : disc < 0 ? 'color:#dc2626' : 'color:#d97706';
+        return `<tr>
+          <td>${idx + 1}</td>
+          <td>${item.item_name}<br/><small>${item.unit}</small></td>
+          <td class="num">${fmt(item.calculated_closing, 2)}</td>
+          <td class="num">${phys !== null ? fmt(phys, 2) : '—'}</td>
+          <td class="num" style="${discColor}">${disc !== null ? (disc > 0.01 ? '+' : '') + fmt(disc, 2) : '—'}</td>
+          <td class="num" style="${discColor}">${costVar !== null ? (costVar > 0.01 ? '+' : '') + fmt(costVar, 2) : '—'}</td>
+          <td>${reason}</td>
+        </tr>`;
+      }
+    }).join('');
+
+    const headers = mode === 'blank'
+      ? `<th>#</th><th>Item</th><th>Calc.</th><th>Count</th><th>Lost</th>`
+      : `<th>#</th><th>Item</th><th>Calc.</th><th>Physical</th><th>Disc.</th><th>KES Var.</th><th>Reason</th>`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>${title}</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm 3mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Courier New', monospace; font-size: 9px; width: 74mm; margin: 0; }
+  h2 { font-size: 11px; text-align: center; margin: 0 0 2px; }
+  .sub { font-size: 8px; text-align: center; color: #555; margin-bottom: 4px; }
+  .divider { border: none; border-top: 1px dashed #000; margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 7.5px; text-align: left; border-bottom: 1px solid #000; padding: 1px 2px; }
+  td { font-size: 8px; padding: 2px 2px; border-bottom: 1px dotted #ccc; vertical-align: top; }
+  .num { text-align: right; }
+  .input-cell { min-width: 16mm; }
+  .cat-header { background: #f0f0f0; font-weight: bold; font-size: 8px; padding: 2px 2px; }
+  .summary { margin-top: 4px; font-size: 8px; }
+  .footer { margin-top: 6px; font-size: 7.5px; text-align: center; color: #777; }
+  .sig-line { border-top: 1px solid #000; margin-top: 12px; font-size: 7.5px; text-align: center; }
+</style></head><body>
+<h2>${title}</h2>
+<p class="sub">Date: ${dateLabel} &nbsp;|&nbsp; Dept: ${typeLabel}</p>
+<hr class="divider"/>
+<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>
+<hr class="divider"/>
+${mode === 'variance' ? `<div class="summary">
+  <strong>Totals</strong><br/>
+  Items counted: ${Object.values(physicalCounts).filter(v => v !== '').length} / ${sheetData.items.length}<br/>
+  Total discrepancies: ${liveItems.filter(i => i.live_discrepancy !== null && Math.abs(i.live_discrepancy) > 0.01).length} items<br/>
+  Total KES variance: ${fmt(liveItems.reduce((sum, i) => {
+    const d = i.live_discrepancy;
+    return d !== null ? sum + d * i.cost_price : sum;
+  }, 0), 2)}
+</div><hr class="divider"/>` : ''}
+<div class="sig-line">Counted by: ___________________</div>
+<div class="sig-line">Verified by: ___________________</div>
+<p class="footer">Printed: ${new Date().toLocaleString()}</p>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=340,height=700');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => {
+      w.print();
+      w.addEventListener('afterprint', () => w.close());
+    }, 400);
   };
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -680,9 +796,24 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
             {f === 'all' ? 'All Items' : 'Low Stock Only'}
           </Button>
         ))}
+
         <span className="text-xs text-muted-foreground ml-auto">
           Showing {filteredItems.length} of {sheetData?.items.length || 0} items
         </span>
+
+        {/* Print buttons */}
+        {sheetData && sheetData.items.length > 0 && (
+          <>
+            <Button variant="outline" size="sm" onClick={() => printSheet('blank')} className="text-xs gap-1">
+              <Printer className="h-3.5 w-3.5" />
+              Print Blank
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => printSheet('variance')} className="text-xs gap-1">
+              <Printer className="h-3.5 w-3.5" />
+              Print Variance
+            </Button>
+          </>
+        )}
       </div>
 
       {/* ── Main Table ── */}
@@ -726,7 +857,9 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
                         <th className="text-right px-3 py-2 font-medium">Calc. Closing</th>
                         <th className="text-right px-3 py-2 font-medium min-w-[110px]">Physical Count</th>
                         <th className="text-right px-3 py-2 font-medium min-w-[80px]">Lost</th>
+                        <th className="text-left px-3 py-2 font-medium min-w-[110px]">Reason</th>
                         <th className="text-right px-3 py-2 font-medium min-w-[90px]">Discrepancy</th>
+                        <th className="text-right px-3 py-2 font-medium min-w-[90px]">KES Variance</th>
                         <th className="text-center px-3 py-2 font-medium">Status</th>
                       </tr>
                     </thead>
@@ -773,7 +906,7 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
 
                             {/* Physical Count input */}
                             <td className="px-2 py-1.5 text-right">
-                              {isSubmitted ? (
+                              {isSubmitted && !isEditMode ? (
                                 <span className="tabular-nums">
                                   {physStr !== '' ? fmt(parseFloat(physStr), 2) : '—'}
                                 </span>
@@ -797,7 +930,7 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
 
                             {/* Lost input */}
                             <td className="px-2 py-1.5 text-right">
-                              {isSubmitted ? (
+                              {isSubmitted && !isEditMode ? (
                                 <span className="tabular-nums text-orange-600">
                                   {lostStr !== '' && lostStr !== '0' ? fmt(parseFloat(lostStr), 2) : '—'}
                                 </span>
@@ -819,12 +952,50 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
                               )}
                             </td>
 
+                            {/* Reason code */}
+                            <td className="px-2 py-1.5">
+                              {isSubmitted && !isEditMode ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {reasonCodes[item.menu_item_id] || '—'}
+                                </span>
+                              ) : disc !== null && Math.abs(disc) > 0.01 ? (
+                                <select
+                                  value={reasonCodes[item.menu_item_id] ?? ''}
+                                  onChange={(e) =>
+                                    setReasonCodes((prev) => ({
+                                      ...prev,
+                                      [item.menu_item_id]: e.target.value,
+                                    }))
+                                  }
+                                  className="border rounded px-1 py-0.5 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary w-full max-w-[130px]"
+                                >
+                                  {REASON_CODES.map((r) => (
+                                    <option key={r} value={r}>{r || '— select —'}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+
                             {/* Discrepancy (live calculated) */}
                             <td className={`px-3 py-2 text-right tabular-nums ${discrepancyColor(disc)}`}>
                               {disc !== null ? (
                                 <>
                                   {disc > 0.01 && '+'}
                                   {fmt(disc, 2)}
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+
+                            {/* Cost of Variance (KES) */}
+                            <td className={`px-3 py-2 text-right tabular-nums ${discrepancyColor(disc)}`}>
+                              {disc !== null && item.cost_price > 0 ? (
+                                <>
+                                  {disc > 0.01 && '+'}
+                                  {fmt(disc * item.cost_price, 2)}
                                 </>
                               ) : (
                                 <span className="text-muted-foreground">—</span>
@@ -862,20 +1033,45 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
               <p className="text-xs text-muted-foreground">
                 {Object.keys(physicalCounts).filter((k) => physicalCounts[k] !== '').length} of{' '}
                 {sheetData.items.length} items counted
-                {isSubmitted && ' · Previously submitted'}
+                {isSubmitted && !isEditMode && ' · Previously submitted'}
+                {isEditMode && ' · Editing submitted session'}
               </p>
-              <Button
-                onClick={handleSubmit}
-                disabled={submitting || loading}
-                className="flex items-center gap-2"
-              >
-                <Send className="h-4 w-4" />
-                {submitting
-                  ? 'Submitting…'
-                  : isSubmitted
-                  ? 'Re-submit Stock Take'
-                  : 'Submit Stock Take'}
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {isSubmitted && !isEditMode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditMode(true)}
+                    className="flex items-center gap-1.5"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit Counts
+                  </Button>
+                )}
+                {isEditMode && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setIsEditMode(false); fetchSheet(); }}
+                  >
+                    Cancel Edit
+                  </Button>
+                )}
+                {(!isSubmitted || isEditMode) && (
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={submitting || loading}
+                    className="flex items-center gap-2"
+                  >
+                    <Send className="h-4 w-4" />
+                    {submitting
+                      ? 'Submitting…'
+                      : isSubmitted
+                      ? 'Re-submit Stock Take'
+                      : 'Submit Stock Take'}
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

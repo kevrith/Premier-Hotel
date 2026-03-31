@@ -21,6 +21,7 @@ class StockItemEntry(BaseModel):
     physical_closing: float
     lost: Optional[float] = 0
     notes: Optional[str] = None
+    reason: Optional[str] = None  # discrepancy reason code
 
 
 class SubmitStockTakeRequest(BaseModel):
@@ -212,9 +213,11 @@ async def get_stock_sheet(
         physical_closing = None
         lost = 0
         discrepancy = None
+        reason = None
         if existing:
             physical_closing = existing.get("physical_closing")
             lost = float(existing.get("lost") or 0)
+            reason = existing.get("reason")
             if physical_closing is not None:
                 physical_closing = float(physical_closing)
                 discrepancy = physical_closing - calc_closing
@@ -243,6 +246,7 @@ async def get_stock_sheet(
             "calculated_closing": round(calc_closing, 3),
             "physical_closing": physical_closing,
             "lost": lost,
+            "reason": reason,
             "discrepancy": round(discrepancy, 3) if discrepancy is not None else None,
             "stock_status": stock_status,
             "is_low_stock": stock_status in ("low_stock", "out_of_stock"),
@@ -386,6 +390,7 @@ async def submit_stock_take(
             "physical_closing": item.physical_closing,
             "lost": item.lost or 0,
             "notes": item.notes,
+            "reason": item.reason,
         })
 
         # Update stock with physical count

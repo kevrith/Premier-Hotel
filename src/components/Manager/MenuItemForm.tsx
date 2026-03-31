@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { X } from 'lucide-react';
+import { X, Package, AlertTriangle } from 'lucide-react';
 import ImageUpload from '@/components/ui/ImageUpload';
 
 export default function MenuItemForm({ item, onSave, onCancel }) {
@@ -22,6 +22,11 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
     preparation_time: 0,
     available: true,
     popular: false,
+    track_inventory: false,
+    stock_quantity: 0,
+    reorder_level: 0,
+    unit: 'piece',
+    cost_price: 0,
   });
 
   const handleSubmit = (e) => {
@@ -157,6 +162,90 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
           checked={formData.popular}
           onCheckedChange={(checked) => setFormData(prev => ({ ...prev, popular: checked }))}
         />
+      </div>
+
+      {/* ── Inventory & Stock ── */}
+      <div className="border rounded-lg p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold">Inventory Tracking</span>
+          </div>
+          <Switch
+            checked={!!formData.track_inventory}
+            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, track_inventory: checked }))}
+          />
+        </div>
+
+        {formData.track_inventory && (
+          <div className="space-y-3 pt-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Opening Stock</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.stock_quantity ?? 0}
+                  onChange={(e) => setFormData(prev => ({ ...prev, stock_quantity: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Unit</label>
+                <Select
+                  value={formData.unit || 'piece'}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, unit: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="piece">Piece</SelectItem>
+                    <SelectItem value="plate">Plate</SelectItem>
+                    <SelectItem value="kg">Kilogram (kg)</SelectItem>
+                    <SelectItem value="g">Gram (g)</SelectItem>
+                    <SelectItem value="litre">Litre</SelectItem>
+                    <SelectItem value="ml">Millilitre (ml)</SelectItem>
+                    <SelectItem value="bottle">Bottle</SelectItem>
+                    <SelectItem value="can">Can</SelectItem>
+                    <SelectItem value="packet">Packet</SelectItem>
+                    <SelectItem value="portion">Portion</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium mb-1 flex items-center gap-1 text-amber-600">
+                  <AlertTriangle className="h-3 w-3" />
+                  Low Stock Alert Level
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="e.g. 5"
+                  value={formData.reorder_level ?? 0}
+                  onChange={(e) => setFormData(prev => ({ ...prev, reorder_level: parseFloat(e.target.value) || 0 }))}
+                />
+                <p className="text-xs text-muted-foreground mt-0.5">Warn when stock falls below this number</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium mb-1 block text-muted-foreground">Cost Price (KES)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.cost_price ?? 0}
+                  onChange={(e) => setFormData(prev => ({ ...prev, cost_price: parseFloat(e.target.value) || 0 }))}
+                />
+                <p className="text-xs text-muted-foreground mt-0.5">Used for variance cost calculations</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex gap-2 pt-4">
