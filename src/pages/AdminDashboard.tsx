@@ -17,6 +17,7 @@ import { SystemConfiguration } from '@/components/Admin/SystemConfiguration';
 import { AdvancedReporting } from '@/components/Admin/AdvancedReporting';
 import { SystemHealth } from '@/components/Manager/SystemHealth';
 import { StockManagement } from '@/components/Manager/StockManagement';
+import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagement';
 import { ImportCenter } from '@/components/Admin/ImportCenter';
 import { DataExportCenter } from '@/components/Admin/DataExportCenter';
@@ -115,7 +116,18 @@ export default function AdminDashboard() {
 
           {/* Inventory Tab - Stock management and tracking */}
           <TabsContent value="inventory" className="space-y-4 sm:space-y-6">
-            <StockManagement />
+            <Tabs defaultValue="stock-management" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="stock-management">Stock Management</TabsTrigger>
+                <TabsTrigger value="stock-take">Stock Taking</TabsTrigger>
+              </TabsList>
+              <TabsContent value="stock-management">
+                <StockManagement />
+              </TabsContent>
+              <TabsContent value="stock-take">
+                <DailyStockTaking />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           {/* Locations Tab - Multi-location stock management */}
