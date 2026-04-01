@@ -619,10 +619,21 @@ async def get_employee_sales_report(
                         emp_order_items.append({
                             "menu_item_id": item.get("menu_item_id"),
                             "quantity": item.get("quantity", 0),
-                            "name": item.get("name", "Unknown")
+                            "name": item.get("name", "Unknown"),
+                            "price": float(item.get("price", 0)),
                         })
 
             total_items_sold = sum(oi.get("quantity", 0) for oi in emp_order_items)
+
+            # Build per-item summary for thermal printing
+            items_agg: Dict[str, dict] = {}
+            for oi in emp_order_items:
+                key = oi.get("name", "Unknown")
+                if key not in items_agg:
+                    items_agg[key] = {"name": key, "qty": 0, "revenue": 0.0}
+                items_agg[key]["qty"] += oi.get("quantity", 0)
+                items_agg[key]["revenue"] += oi.get("price", 0) * oi.get("quantity", 0)
+            items_summary = sorted(items_agg.values(), key=lambda x: x["revenue"], reverse=True)
             avg_order_value = total_sales / total_orders if total_orders > 0 else 0
 
             orders_today = sum(1 for o in emp_orders if safe_date(o.get("created_at", "")) == today)
@@ -714,7 +725,8 @@ async def get_employee_sales_report(
                     "total_collected": total_collected
                 },
                 "mpesa_transactions": sorted(mpesa_transactions, key=lambda x: x["date"], reverse=True),
-                "split_bills": split_bills
+                "split_bills": split_bills,
+                "items_summary": items_summary,
             })
 
         employee_sales_list.sort(key=lambda x: x["total_sales"], reverse=True)
@@ -1415,13 +1427,13 @@ async def get_item_summary_report(
         start_date = _start(start_date)
         end_date = _end(end_date)
 
-        # Get all non-cancelled orders in date range
+        # Get all orders in date range then exclude voided/cancelled in Python
+        # (matches employee-sales exclusion list so figures stay consistent)
+        VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
         orders_result = supabase.table("orders").select(
             "id, items, total_amount, status, created_at"
-        ).neq("status", "cancelled").gte("created_at", start_date).lte(
-            "created_at", end_date
-        ).execute()
-        orders = orders_result.data or []
+        ).gte("created_at", start_date).lte("created_at", end_date).execute()
+        orders = [o for o in (orders_result.data or []) if o.get("status") not in VOID_STATUSES]
 
         # Collect menu_item_ids to fetch categories
         all_item_ids = set()

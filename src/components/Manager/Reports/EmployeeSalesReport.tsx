@@ -15,6 +15,7 @@ import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import reportsService from '@/lib/api/reports';
 import { EmployeeDetailReport } from '@/components/Admin/Reports/EmployeeDetailReport';
+import { printEmployeeSalesReport } from '@/lib/print';
 
 interface MpesaTxn { mpesa_code: string; amount: number; phone: string; bill_number: string; date: string; }
 interface SplitBill { bill_number: string; bill_id: string; your_amount: number; total_amount: number; split_count: number; }
@@ -26,6 +27,7 @@ interface EmpData {
   total_items_sold: number; orders_today: number; orders_this_week: number; orders_this_month: number;
   top_selling_item: string; first_sale_time: string; last_sale_time: string; completion_rate: number;
   payment_summary: PaymentSummary; mpesa_transactions: MpesaTxn[]; split_bills: SplitBill[];
+  items_summary?: Array<{ name: string; qty: number; revenue: number }>;
 }
 
 const fmt = (v: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(v);
@@ -71,51 +73,13 @@ export function EmployeeSalesReport() {
 
   const handlePrint = (emp?: EmpData) => {
     const list = emp ? [emp] : employees;
-    const { start, end } = getDateRange();
-    const win = window.open('', '_blank');
-    if (!win) { toast.error('Allow popups to print'); return; }
-    const rows = list.map(e => `
-      <div style="page-break-after:always;padding:20px;font-family:Arial,sans-serif;max-width:800px;margin:0 auto">
-        <h2 style="text-align:center;margin:0">Premier Hotel</h2>
-        <h3 style="text-align:center;margin:4px 0">Employee Sales Report</h3>
-        <p style="text-align:center;color:#555;font-size:12px;margin:0">${format(new Date(start),'dd/MM/yyyy')} to ${format(new Date(end),'dd/MM/yyyy')}</p>
-        <hr style="margin:10px 0"/>
-        <table style="width:100%;font-size:13px;margin-bottom:8px">
-          <tr><td><b>Name:</b></td><td>${e.employee_name}</td><td><b>Role:</b></td><td style="text-transform:capitalize">${e.role}</td></tr>
-          <tr><td><b>Dept:</b></td><td>${e.department}</td><td><b>Orders:</b></td><td>${e.total_orders}</td></tr>
-        </table>
-        <h4 style="background:#222;color:#fff;padding:5px 8px;margin:8px 0 0">SALES SUMMARY</h4>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <tr style="background:#f5f5f5"><td style="padding:4px 8px;border:1px solid #ddd">Total Sales</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right;font-weight:bold">KES ${e.total_sales.toLocaleString()}</td></tr>
-          <tr><td style="padding:4px 8px;border:1px solid #ddd">Items Sold</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right">${e.total_items_sold}</td></tr>
-          <tr style="background:#f5f5f5"><td style="padding:4px 8px;border:1px solid #ddd">Avg Order Value</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right">KES ${e.avg_order_value.toLocaleString()}</td></tr>
-          <tr><td style="padding:4px 8px;border:1px solid #ddd">Top Item</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right">${e.top_selling_item}</td></tr>
-        </table>
-        <h4 style="background:#222;color:#fff;padding:5px 8px;margin:8px 0 0">PAYMENT BREAKDOWN</h4>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <tr style="background:#f5f5f5"><td style="padding:4px 8px;border:1px solid #ddd">Cash</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right">KES ${e.payment_summary.cash.toLocaleString()}</td></tr>
-          <tr><td style="padding:4px 8px;border:1px solid #ddd">M-Pesa</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right">KES ${e.payment_summary.mpesa.toLocaleString()}</td></tr>
-          <tr style="background:#f5f5f5"><td style="padding:4px 8px;border:1px solid #ddd">Card (Paystack)</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right">KES ${e.payment_summary.card.toLocaleString()}</td></tr>
-          <tr><td style="padding:4px 8px;border:1px solid #ddd">Room Charge</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right">KES ${e.payment_summary.room_charge.toLocaleString()}</td></tr>
-          <tr style="background:#e8f5e9;font-weight:bold"><td style="padding:5px 8px;border:2px solid #4caf50">TOTAL COLLECTED</td><td style="padding:5px 8px;border:2px solid #4caf50;text-align:right">KES ${e.payment_summary.total_collected.toLocaleString()}</td></tr>
-        </table>
-        ${e.mpesa_transactions.length > 0 ? `
-        <h4 style="background:#222;color:#fff;padding:5px 8px;margin:8px 0 0">M-PESA TRANSACTIONS (${e.mpesa_transactions.length})</h4>
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="background:#eee"><th style="padding:4px 8px;border:1px solid #ddd;text-align:left">Code</th><th style="padding:4px 8px;border:1px solid #ddd;text-align:left">Phone</th><th style="padding:4px 8px;border:1px solid #ddd;text-align:left">Bill</th><th style="padding:4px 8px;border:1px solid #ddd;text-align:right">Amount</th><th style="padding:4px 8px;border:1px solid #ddd;text-align:left">Time</th></tr></thead>
-          <tbody>${e.mpesa_transactions.map((m,i)=>`<tr style="background:${i%2===0?'#fff':'#f0f7ff'}"><td style="padding:3px 8px;border:1px solid #ddd;font-family:monospace;font-weight:bold">${m.mpesa_code}</td><td style="padding:3px 8px;border:1px solid #ddd">${m.phone||'—'}</td><td style="padding:3px 8px;border:1px solid #ddd">${m.bill_number}</td><td style="padding:3px 8px;border:1px solid #ddd;text-align:right">KES ${m.amount.toLocaleString()}</td><td style="padding:3px 8px;border:1px solid #ddd;font-size:11px">${m.date?format(new Date(m.date),'dd/MM HH:mm'):'—'}</td></tr>`).join('')}
-          <tr style="background:#dbeafe;font-weight:bold"><td colspan="3" style="padding:4px 8px;border:1px solid #ddd">M-PESA TOTAL</td><td style="padding:4px 8px;border:1px solid #ddd;text-align:right">KES ${e.payment_summary.mpesa.toLocaleString()}</td><td style="border:1px solid #ddd"></td></tr>
-          </tbody></table>` : ''}
-        ${e.split_bills.length > 0 ? `
-        <h4 style="background:#222;color:#fff;padding:5px 8px;margin:8px 0 0">SPLIT BILLS (${e.split_bills.length})</h4>
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="background:#eee"><th style="padding:4px 8px;border:1px solid #ddd;text-align:left">Bill #</th><th style="padding:4px 8px;border:1px solid #ddd;text-align:right">Bill Total</th><th style="padding:4px 8px;border:1px solid #ddd;text-align:right">Your Share</th><th style="padding:4px 8px;border:1px solid #ddd;text-align:center">Split</th></tr></thead>
-          <tbody>${e.split_bills.map((b,i)=>`<tr style="background:${i%2===0?'#fff':'#fff8e1'}"><td style="padding:3px 8px;border:1px solid #ddd">${b.bill_number}</td><td style="padding:3px 8px;border:1px solid #ddd;text-align:right">KES ${b.total_amount.toLocaleString()}</td><td style="padding:3px 8px;border:1px solid #ddd;text-align:right;font-weight:bold">KES ${b.your_amount.toLocaleString()}</td><td style="padding:3px 8px;border:1px solid #ddd;text-align:center">${b.split_count} ways</td></tr>`).join('')}</tbody>
-        </table>` : ''}
-        <p style="font-size:10px;color:#888;text-align:center;margin-top:16px">Generated: ${new Date().toLocaleString()}</p>
-      </div>`).join('');
-    win.document.write(`<!DOCTYPE html><html><head><title>Employee Sales</title></head><body>${rows}<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
-    win.document.close();
+    printEmployeeSalesReport({
+      employees: list,
+      periodLabel,
+      totalSales: emp ? emp.total_sales : summary.totalSales,
+      totalOrders: emp ? emp.total_orders : summary.totalOrders,
+      unattributedSales: emp ? 0 : summary.unattributedSales,
+    });
   };
 
   const handleExportCSV = () => {

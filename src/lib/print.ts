@@ -235,3 +235,111 @@ export function printBill(order: {
 
   openPrintWindow(html, `Bill ${order.order_number}`);
 }
+
+/**
+ * Thermal print for the Employee Sales Report.
+ * Prints one section per employee: header, sales summary, item breakdown, payment breakdown.
+ */
+export function printEmployeeSalesReport(params: {
+  employees: Array<{
+    employee_name: string;
+    role: string;
+    department: string;
+    total_sales: number;
+    total_orders: number;
+    total_items_sold: number;
+    avg_order_value: number;
+    top_selling_item: string;
+    completion_rate: number;
+    payment_summary: {
+      cash: number; mpesa: number; card: number;
+      room_charge: number; other: number; total_collected: number;
+    };
+    items_summary?: Array<{ name: string; qty: number; revenue: number }>;
+  }>;
+  periodLabel: string;
+  totalSales: number;
+  totalOrders: number;
+  unattributedSales: number;
+}) {
+  const cfg = getReceiptConfig();
+  const fmt = (n: number) =>
+    `KES ${(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const now = new Date().toLocaleString('en-KE', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+
+  const empBlocks = params.employees.map((e, idx) => {
+    const payRows = [
+      ['Cash', e.payment_summary.cash],
+      ['M-Pesa', e.payment_summary.mpesa],
+      ['Card', e.payment_summary.card],
+      ['Room Charge', e.payment_summary.room_charge],
+      ...(e.payment_summary.other > 0 ? [['Other', e.payment_summary.other] as [string, number]] : []),
+    ].filter(([, v]) => (v as number) > 0)
+      .map(([label, val]) => `<div class="row"><span>${label}</span><span>${fmt(val as number)}</span></div>`)
+      .join('');
+
+    const itemRows = (e.items_summary || [])
+      .map(item => `
+        <div class="row">
+          <span style="flex:1;padding-right:4px">${item.name}</span>
+          <span style="min-width:28px;text-align:right">${item.qty}</span>
+          <span style="min-width:70px;text-align:right">${fmt(item.revenue)}</span>
+        </div>`)
+      .join('');
+
+    return `
+      <div class="center bold" style="font-size:14px;margin-top:${idx > 0 ? 16 : 0}px">${idx + 1}. ${e.employee_name}</div>
+      <div class="center small">${e.role.charAt(0).toUpperCase() + e.role.slice(1)} • ${e.department}</div>
+      <div class="divider"></div>
+      <div class="row"><span>Total Sales</span><span class="bold">${fmt(e.total_sales)}</span></div>
+      <div class="row"><span>Orders</span><span>${e.total_orders}</span></div>
+      <div class="row"><span>Items Sold</span><span>${e.total_items_sold}</span></div>
+      <div class="row"><span>Avg Order</span><span>${fmt(e.avg_order_value)}</span></div>
+      <div class="row"><span>Completion</span><span>${e.completion_rate}%</span></div>
+      ${(e.items_summary || []).length > 0 ? `
+      <div class="divider"></div>
+      <div class="bold small" style="margin-bottom:3px">ITEMS SOLD</div>
+      <div class="row small" style="border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:2px">
+        <span style="flex:1">Item</span><span style="min-width:28px;text-align:right">Qty</span><span style="min-width:70px;text-align:right">Revenue</span>
+      </div>
+      ${itemRows}` : ''}
+      <div class="divider"></div>
+      <div class="bold small" style="margin-bottom:3px">PAYMENTS</div>
+      ${payRows}
+      <div class="divider-solid"></div>
+      <div class="row bold"><span>COLLECTED</span><span>${fmt(e.payment_summary.total_collected)}</span></div>
+    `;
+  }).join('<div class="divider-solid" style="margin:10px 0;border-top:2px dashed #000"></div>');
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Employee Sales Report</title>${receiptStyles()}</head>
+    <body>
+      <div class="center">
+        ${buildHeader(cfg)}
+        <div class="bold" style="font-size:14px;margin-top:6px;">EMPLOYEE SALES REPORT</div>
+        <div class="small">${params.periodLabel}</div>
+      </div>
+      <div class="divider-solid"></div>
+
+      <div class="row bold"><span>Grand Total</span><span>${fmt(params.totalSales)}</span></div>
+      <div class="row"><span>Total Orders</span><span>${params.totalOrders}</span></div>
+      <div class="row"><span>Staff Count</span><span>${params.employees.length}</span></div>
+      ${params.unattributedSales > 0 ? `<div class="row small"><span>Unattributed</span><span>${fmt(params.unattributedSales)}</span></div>` : ''}
+      <div class="divider-solid"></div>
+
+      ${empBlocks}
+
+      <div class="divider-solid"></div>
+      <div class="center small mt">Printed: ${now}</div>
+      <div class="center small">${cfg.footer}</div>
+    </body>
+    </html>
+  `;
+
+  openPrintWindow(html, 'Employee Sales Report');
+}
