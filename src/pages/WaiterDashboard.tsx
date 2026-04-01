@@ -25,7 +25,8 @@ import {
   Receipt,
   RefreshCw,
   Wifi,
-  Printer
+  Printer,
+  User
 } from 'lucide-react';
 import { BillsManagement } from '@/components/Bills';
 import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
@@ -374,9 +375,30 @@ export default function WaiterDashboard() {
     }
   };
 
+  // My Orders toggle — default ON; persisted so it survives page refresh
+  const [showMyOrdersOnly, setShowMyOrdersOnly] = useState<boolean>(
+    () => localStorage.getItem('waiter:my_orders_only') !== 'false'
+  );
+  const toggleMyOrders = () => {
+    setShowMyOrdersOnly(prev => {
+      const next = !prev;
+      localStorage.setItem('waiter:my_orders_only', String(next));
+      return next;
+    });
+  };
+
+  // Apply the waiter filter before deriving table/room lists
+  const visibleOrders = showMyOrdersOnly
+    ? orders.filter(o =>
+        !o.assigned_waiter_id ||
+        o.assigned_waiter_id === user?.id ||
+        (o as any).created_by_staff_id === user?.id
+      )
+    : orders;
+
   // Filter orders by location type
-  const tableOrders = orders.filter(o => o.location_type === 'table');
-  const roomOrders = orders.filter(o => o.location_type === 'room');
+  const tableOrders = visibleOrders.filter(o => o.location_type === 'table');
+  const roomOrders = visibleOrders.filter(o => o.location_type === 'room');
 
   // Bar/drink categories — orders with only these items never go to kitchen
   const BAR_CATEGORIES = new Set([
@@ -390,8 +412,8 @@ export default function WaiterDashboard() {
     order.items.every(i => BAR_CATEGORIES.has((i.category || '').toLowerCase().trim()));
 
   // Orders needing attention (ready for pickup)
-  const needsAttention = orders.filter(o => o.status === 'ready');
-  const activeOrders = orders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status));
+  const needsAttention = visibleOrders.filter(o => o.status === 'ready');
+  const activeOrders = visibleOrders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status));
 
   // Order Card Component
   const OrderCard = ({ order }: { order: Order }) => {
@@ -605,6 +627,15 @@ export default function WaiterDashboard() {
               )}
               <Button variant={bellMuted ? "outline" : "default"} size="sm" onClick={toggleSound} title={bellMuted ? 'Unmute order bell' : 'Mute order bell'}>
                 {bellMuted ? <VolumeX className="h-4 w-4 text-red-500" /> : <Volume2 className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant={showMyOrdersOnly ? 'default' : 'outline'}
+                size="sm"
+                onClick={toggleMyOrders}
+                title={showMyOrdersOnly ? 'Showing my orders — click to see all' : 'Showing all orders — click to show only mine'}
+              >
+                <User className="h-4 w-4 mr-1" />
+                <span className="hidden xs:inline">{showMyOrdersOnly ? 'My Orders' : 'All Orders'}</span>
               </Button>
               <Button variant="outline" size="sm" onClick={refreshOrders} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
