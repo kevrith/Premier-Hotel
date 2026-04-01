@@ -193,7 +193,7 @@ export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdat
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  function formatAuditAction(action: string, details: any, performedBy?: string): string {
+  function formatAuditAction(action: string, _details: any, performedBy?: string): string {
     const by = performedBy ? ` by ${performedBy}` : '';
     const map: Record<string, string> = {
       user_created:    `New user created${by}`,

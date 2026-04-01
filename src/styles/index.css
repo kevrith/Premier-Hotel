@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import 'react-image-crop/dist/ReactCrop.css';
 
 /* Luxury Hotel Management Design System - All colors MUST be HSL */
 
