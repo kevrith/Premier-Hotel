@@ -51,6 +51,7 @@ import { NotificationCenter } from '@/components/Dashboard/NotificationCenter';
 import { DashboardCustomization, useWidgetVisibility } from '@/components/Dashboard/DashboardCustomization';
 import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagement';
 import { StockManagement } from '@/components/Manager/StockManagement';
+import { InventoryManagement } from '@/components/Manager/InventoryManagement';
 import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { ImportCenter } from '@/components/Admin/ImportCenter';
 import { DataExportCenter } from '@/components/Admin/DataExportCenter';
@@ -184,6 +185,7 @@ export default function ManagerDashboard() {
             <TabsTrigger value="financial-reports" className="text-xs sm:text-sm px-1 sm:px-3">Reports</TabsTrigger>
             <TabsTrigger value="order-management" className="text-xs sm:text-sm px-1 sm:px-3">Orders</TabsTrigger>
             <TabsTrigger value="stock" className="text-xs sm:text-sm px-1 sm:px-3">Stock</TabsTrigger>
+            <TabsTrigger value="purchases" className="text-xs sm:text-sm px-1 sm:px-3">Purchases</TabsTrigger>
             <TabsTrigger value="stock-take" className="text-xs sm:text-sm px-1 sm:px-3">Stock Take</TabsTrigger>
             <TabsTrigger value="locations" className="text-xs sm:text-sm px-1 sm:px-3">Locations</TabsTrigger>
             <TabsTrigger value="system-health" className="text-xs sm:text-sm px-1 sm:px-3">Health</TabsTrigger>
@@ -509,6 +511,13 @@ export default function ManagerDashboard() {
           <TabsContent value="stock" className="space-y-6">
             <LazyTab active={activeTab === 'stock'}>
               <StockManagement />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Purchase Orders / Receiving Tab */}
+          <TabsContent value="purchases" className="space-y-6">
+            <LazyTab active={activeTab === 'purchases'}>
+              <InventoryManagement />
             </LazyTab>
           </TabsContent>
 

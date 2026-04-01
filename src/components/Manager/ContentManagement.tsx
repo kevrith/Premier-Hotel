@@ -5,7 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Database, Coffee, Hotel, Tag, Plus, Edit, Trash2, DollarSign } from 'lucide-react';
+import { Database, Coffee, Hotel, Tag, Plus, Edit, Trash2, DollarSign, Search, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { menuAPI, MenuItem } from '@/lib/api/menu';
 import { roomsAPI, Room } from '@/lib/api/rooms';
@@ -22,7 +24,19 @@ export function ContentManagement() {
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRoomDialogOpen, setIsRoomDialogOpen] = useState(false);
+  const [menuSearch, setMenuSearch] = useState('');
+  const [menuCategory, setMenuCategory] = useState('all');
   const { toast } = useToast();
+
+  const CATEGORIES = ['appetizers', 'starters', 'mains', 'desserts', 'drinks', 'beverages', 'breakfast', 'snacks'];
+
+  const filteredMenuItems = menuItems.filter(item => {
+    const matchesSearch = !menuSearch ||
+      item.name?.toLowerCase().includes(menuSearch.toLowerCase()) ||
+      item.description?.toLowerCase().includes(menuSearch.toLowerCase());
+    const matchesCategory = menuCategory === 'all' || item.category === menuCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   useEffect(() => {
     fetchData();
@@ -207,33 +221,63 @@ export function ContentManagement() {
             </TabsList>
 
             <TabsContent value="menu" className="space-y-4">
-              <div className="flex justify-end">
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button onClick={handleNewMenuItem}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Menu Item
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}
-                      </DialogTitle>
-                      <DialogDescription>
-                        {editingItem ? 'Update the menu item details below.' : 'Fill in the details to create a new menu item.'}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <MenuItemForm
-                      item={editingItem}
-                      onSave={handleSaveMenuItem}
-                      onCancel={() => {
-                        setIsDialogOpen(false);
-                        setEditingItem(null);
-                      }}
-                    />
-                  </DialogContent>
-                </Dialog>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search items..."
+                    value={menuSearch}
+                    onChange={e => setMenuSearch(e.target.value)}
+                    className="pl-8 pr-8 h-9"
+                  />
+                  {menuSearch && (
+                    <button onClick={() => setMenuSearch('')} className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground">
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <Select value={menuCategory} onValueChange={setMenuCategory}>
+                  <SelectTrigger className="w-[140px] h-9">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    {CATEGORIES.map(c => (
+                      <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {filteredMenuItems.length} of {menuItems.length}
+                </span>
+                <div className="ml-auto">
+                  <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button onClick={handleNewMenuItem}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Menu Item
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>
+                          {editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}
+                        </DialogTitle>
+                        <DialogDescription>
+                          {editingItem ? 'Update the menu item details below.' : 'Fill in the details to create a new menu item.'}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <MenuItemForm
+                        item={editingItem}
+                        onSave={handleSaveMenuItem}
+                        onCancel={() => {
+                          setIsDialogOpen(false);
+                          setEditingItem(null);
+                        }}
+                      />
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
 
               {isLoading ? (
@@ -252,7 +296,13 @@ export function ContentManagement() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {menuItems.map((item) => (
+                    {filteredMenuItems.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                          No items match your search
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredMenuItems.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">{item.name}</TableCell>
                         <TableCell>KES {item.base_price}</TableCell>
