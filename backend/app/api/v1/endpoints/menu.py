@@ -120,9 +120,17 @@ async def create_menu_item(
         # Create menu item - convert Decimal to float for JSON serialization
         from decimal import Decimal
         item_dict = item_data.model_dump()
+
+        # Map 'available' → 'is_available' for database compatibility
+        if "available" in item_dict:
+            item_dict["is_available"] = item_dict.pop("available")
+
         for field in ('base_price', 'cost_price'):
             if field in item_dict and isinstance(item_dict[field], Decimal):
                 item_dict[field] = float(item_dict[field])
+
+        # Remove None values to avoid inserting nulls into columns that may not exist
+        item_dict = {k: v for k, v in item_dict.items() if v is not None}
 
         response = supabase.table("menu_items").insert(item_dict).execute()
 

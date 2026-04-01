@@ -124,6 +124,8 @@ async def create_user(
             created_at=created_user["created_at"]
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -134,7 +136,7 @@ async def create_user(
 @router.get("/users", response_model=List[UserResponse])
 async def list_users(
     role: Optional[str] = None,
-    status: Optional[str] = None,
+    user_status: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_role(["admin", "manager"])),
@@ -149,8 +151,8 @@ async def list_users(
         if role:
             query = query.eq("role", role)
 
-        if status:
-            query = query.eq("status", status)
+        if user_status:
+            query = query.eq("status", user_status)
 
         query = query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
@@ -159,9 +161,9 @@ async def list_users(
         return [
             UserResponse(
                 id=user["id"],
-                email=user["email"],
+                email=user.get("email"),
                 full_name=user.get("full_name", ""),
-                phone_number=user.get("phone"),  # Map 'phone' to 'phone_number'
+                phone_number=user.get("phone"),
                 role=user.get("role", "customer"),
                 created_at=user["created_at"]
             )
@@ -170,7 +172,7 @@ async def list_users(
 
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Error fetching users: {str(e)}"
         )
 
