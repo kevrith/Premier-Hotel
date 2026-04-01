@@ -202,6 +202,7 @@ export default function EnhancedMenu() {
 
     console.log('Adding to cart:', cartItem);
     addItem(cartItem);
+    setSearchQuery('');
 
     toast.success(`${item.name} added to cart!`);
   };
@@ -320,7 +321,7 @@ export default function EnhancedMenu() {
         // Print order slip if setting is enabled (default: on)
         const shouldPrint = localStorage.getItem('pos:print_on_order') !== 'false';
         if (shouldPrint) {
-          printOrderSlip(createdOrder);
+          printOrderSlip({ ...createdOrder, waiter_name: user?.full_name });
         }
 
         // Auto-logout on desktop if setting is enabled

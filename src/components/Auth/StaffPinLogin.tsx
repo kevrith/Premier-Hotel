@@ -138,6 +138,23 @@ export default function StaffPinLogin() {
     }
   }, [pin]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Physical keyboard support for PIN entry
+  useEffect(() => {
+    if (!selected) return;
+    const handler = (e: KeyboardEvent) => {
+      if (loading) return;
+      if (e.key >= '0' && e.key <= '9') {
+        setPin(p => p.length < 6 ? p + e.key : p);
+      } else if (e.key === 'Backspace') {
+        setPin(p => p.slice(0, -1));
+      } else if (e.key === 'Enter' && pin.length >= 4) {
+        handleSubmit();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selected, pin, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // — Shift code gate —
   if (shiftCodeRequired && !shiftUnlocked) {
     return (

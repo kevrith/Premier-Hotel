@@ -17,9 +17,9 @@ function openPrintWindow(html: string, title: string) {
   w.focus();
   // Small delay so the browser can render before printing
   setTimeout(() => {
-    w.print();
-    // Close after print dialog is dismissed
+    // Register afterprint BEFORE calling print so the event fires correctly
     w.addEventListener('afterprint', () => w.close());
+    w.print();
   }, 300);
 }
 
@@ -30,6 +30,7 @@ function receiptStyles(): string {
       body {
         font-family: 'Courier New', Courier, monospace;
         font-size: 13px;
+        font-weight: bold;
         width: 280px;
         margin: 0 auto;
         padding: 10px;
@@ -42,7 +43,7 @@ function receiptStyles(): string {
       .row { display: flex; justify-content: space-between; margin: 3px 0; }
       .row-right { text-align: right; }
       .total { font-size: 15px; font-weight: bold; }
-      .small { font-size: 11px; }
+      .small { font-size: 11px; font-weight: bold; }
       .mt { margin-top: 6px; }
       @media print {
         @page { margin: 0; size: 80mm auto; }
@@ -63,6 +64,7 @@ export function printOrderSlip(order: {
   items: Array<{ name: string; quantity: number; special_instructions?: string; customizations?: Record<string, any> }>;
   special_instructions?: string;
   created_at?: string;
+  waiter_name?: string;
 }) {
   const now = new Date().toLocaleString('en-KE', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -106,6 +108,7 @@ export function printOrderSlip(order: {
       <div class="row"><span class="bold">Order #</span><span>${order.order_number}</span></div>
       <div class="row"><span class="bold">${order.location_type === 'room' ? 'Room' : 'Table'}</span><span>${order.location}</span></div>
       <div class="row"><span class="bold">Time</span><span>${now}</span></div>
+      ${order.waiter_name ? `<div class="row"><span class="bold">Waiter</span><span>${order.waiter_name}</span></div>` : ''}
       ${customerLine ? `<div class="row"><span class="bold">Customer</span><span class="small">${customerLine}</span></div>` : ''}
 
       <div class="divider"></div>

@@ -1,10 +1,10 @@
 // @ts-nocheck
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Heart, Clock, Flame, Leaf, Plus, UtensilsCrossed } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Heart, Clock, Flame, Leaf, UtensilsCrossed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ItemCustomizationModal from './ItemCustomizationModal';
 import type { MenuItem } from '@/types';
@@ -44,11 +44,15 @@ export default function MenuItemCard({
   const [imgError, setImgError] = useState(false);
 
   return (
-    <Card className={cn(
-      "group hover:shadow-elegant transition-all duration-300 overflow-hidden",
-      !item.is_available && "opacity-60",
-      className
-    )}>
+    <Dialog open={showCustomization} onOpenChange={setShowCustomization}>
+    <Card
+      className={cn(
+        "group hover:shadow-elegant transition-all duration-300 overflow-hidden",
+        item.available ? "cursor-pointer hover:ring-2 hover:ring-primary/40" : "opacity-60",
+        className
+      )}
+      onClick={() => item.available && setShowCustomization(true)}
+    >
       {/* Item Image */}
       <div className="relative overflow-hidden h-44 sm:h-48 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/30">
         {imgError || !item.image_url ? (
@@ -88,7 +92,7 @@ export default function MenuItemCard({
               "absolute top-2 right-2 bg-background/80 backdrop-blur-sm",
               isFavorite ? "text-red-500" : "text-muted-foreground"
             )}
-            onClick={() => onAddToFavorites(item.id)}
+            onClick={(e) => { e.stopPropagation(); onAddToFavorites(item.id); }}
           >
             <Heart className={cn("h-4 w-4", isFavorite && "fill-current")} />
           </Button>
@@ -149,36 +153,26 @@ export default function MenuItemCard({
           </div>
         )}
 
-        {/* Add to Cart Button */}
-        {item.available ? (
-          <Dialog open={showCustomization} onOpenChange={setShowCustomization}>
-            <DialogTrigger asChild>
-              <Button className="w-full" size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add to Cart
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Customize Your Order</DialogTitle>
-                <DialogDescription>
-                  Make it your way! Add customizations to your order.
-                </DialogDescription>
-              </DialogHeader>
-              <ItemCustomizationModal
-                item={item}
-                quantity={itemQuantity}
-                onQuantityChange={setItemQuantity}
-                onAddToCart={handleAddToCart}
-              />
-            </DialogContent>
-          </Dialog>
-        ) : (
-          <Button className="w-full" size="sm" disabled>
-            Currently Unavailable
-          </Button>
+        {!item.available && (
+          <p className="text-xs text-center text-muted-foreground py-1">Currently Unavailable</p>
         )}
       </CardContent>
     </Card>
+
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Customize Your Order</DialogTitle>
+          <DialogDescription>
+            Make it your way! Add customizations to your order.
+          </DialogDescription>
+        </DialogHeader>
+        <ItemCustomizationModal
+          item={item}
+          quantity={itemQuantity}
+          onQuantityChange={setItemQuantity}
+          onAddToCart={handleAddToCart}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
