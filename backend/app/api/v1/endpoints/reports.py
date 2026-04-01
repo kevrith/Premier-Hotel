@@ -555,11 +555,11 @@ async def get_employee_sales_report(
             staff_order_map = {k: v for k, v in staff_order_map.items() if k == employee_id}
 
         def _order_revenue(order: dict) -> float:
-            """Sum price*qty from line items — same method item-summary uses."""
+            """Sum price*qty from non-voided line items — same method item-summary uses."""
             return sum(
                 float(i.get("price", 0)) * int(i.get("quantity", 0))
                 for i in (order.get("items") or [])
-                if isinstance(i, dict)
+                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity", 0)) > 0
             )
 
         if not staff_order_map:
@@ -643,15 +643,22 @@ async def get_employee_sales_report(
             emp_order_items = []
             for order in emp_orders:
                 for item in (order.get("items") or []):
-                    if isinstance(item, dict):
-                        mid = str(item.get("menu_item_id") or item.get("id") or "")
-                        emp_order_items.append({
-                            "menu_item_id": mid,
-                            "quantity": item.get("quantity", 0),
-                            "name": item.get("name", "Unknown"),
-                            "price": float(item.get("price", 0)),
-                            "category": menu_category_map.get(mid) or item.get("category") or "Other",
-                        })
+                    if not isinstance(item, dict):
+                        continue
+                    # Skip fully-voided items (item["voided"] = True set by void-item endpoint)
+                    if item.get("voided"):
+                        continue
+                    qty = int(item.get("quantity", 0))
+                    if qty <= 0:
+                        continue
+                    mid = str(item.get("menu_item_id") or item.get("id") or "")
+                    emp_order_items.append({
+                        "menu_item_id": mid,
+                        "quantity": qty,
+                        "name": item.get("name", "Unknown"),
+                        "price": float(item.get("price", 0)),
+                        "category": menu_category_map.get(mid) or item.get("category") or "Other",
+                    })
 
             total_items_sold = sum(oi.get("quantity", 0) for oi in emp_order_items)
 
@@ -1201,11 +1208,12 @@ async def get_employee_details(
                 "assigned_chef_id", employee_id
             ).gte("created_at", start_date).lte("created_at", end_date).execute()
 
-            # Combine and deduplicate
+            # Combine and deduplicate, then exclude voided/cancelled orders
+            VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
             orders_dict = {o["id"]: o for o in created_result.data}
             orders_dict.update({o["id"]: o for o in waiter_result.data})
             orders_dict.update({o["id"]: o for o in chef_result.data})
-            all_orders = list(orders_dict.values())
+            all_orders = [o for o in orders_dict.values() if o.get("status") not in VOID_STATUSES]
 
         # Process data based on role type
         if is_housekeeping:
@@ -1250,9 +1258,14 @@ async def get_employee_details(
             # Count items from JSON items array
             if order.get("order_items"):
                 for item in order["order_items"]:
+                    # Skip voided items
+                    if item.get("voided"):
+                        continue
                     item_name = item.get("name", "Unknown")
                     menu_item_id = item.get("menu_item_id") or item_name
-                    quantity = item.get("quantity", 1)
+                    quantity = int(item.get("quantity", 0))
+                    if quantity <= 0:
+                        continue
 
                     transaction["items"].append({
                         "name": item_name,
@@ -1274,25 +1287,29 @@ async def get_employee_details(
 
             transactions.append(transaction)
 
-            # Aggregate stats
+            # Aggregate stats — use line-item sum to exclude voided items
+            order_revenue = sum(
+                float(i.get("price", 0)) * int(i.get("quantity", 0))
+                for i in (order.get("order_items") or [])
+                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity", 0)) > 0
+            )
             EXCLUDED_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
             if order_status in ["completed", "delivered", "served"]:
                 completed_orders += 1
 
-            if order_status not in EXCLUDED_STATUSES:
-                total_sales += order_total
+            total_sales += order_revenue
 
-                # Payment method breakdown
-                payment_method_breakdown[payment_method] = payment_method_breakdown.get(payment_method, 0) + order_total
+            # Payment method breakdown
+            payment_method_breakdown[payment_method] = payment_method_breakdown.get(payment_method, 0) + order_revenue
 
                 # Hourly sales
                 order_datetime = datetime.fromisoformat(order_date.replace('Z', '+00:00'))
                 hour = order_datetime.strftime("%I %p")
-                hourly_sales[hour] = hourly_sales.get(hour, 0) + order_total
+                hourly_sales[hour] = hourly_sales.get(hour, 0) + order_revenue
 
                 # Daily sales
                 day = order_datetime.strftime("%Y-%m-%d")
-                daily_sales[day] = daily_sales.get(day, 0) + order_total
+                daily_sales[day] = daily_sales.get(day, 0) + order_revenue
 
         # Sort transactions by date (newest first)
         transactions.sort(key=lambda x: x["date"], reverse=True)
@@ -1505,9 +1522,14 @@ async def get_item_summary_report(
             if not isinstance(items, list):
                 continue
             for item in items:
+                # Skip fully-voided items (item["voided"] = True set by void-item endpoint)
+                if item.get("voided"):
+                    continue
                 mid = str(item.get("menu_item_id") or item.get("id") or "")
                 item_name = item.get("name", "Unknown")
                 qty = int(item.get("quantity", 0))
+                if qty <= 0:
+                    continue
                 price = float(item.get("price", 0))
                 revenue = price * qty
 
