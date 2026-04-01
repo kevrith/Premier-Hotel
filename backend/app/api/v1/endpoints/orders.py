@@ -58,9 +58,10 @@ async def generate_receipt_number(supabase_admin: Client) -> str:
 @router.get("/", response_model=List[OrderResponse])
 async def get_all_orders(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
+    limit: int = Query(500, ge=1, le=500),
     status: Optional[str] = Query(None),
     location_type: Optional[str] = None,
+    date: Optional[str] = Query(None),
     current_user: dict = Depends(require_staff),
     supabase: Client = Depends(get_supabase),
     supabase_admin: Client = Depends(get_supabase_admin),
@@ -93,6 +94,9 @@ async def get_all_orders(
             query = query.eq("status", status)
         if location_type:
             query = query.eq("location_type", location_type)
+        if date == "today":
+            today = datetime.now(timezone.utc).date().isoformat()
+            query = query.gte("created_at", f"{today}T00:00:00").lte("created_at", f"{today}T23:59:59")
 
         # Apply pagination
         query = query.range(skip, skip + limit - 1).order("created_at", desc=True)

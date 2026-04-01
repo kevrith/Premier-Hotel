@@ -26,6 +26,7 @@ import { LocationManagement } from '@/components/Admin/LocationManagement';
 import { NetworkInfo } from '@/components/Admin/NetworkInfo';
 import { BranchManagement } from '@/components/Admin/BranchManagement';
 import { TableManagement } from '@/components/Admin/TableManagement';
+import { OrderManagement } from '@/components/Manager/OrderManagement';
 
 export default function AdminDashboard() {
   const { isLoading } = useAuth();
@@ -90,6 +91,7 @@ export default function AdminDashboard() {
               <TabsTrigger value="network" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Network</TabsTrigger>
               <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Housekeeping</TabsTrigger>
               <TabsTrigger value="tables" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Tables</TabsTrigger>
+              <TabsTrigger value="orders" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Orders</TabsTrigger>
               <TabsTrigger value="settings" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Settings</TabsTrigger>
             </TabsList>
           </div>
@@ -173,6 +175,11 @@ export default function AdminDashboard() {
           {/* Tables Tab - Restaurant table management */}
           <TabsContent value="tables" className="space-y-4 sm:space-y-6">
             <TableManagement />
+          </TabsContent>
+
+          {/* Orders Tab - Full order management with reprint */}
+          <TabsContent value="orders" className="space-y-4 sm:space-y-6">
+            <OrderManagement />
           </TabsContent>
 
           {/* Settings Tab - System configuration */}

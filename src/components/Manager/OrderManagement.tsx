@@ -417,7 +417,6 @@ export default function OrderManagement() {
                       </th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Order #</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Customer</th>
-                      <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Type</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Status</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Amount</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Time</th>
@@ -426,9 +425,9 @@ export default function OrderManagement() {
                   </thead>
                   <tbody>
                     {isLoading ? (
-                      <tr><td colSpan={8} className="p-4 sm:p-8 text-center text-sm">Loading...</td></tr>
+                      <tr><td colSpan={7} className="p-4 sm:p-8 text-center text-sm">Loading...</td></tr>
                     ) : filteredOrders.length === 0 ? (
-                      <tr><td colSpan={8} className="p-4 sm:p-8 text-center text-sm">No orders found</td></tr>
+                      <tr><td colSpan={7} className="p-4 sm:p-8 text-center text-sm">No orders found</td></tr>
                     ) : (
                       filteredOrders.map((order: Order) => {
                         const StatusIcon = statusConfig[order.status as keyof typeof statusConfig]?.icon || AlertCircle;
@@ -447,9 +446,6 @@ export default function OrderManagement() {
                               <p className="text-[10px] sm:text-xs text-muted-foreground">{order.customer_phone}</p>
                             </td>
                             <td className="p-2 sm:p-3">
-                              <Badge variant="outline" className="text-xs">{order.order_type.replace('-', ' ')}</Badge>
-                            </td>
-                            <td className="p-2 sm:p-3">
                               <Badge className={`${statusColor} text-white text-xs`}>
                                 <StatusIcon className="h-3 w-3 mr-1" />
                                 {statusConfig[order.status as keyof typeof statusConfig]?.label}
@@ -465,18 +461,20 @@ export default function OrderManagement() {
                                   <Eye className="h-4 w-4" />
                                 </Button>
                                 <Button
-                                  size="sm" variant="ghost"
+                                  size="sm" variant="outline"
                                   title="Reprint kitchen slip"
+                                  className="text-orange-500 border-orange-300 hover:bg-orange-50"
                                   onClick={() => handleReprintSlip(order)}
                                 >
-                                  <ChefHat className="h-4 w-4 text-orange-500" />
+                                  <ChefHat className="h-3 w-3 mr-1" />Slip
                                 </Button>
                                 <Button
-                                  size="sm" variant="ghost"
+                                  size="sm" variant="outline"
                                   title="Reprint customer bill"
+                                  className="text-blue-500 border-blue-300 hover:bg-blue-50"
                                   onClick={() => handleReprintBill(order)}
                                 >
-                                  <Download className="h-4 w-4 text-blue-500" />
+                                  <Download className="h-3 w-3 mr-1" />Bill
                                 </Button>
                                 <Button
                                   variant="outline"

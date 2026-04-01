@@ -64,12 +64,14 @@ export const ordersApi = {
     limit?: number;
     status?: string;
     location_type?: string;
+    date?: string;
   }): Promise<Order[]> => {
     const queryParams = new URLSearchParams();
     if (params?.skip !== undefined) queryParams.append('skip', params.skip.toString());
     if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
     if (params?.status) queryParams.append('status', params.status);
     if (params?.location_type) queryParams.append('location_type', params.location_type);
+    if (params?.date) queryParams.append('date', params.date);
 
     const response = await apiClient.get(`/orders/?${queryParams.toString()}`);
     return response.data;
