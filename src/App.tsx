@@ -41,6 +41,7 @@ import CleanerDashboard from "./pages/CleanerDashboard";
 import MyOrders from "./pages/MyOrders";
 import ReportsDashboard from "./pages/ReportsDashboard";
 import StaffManagement from "./pages/StaffManagement";
+import PrintStation from "./pages/PrintStation";
 // HousekeepingDashboard consolidated into CleanerDashboard
 import ServiceRequests from "./pages/ServiceRequests";
 import ExpenseTracking from "./pages/ExpenseTracking";
@@ -207,6 +208,10 @@ const App = () => {
 
               <Route element={<ProtectedRoute requiredRoles={['waiter', 'admin']} />}>
                 <Route path="/waiter" element={<WaiterDashboard />} />
+              </Route>
+
+              <Route element={<ProtectedRoute requiredRoles={['admin', 'manager', 'waiter']} />}>
+                <Route path="/print-station" element={<PrintStation />} />
               </Route>
 
               <Route element={<ProtectedRoute requiredRoles={['cleaner', 'housekeeping', 'admin']} />}>

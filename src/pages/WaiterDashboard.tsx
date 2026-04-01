@@ -24,7 +24,8 @@ import {
   WifiOff,
   Receipt,
   RefreshCw,
-  Wifi
+  Wifi,
+  Printer
 } from 'lucide-react';
 import { BillsManagement } from '@/components/Bills';
 import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
@@ -607,6 +608,9 @@ export default function WaiterDashboard() {
               </Button>
               <Button variant="outline" size="sm" onClick={refreshOrders} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => window.open('/print-station', '_blank')} title="Open KOT Print Station">
+                <Printer className="h-4 w-4" />
               </Button>
               <Button size="sm" onClick={() => setShowNewOrderDialog(true)}>
                 <Plus className="h-4 w-4 mr-1" />
