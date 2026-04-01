@@ -816,38 +816,64 @@ async def get_user_audit_log(
         )
 
 
-@router.get("/audit-log", response_model=List[AuditLogEntry])
+@router.get("/audit-log")
 async def get_all_audit_logs(
     action: Optional[str] = None,
     limit: int = 100,
     current_user: dict = Depends(require_role(["admin", "owner"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
-    """Get all audit logs with optional filtering"""
+    """Get all audit logs — merges user_audit_log and the owner audit_log table."""
     try:
-        query = supabase.table("user_audit_log")\
-            .select("*, performer:performed_by_user_id(full_name)")
-
+        # ── Table 1: user_audit_log (admin user-management events) ──────────────
+        q1 = supabase.table("user_audit_log").select("id, user_id, action, performed_by_user_id, details, ip_address, created_at")
         if action:
-            query = query.eq("action", action)
-
-        query = query.order("created_at", desc=True).limit(limit)
-
-        result = query.execute()
-
-        return [
-            AuditLogEntry(
-                id=log["id"],
-                user_id=log["user_id"],
-                action=log["action"],
-                performed_by_user_id=log["performed_by_user_id"],
-                performed_by_name=log.get("performer", {}).get("full_name") if log.get("performer") else None,
-                details=log.get("details"),
-                ip_address=log.get("ip_address"),
-                created_at=log["created_at"]
-            )
-            for log in result.data
+            q1 = q1.eq("action", action)
+        r1 = q1.order("created_at", desc=True).limit(limit).execute()
+        logs1 = [
+            {
+                "id": log["id"],
+                "user_id": log.get("user_id"),
+                "action": log.get("action", ""),
+                "performed_by_user_id": log.get("performed_by_user_id"),
+                "performed_by_name": None,
+                "details": log.get("details"),
+                "ip_address": log.get("ip_address"),
+                "created_at": log["created_at"],
+            }
+            for log in (r1.data or [])
         ]
+
+        # ── Table 2: audit_log (owner branch/system events) ─────────────────────
+        try:
+            r2 = supabase.table("audit_log").select("id, user_id, action, user_email, details, created_at") \
+                .order("created_at", desc=True).limit(limit).execute()
+            logs2 = [
+                {
+                    "id": log["id"],
+                    "user_id": log.get("user_id"),
+                    "action": log.get("action", ""),
+                    "performed_by_user_id": log.get("user_id"),
+                    "performed_by_name": log.get("user_email"),
+                    "details": log.get("details"),
+                    "ip_address": None,
+                    "created_at": log["created_at"],
+                }
+                for log in (r2.data or [])
+            ]
+        except Exception:
+            logs2 = []
+
+        # Merge, de-dupe by id, sort newest first
+        seen: set = set()
+        merged = []
+        for log in sorted(logs1 + logs2, key=lambda x: x["created_at"], reverse=True):
+            key = str(log["id"])
+            if key not in seen:
+                seen.add(key)
+                merged.append(log)
+
+        return {"logs": merged[:limit], "total": len(merged[:limit])}
 
     except Exception as e:
         raise HTTPException(

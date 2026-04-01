@@ -327,7 +327,7 @@ const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, 
               <button
                 key={d}
                 onClick={() => { clearCustom(); onPeriodChange(d); }}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
                   !isCustom && period === d ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >{d === 365 ? '1Y' : d === 90 ? '90D' : d === 30 ? '30D' : '7D'}</button>
@@ -335,20 +335,20 @@ const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, 
           </div>
 
           {/* Custom date range */}
-          <div className={`flex items-center gap-1.5 p-1 rounded-lg border transition-colors ${isCustom ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-border bg-muted'}`}>
+          <div className={`flex flex-wrap items-center gap-1.5 p-1 rounded-lg border transition-colors ${isCustom ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-border bg-muted'}`}>
             <Calendar className="h-3.5 w-3.5 text-muted-foreground ml-1.5 flex-shrink-0" />
             <input
               type="date"
               value={localStart}
               onChange={e => setLocalStart(e.target.value)}
-              className="text-xs bg-transparent border-0 outline-none text-foreground w-32 cursor-pointer"
+              className="text-xs bg-transparent border-0 outline-none text-foreground w-28 cursor-pointer"
             />
             <span className="text-muted-foreground text-xs">→</span>
             <input
               type="date"
               value={localEnd}
               onChange={e => setLocalEnd(e.target.value)}
-              className="text-xs bg-transparent border-0 outline-none text-foreground w-32 cursor-pointer"
+              className="text-xs bg-transparent border-0 outline-none text-foreground w-28 cursor-pointer"
             />
             <button
               onClick={applyCustom}
@@ -392,13 +392,13 @@ const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, 
       )}
 
       {/* KPI Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard icon={DollarSign} label="Total Revenue" value={fmtShort(c?.total_revenue || 0)} sub={`Rooms: ${fmtShort(c?.room_revenue || 0)}`} accent="emerald" loading={loading} />
         <KpiCard icon={ShoppingCart} label="F&B Revenue" value={fmtShort(c?.fb_revenue || 0)} sub={`${c?.completed_orders || 0} completed orders`} accent="indigo" loading={loading} />
         <KpiCard icon={BedDouble} label="Avg Occupancy" value={pct(c?.avg_occupancy_rate || 0)} sub={`${c?.total_bookings || 0} bookings`} accent="blue" loading={loading} />
         <KpiCard icon={Users} label="Active Staff" value={String(c?.active_staff || 0)} sub={`${c?.total_staff || 0} total across ${branches.length} branch${branches.length !== 1 ? 'es' : ''}`} accent="purple" loading={loading} />
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard icon={Target} label="Total Orders" value={String(c?.total_orders || 0)} sub={`${c?.completed_orders || 0} fulfilled`} accent="amber" loading={loading} />
         <KpiCard icon={Activity} label="Customers" value={String(c?.unique_customers || 0)} sub="Unique this period" accent="rose" loading={loading} />
         <KpiCard icon={Building2} label="Branches" value={String(branches.filter(b => b.status === 'active').length)} sub={`${branches.length} total registered`} accent="blue" loading={loading} />
@@ -614,7 +614,7 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Active', count: stats.active, icon: CheckCircle2, cls: 'text-emerald-500 bg-emerald-500/10' },
           { label: 'Inactive', count: stats.inactive, icon: Clock, cls: 'text-slate-500 bg-slate-500/10' },

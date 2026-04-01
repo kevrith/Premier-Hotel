@@ -108,8 +108,8 @@ async def get_revenue_analytics(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     group_by: str = Query("day", description="Group by: day, week, month"),
-    current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "staff", "owner"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get revenue analytics grouped by time period

@@ -1139,7 +1139,7 @@ async def staff_performance(
     start = (end - timedelta(days=days)).replace(hour=0, minute=0, second=0)
 
     orders, tasks_done, staff, branches = await _par(
-        lambda: supabase.table("orders").select("total_amount, status, assigned_waiter_id, created_at")
+        lambda: supabase.table("orders").select("total_amount, status, assigned_waiter_id, created_by_staff_id, created_at")
             .gte("created_at", start.isoformat()).lte("created_at", end.isoformat())
             .in_("status", ["completed", "delivered", "served"]).execute().data or [],
         lambda: supabase.table("housekeeping_tasks").select("assigned_to, task_type, created_at")
@@ -1152,7 +1152,9 @@ async def staff_performance(
 
     waiter_stats: dict = {}
     for o in orders:
-        wid = o.get("assigned_waiter_id")
+        # Prefer assigned_waiter_id; fall back to created_by_staff_id for orders
+        # placed directly by the waiter without explicit assignment
+        wid = o.get("assigned_waiter_id") or o.get("created_by_staff_id")
         if not wid: continue
         waiter_stats.setdefault(wid, {"orders": 0, "revenue": 0})
         waiter_stats[wid]["orders"] += 1
@@ -1205,6 +1207,22 @@ async def staff_directory(
 
     return {"staff": staff, "by_role": by_role, "total": len(staff),
             "by_branch": {b["name"]: [s for s in staff if s.get("branch_id") == b["id"]] for b in branches}}
+
+
+@router.patch("/people/{staff_id}/branch")
+async def assign_staff_branch(
+    staff_id: str,
+    body: dict,
+    current_user: dict = Depends(require_role(OWNER_ROLES)),
+    supabase: Client = Depends(get_supabase_admin)
+):
+    """Assign or unassign a staff member to a branch."""
+    branch_id = body.get("branch_id")  # None/null = unassign
+    update = {"branch_id": branch_id}
+    result = supabase.table("users").update(update).eq("id", staff_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Staff member not found")
+    return {"success": True, "staff_id": staff_id, "branch_id": branch_id}
 
 
 @router.get("/people/payroll")

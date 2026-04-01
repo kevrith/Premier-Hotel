@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Users, Award, DollarSign, Search } from 'lucide-react';
+import { Users, Award, DollarSign, Search, Building2 } from 'lucide-react';
 import api from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 
@@ -129,11 +129,30 @@ const StaffPerformance = () => {
 // ─── Staff Directory ──────────────────────────────────────────────────────────
 const StaffDirectory = () => {
   const [data, setData] = useState<any>(null);
+  const [branches, setBranches] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
-  useEffect(() => {
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+
+  const load = () => {
     api.get('/owner/people/directory').then(r => setData(r.data)).catch(() => toast.error('Directory load failed'));
-  }, []);
+    api.get('/owner/branches').then(r => setBranches(r.data.branches || [])).catch(() => {});
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const assignBranch = async (staffId: string, branchId: string | null) => {
+    setAssigningId(staffId);
+    try {
+      await api.patch(`/owner/people/${staffId}/branch`, { branch_id: branchId || null });
+      toast.success('Branch updated');
+      load();
+    } catch {
+      toast.error('Failed to update branch');
+    } finally {
+      setAssigningId(null);
+    }
+  };
 
   const staff = (data?.staff || []).filter((s: any) =>
     (roleFilter === 'all' || s.role === roleFilter) &&
@@ -152,7 +171,7 @@ const StaffDirectory = () => {
             </CardTitle>
             <p className="text-xs text-muted-foreground">{data?.total || 0} staff across all branches</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
               <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="h-7 pl-7 text-xs w-36" />
@@ -172,7 +191,7 @@ const StaffDirectory = () => {
       <CardContent className="p-0">
         <div className="overflow-x-auto max-h-96 overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-background">
+            <thead className="sticky top-0 bg-background z-10">
               <tr className="border-y bg-muted/40">
                 {['Name', 'Role', 'Branch', 'Phone', 'Status'].map(h => (
                   <th key={h} className={`p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide ${h === 'Name' ? 'text-left pl-5' : 'text-left'} ${['Phone'].includes(h) ? 'hidden md:table-cell' : ''}`}>{h}</th>
@@ -187,9 +206,25 @@ const StaffDirectory = () => {
                     <p className="text-xs text-muted-foreground">{s.email}</p>
                   </td>
                   <td className="p-3"><span className={`px-2 py-0.5 rounded-full border text-xs font-medium ${ROLE_COLORS[s.role] || 'bg-muted text-muted-foreground border-border'}`}>{s.role}</span></td>
-                  <td className="p-3">
-                    <p className="text-sm">{s.branch}</p>
-                    {s.branch_location && <p className="text-xs text-muted-foreground">{s.branch_location}</p>}
+                  <td className="p-3 min-w-[160px]">
+                    <Select
+                      value={s.branch_id || 'unassigned'}
+                      onValueChange={v => assignBranch(s.id, v === 'unassigned' ? null : v)}
+                      disabled={assigningId === s.id}
+                    >
+                      <SelectTrigger className="h-7 text-xs border-dashed">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Building2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                          <span className="truncate">{s.branch && s.branch !== '—' ? s.branch : 'Unassigned'}</span>
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">— Unassigned —</SelectItem>
+                        {branches.map((b: any) => (
+                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </td>
                   <td className="p-3 text-muted-foreground hidden md:table-cell">{s.phone || '—'}</td>
                   <td className="p-3">
