@@ -145,8 +145,9 @@ async def list_users(
     """
     List all users with optional role and status filtering.
     """
+    import traceback
     try:
-        query = supabase.table("users").select("id, email, full_name, phone, role, created_at")
+        query = supabase.table("users").select("*")
 
         if role:
             query = query.eq("role", role)
@@ -170,7 +171,10 @@ async def list_users(
             for user in result.data
         ]
 
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"ERROR in list_users: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching users: {str(e)}"
