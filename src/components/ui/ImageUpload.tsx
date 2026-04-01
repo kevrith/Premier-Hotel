@@ -29,22 +29,15 @@ interface ImageUploadProps {
   label?: string;
 }
 
-/** Render the cropped region to a canvas and return a Blob. */
-async function cropToBlob(
-  img: HTMLImageElement,
-  pixel: PixelCrop,
-  mime = 'image/jpeg',
-): Promise<Blob> {
+async function cropToBlob(img: HTMLImageElement, pixel: PixelCrop, mime = 'image/jpeg'): Promise<Blob> {
   const canvas = document.createElement('canvas');
   canvas.width  = pixel.width;
   canvas.height = pixel.height;
-  const ctx = canvas.getContext('2d')!;
-  const scaleX = img.naturalWidth  / img.width;
-  const scaleY = img.naturalHeight / img.height;
-  ctx.drawImage(
-    img,
-    pixel.x * scaleX, pixel.y * scaleY,
-    pixel.width * scaleX, pixel.height * scaleY,
+  const ctx     = canvas.getContext('2d')!;
+  const scaleX  = img.naturalWidth  / img.width;
+  const scaleY  = img.naturalHeight / img.height;
+  ctx.drawImage(img,
+    pixel.x * scaleX, pixel.y * scaleY, pixel.width * scaleX, pixel.height * scaleY,
     0, 0, pixel.width, pixel.height,
   );
   return new Promise((res, rej) =>
@@ -56,7 +49,7 @@ export default function ImageUpload({
   value,
   onChange,
   bucket = 'menu-images',
-  label = 'Image',
+  label  = 'Image',
 }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [showUrl,   setShowUrl]   = useState(false);
@@ -70,7 +63,6 @@ export default function ImageUpload({
   const imgRef  = useRef<HTMLImageElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  /* ── File picker ──────────────────────────────────────────────────── */
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -87,66 +79,58 @@ export default function ImageUpload({
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  /* ── Set initial crop once image has rendered (use DISPLAY dimensions) */
+  /**
+   * Called once the <img> has loaded inside the dialog.
+   * Uses e.currentTarget.width/height (the RENDERED pixel dimensions — not
+   * naturalWidth/naturalHeight) so makeAspectCrop gets the correct scale.
+   * This immediately places the crop box centred on the visible image.
+   */
   const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    // Official react-image-crop pattern: use rendered width/height, not natural
     const { width, height } = e.currentTarget;
     const a = aspect ?? BUCKET_ASPECT[bucket] ?? 4 / 3;
-    const initial = centerCrop(
+    setCrop(centerCrop(
       makeAspectCrop({ unit: '%', width: 90 }, a, width, height),
-      width,
-      height,
-    );
-    setCrop(initial);
+      width, height,
+    ));
   };
 
-  /* ── Change aspect ratio ──────────────────────────────────────────── */
   const changeAspect = (a: number | undefined) => {
     setAspect(a);
     setDoneCrop(undefined);
     const img = imgRef.current;
     if (!img) return;
-    const { width, height } = img;
     if (a === undefined) {
-      // Free — select 80%
       setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 });
     } else {
       setCrop(centerCrop(
-        makeAspectCrop({ unit: '%', width: 90 }, a, width, height),
-        width, height,
+        makeAspectCrop({ unit: '%', width: 90 }, a, img.width, img.height),
+        img.width, img.height,
       ));
     }
   };
 
-  /* ── Crop & upload ────────────────────────────────────────────────── */
   const handleUpload = async () => {
     if (!doneCrop || !imgRef.current) {
-      toast.error('Finish selecting the crop area first (release the mouse).');
+      toast.error('Select a crop area first — drag to adjust, then release.');
       return;
     }
     if (doneCrop.width < 20 || doneCrop.height < 20) {
-      toast.error('Selected area is too small — drag the handles outward.');
+      toast.error('Selection too small — drag the corner handles outward.');
       return;
     }
     setUploading(true);
     try {
       const blob = await cropToBlob(imgRef.current, doneCrop, mime);
       const ext  = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
-      const file = new File([blob], `upload.${ext}`, { type: mime });
       const form = new FormData();
-      form.append('file', file);
+      form.append('file', new File([blob], `upload.${ext}`, { type: mime }));
       form.append('bucket', bucket);
-      const res  = await api.post('/upload/image', form, {
+      const res = await api.post('/upload/image', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       } as any);
       const url: string = (res.data as any)?.url ?? '';
-      if (url) {
-        onChange(url);
-        toast.success('Image uploaded');
-        setCropOpen(false);
-      } else {
-        toast.error('No URL returned from server');
-      }
+      if (url) { onChange(url); toast.success('Image uploaded'); setCropOpen(false); }
+      else toast.error('No URL returned from server');
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || err?.message || 'Upload failed');
     } finally {
@@ -165,7 +149,6 @@ export default function ImageUpload({
     <div className="space-y-2">
       {label && <label className="text-sm font-medium block">{label}</label>}
 
-      {/* Preview */}
       {value ? (
         <div className="relative w-full h-40 rounded-lg overflow-hidden border bg-muted">
           <img src={value} alt="Preview" className="w-full h-full object-cover"
@@ -190,14 +173,11 @@ export default function ImageUpload({
             ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</>
             : <><Upload className="h-4 w-4 mr-2" />Upload &amp; Crop</>}
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={() => setShowUrl(v => !v)}>
-          URL
-        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setShowUrl(v => !v)}>URL</Button>
       </div>
 
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
         className="hidden" onChange={handleFileSelect} />
-
       {showUrl && (
         <Input value={value} onChange={e => onChange(e.target.value)}
           placeholder="https://…" className="text-sm" />
@@ -222,9 +202,7 @@ export default function ImageUpload({
               return (
                 <button key={l} type="button" onClick={() => changeAspect(v)}
                   className={`px-3 py-1 rounded-full border text-xs transition-colors ${
-                    active
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border hover:bg-muted'
+                    active ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'
                   }`}>
                   {l}
                 </button>
@@ -237,46 +215,49 @@ export default function ImageUpload({
           </div>
 
           {/*
-            Crop area.
-            - NO overflow:hidden/auto on the wrapper (clips the handles)
-            - ReactCrop gets display:block via inline style to override inline-block
-            - Image is constrained to max 65vh so it fits on screen
+            Crop container rules:
+            - padding: 12px so corner handles (which sit half outside the image edge)
+              are never clipped
+            - overflow: hidden only on the outer shell, NOT on the ReactCrop wrapper
+            - Image: width:100%, height:auto — NO objectFit (breaks coordinate mapping)
+            - max-height on the image itself (not the container) to cap very tall images
           */}
-          <div className="rounded border border-border bg-neutral-900 flex items-start justify-center">
-            <ReactCrop
-              crop={crop}
-              onChange={c => setCrop(c)}
-              onComplete={c => setDoneCrop(c)}
-              aspect={aspect}
-              minWidth={40}
-              minHeight={40}
-              keepSelection
-              style={{ display: 'block', width: '100%' }}
-            >
-              <img
-                ref={imgRef}
-                src={srcUrl}
-                alt="crop-src"
-                onLoad={onImgLoad}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  maxHeight: '65vh',
-                  objectFit: 'contain',
-                }}
-              />
-            </ReactCrop>
+          <div style={{ background: '#111', borderRadius: 8, padding: 12, overflow: 'hidden' }}>
+            <div style={{ overflow: 'auto', maxHeight: '60vh' }}>
+              <ReactCrop
+                crop={crop}
+                onChange={c => setCrop(c)}
+                onComplete={c => setDoneCrop(c)}
+                aspect={aspect}
+                minWidth={40}
+                minHeight={40}
+                keepSelection
+                style={{ display: 'block', width: '100%' }}
+              >
+                {/*
+                  CRITICAL: no objectFit here.
+                  objectFit:contain makes the image smaller than its element box,
+                  so react-image-crop's overlay lands in the wrong place.
+                  width:100% + height:auto lets the image fill the element exactly.
+                */}
+                <img
+                  ref={imgRef}
+                  src={srcUrl}
+                  alt="crop-src"
+                  onLoad={onImgLoad}
+                  style={{ display: 'block', width: '100%', height: 'auto' }}
+                />
+              </ReactCrop>
+            </div>
           </div>
 
           <p className="text-xs text-muted-foreground text-center">
-            Drag the box to reposition · Drag corner handles to resize · Switch ratio above to change shape
+            The bright area is what will be saved · Drag the box to reposition · Drag corner/edge handles to resize
           </p>
 
           <DialogFooter className="gap-2 pt-1">
             <Button type="button" variant="outline" disabled={uploading}
-              onClick={() => setCropOpen(false)}>
-              Cancel
-            </Button>
+              onClick={() => setCropOpen(false)}>Cancel</Button>
             <Button type="button" onClick={handleUpload} disabled={uploading || !doneCrop}>
               {uploading
                 ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</>
