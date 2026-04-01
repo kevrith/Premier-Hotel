@@ -25,7 +25,7 @@ interface EmployeeSales {
 
 export const ComprehensiveSalesReports: React.FC = () => {
   const [reportType, setReportType] = useState<'summary' | 'employee' | 'daily'>('summary');
-  const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'));
+  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [employeeData, setEmployeeData] = useState<EmployeeSales[]>([]);
   const [unattributedSales, setUnattributedSales] = useState(0);

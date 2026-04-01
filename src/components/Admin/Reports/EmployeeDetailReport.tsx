@@ -68,10 +68,10 @@ export function EmployeeDetailReport({
   const [loading, setLoading] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [startDate, setStartDate] = useState(
-    initialStartDate ?? new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]
+    initialStartDate ?? new Date().toISOString().split('T')[0]
   );
   const [endDate, setEndDate] = useState(initialEndDate ?? new Date().toISOString().split('T')[0]);
-  const [dateRange, setDateRange] = useState(initialStartDate ? 'custom' : '30days');
+  const [dateRange, setDateRange] = useState(initialStartDate ? 'custom' : 'today');
 
   // Void state
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
