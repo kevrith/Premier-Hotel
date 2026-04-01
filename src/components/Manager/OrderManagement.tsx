@@ -18,6 +18,7 @@ import {
 import { format } from 'date-fns';
 import { api } from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
+import { printOrderSlip, printBill } from '@/lib/print';
 
 interface Order {
   id: string;
@@ -171,20 +172,27 @@ export default function OrderManagement() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('today');
+  const [customStart, setCustomStart] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [customEnd, setCustomEnd] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [voidDialogOrder, setVoidDialogOrder] = useState<Order | null>(null);
-  
+
   const queryClient = useQueryClient();
 
   const { data: ordersRaw, isLoading, refetch } = useQuery({
-    queryKey: ['manager-orders', statusFilter, typeFilter, dateFilter, searchTerm],
+    queryKey: ['manager-orders', statusFilter, typeFilter, dateFilter, customStart, customEnd, searchTerm],
     queryFn: async (): Promise<Order[]> => {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (typeFilter !== 'all') params.append('type', typeFilter);
-      if (dateFilter !== 'all') params.append('date', dateFilter);
+      if (dateFilter === 'custom') {
+        params.append('start_date', customStart);
+        params.append('end_date', customEnd);
+      } else if (dateFilter !== 'all') {
+        params.append('date', dateFilter);
+      }
       if (searchTerm) params.append('search', searchTerm);
 
       const response = await api.get<Order[]>(`/orders/manager/manager?${params}`);
@@ -234,8 +242,45 @@ export default function OrderManagement() {
     onSuccess: () => toast.success('Export completed'),
   });
 
+  const handleReprintSlip = (order: Order) => {
+    printOrderSlip({
+      order_number: order.order_number,
+      location: order.delivery_location || order.table_number || order.room_number || '—',
+      location_type: order.location_type || order.order_type,
+      items: (order.items || []).map((i: any) => ({
+        name: i.name || i.item_name || 'Item',
+        quantity: i.quantity || 1,
+        special_instructions: i.special_instructions,
+      })),
+      special_instructions: order.customer_name ? `Customer: ${order.customer_name}` : '',
+      created_at: order.created_at,
+      waiter_name: order.assigned_waiter?.full_name,
+    });
+  };
+
+  const handleReprintBill = (order: Order) => {
+    const items = (order.items || []).map((i: any) => ({
+      name: i.name || i.item_name || 'Item',
+      quantity: i.quantity || 1,
+      price: parseFloat(i.price || 0),
+    }));
+    const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+    printBill({
+      order_number: order.order_number,
+      location: order.delivery_location || order.table_number || order.room_number || '—',
+      location_type: order.location_type || order.order_type,
+      items,
+      subtotal,
+      tax: Math.max(0, parseFloat(order.total_amount) - subtotal),
+      total_amount: parseFloat(order.total_amount || 0),
+      special_instructions: order.customer_name ? `Customer: ${order.customer_name}, Phone:${order.customer_phone || ''}` : '',
+      status: order.status,
+      waiter_name: order.assigned_waiter?.full_name,
+    });
+  };
+
   const filteredOrders = orders.filter((order: Order) => {
-    const matchesSearch = 
+    const matchesSearch =
       order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_phone.includes(searchTerm);
@@ -332,10 +377,18 @@ export default function OrderManagement() {
                 <SelectTrigger><SelectValue placeholder="Date" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
                   <SelectItem value="week">This Week</SelectItem>
                   <SelectItem value="month">This Month</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
                 </SelectContent>
               </Select>
+              {dateFilter === 'custom' && (
+                <>
+                  <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-36 text-xs h-9" />
+                  <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-36 text-xs h-9" />
+                </>
+              )}
             </div>
 
             {/* Bulk Actions */}
@@ -407,9 +460,23 @@ export default function OrderManagement() {
                               {format(new Date(order.created_at), 'HH:mm')}
                             </td>
                             <td className="p-2 sm:p-3">
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1 flex-wrap">
                                 <Button size="sm" variant="ghost" onClick={() => setViewOrder(order)}>
                                   <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm" variant="ghost"
+                                  title="Reprint kitchen slip"
+                                  onClick={() => handleReprintSlip(order)}
+                                >
+                                  <ChefHat className="h-4 w-4 text-orange-500" />
+                                </Button>
+                                <Button
+                                  size="sm" variant="ghost"
+                                  title="Reprint customer bill"
+                                  onClick={() => handleReprintBill(order)}
+                                >
+                                  <Download className="h-4 w-4 text-blue-500" />
                                 </Button>
                                 <Button
                                   variant="outline"
@@ -418,7 +485,7 @@ export default function OrderManagement() {
                                   onClick={() => setVoidDialogOrder(order)}
                                 >
                                   <AlertTriangle className="h-3 w-3 mr-1" />
-                                  Void Item
+                                  Void
                                 </Button>
                               </div>
                             </td>

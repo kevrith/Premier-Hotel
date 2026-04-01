@@ -240,7 +240,8 @@ export function printBill(order: {
  * Thermal print for the Item Summary report.
  * Format mirrors QuickBooks POS: Dept | Qty | Ext Price | Item Name
  */
-export function printItemSummary(params: {
+
+type ItemSummaryParams = {
   categories: Array<{
     category: string;
     items: Array<{ name: string; qty: number; revenue: number }>;
@@ -252,7 +253,10 @@ export function printItemSummary(params: {
   startDate: string;
   endDate: string;
   employeeName?: string;
-}) {
+};
+
+/** Returns the receipt HTML string without opening any window — use for preview modal. */
+export function buildItemSummaryHtml(params: ItemSummaryParams): string {
   const cfg = getReceiptConfig();
   const fmtAmt = (n: number) =>
     (n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -321,15 +325,20 @@ export function printItemSummary(params: {
     </body>
     </html>
   `;
+  return html;
+}
 
-  openPrintWindow(html, 'Item Summary');
+/** Opens a new print window directly (instant print, no preview). */
+export function printItemSummary(params: ItemSummaryParams) {
+  openPrintWindow(buildItemSummaryHtml(params), 'Item Summary');
 }
 
 /**
  * Thermal print for the Employee Sales Report.
  * Prints one section per employee: header, sales summary, item breakdown, payment breakdown.
  */
-export function printEmployeeSalesReport(params: {
+
+type EmployeeSalesParams = {
   employees: Array<{
     employee_name: string;
     role: string;
@@ -355,7 +364,9 @@ export function printEmployeeSalesReport(params: {
   totalSales: number;
   totalOrders: number;
   unattributedSales: number;
-}) {
+};
+
+export function buildEmployeeSalesHtml(params: EmployeeSalesParams): string {
   const cfg = getReceiptConfig();
   const fmt = (n: number) =>
     `KES ${(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -448,6 +459,9 @@ export function printEmployeeSalesReport(params: {
     </body>
     </html>
   `;
+  return html;
+}
 
-  openPrintWindow(html, 'Employee Sales Report');
+export function printEmployeeSalesReport(params: EmployeeSalesParams) {
+  openPrintWindow(buildEmployeeSalesHtml(params), 'Employee Sales Report');
 }

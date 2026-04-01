@@ -15,7 +15,8 @@ import { Printer, Download, RefreshCw, ChevronDown, ChevronRight } from 'lucide-
 import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/api/client';
-import { printItemSummary } from '@/lib/print';
+import { buildItemSummaryHtml } from '@/lib/print';
+import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 
 interface ItemRow {
   name: string;
@@ -43,6 +44,8 @@ export const ItemSummaryReport: React.FC = () => {
   const [data, setData] = useState<ItemSummaryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -78,13 +81,15 @@ export const ItemSummaryReport: React.FC = () => {
 
   const handlePrint = () => {
     if (!data) return;
-    printItemSummary({
+    const html = buildItemSummaryHtml({
       categories: data.categories,
       grand_total_qty: data.grand_total_qty,
       grand_total_revenue: data.grand_total_revenue,
       startDate,
       endDate,
     });
+    setPreviewHtml(html);
+    setPreviewOpen(true);
   };
 
   const handleExcel = () => {
@@ -238,6 +243,13 @@ export const ItemSummaryReport: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      <PrintPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        html={previewHtml}
+        title="Item Summary"
+      />
     </div>
   );
 };

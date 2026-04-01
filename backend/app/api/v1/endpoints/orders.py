@@ -285,6 +285,8 @@ async def get_manager_orders(
     status: Optional[str] = Query(default=None),
     type: Optional[str] = Query(default=None),
     date: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default=None),
+    end_date: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
     current_user: dict = Depends(get_current_user),
     supabase_admin: Client = Depends(get_supabase_admin),
@@ -300,17 +302,20 @@ async def get_manager_orders(
             query = query.eq("status", status)
         if type and type != "all":
             query = query.eq("order_type", type)
-        if date and date != "all":
-            from datetime import date as date_type
+
+        # Custom date range takes priority over shortcut filter
+        if start_date and end_date:
+            s = start_date if 'T' in start_date else f"{start_date}T00:00:00"
+            e = end_date if 'T' in end_date else f"{end_date}T23:59:59"
+            query = query.gte("created_at", s).lte("created_at", e)
+        elif date and date != "all":
             today = datetime.now(timezone.utc).date().isoformat()
             if date == "today":
                 query = query.gte("created_at", f"{today}T00:00:00").lte("created_at", f"{today}T23:59:59")
             elif date == "yesterday":
-                from datetime import timedelta
                 yest = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
                 query = query.gte("created_at", f"{yest}T00:00:00").lte("created_at", f"{yest}T23:59:59")
             elif date == "week":
-                from datetime import timedelta
                 week_ago = (datetime.now(timezone.utc).date() - timedelta(days=7)).isoformat()
                 query = query.gte("created_at", f"{week_ago}T00:00:00")
 

@@ -45,7 +45,8 @@ import { api } from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 import { reportsService, EmployeeDetailResponse } from '@/lib/api/reports';
 import { format } from 'date-fns';
-import { printItemSummary } from '@/lib/print';
+import { buildItemSummaryHtml } from '@/lib/print';
+import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 
 interface EmployeeDetailReportProps {
   employeeId: string;
@@ -72,6 +73,10 @@ export function EmployeeDetailReport({
   );
   const [endDate, setEndDate] = useState(initialEndDate ?? new Date().toISOString().split('T')[0]);
   const [dateRange, setDateRange] = useState(initialStartDate ? 'custom' : 'today');
+
+  // Print preview state
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Void state
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
@@ -642,7 +647,7 @@ export function EmployeeDetailReport({
                           size="sm"
                           onClick={() => {
                             const cats = data.items_by_category;
-                            printItemSummary({
+                            const html = buildItemSummaryHtml({
                               categories: cats,
                               grand_total_qty: cats.reduce((s, c) => s + c.total_qty, 0),
                               grand_total_revenue: cats.reduce((s, c) => s + c.total_revenue, 0),
@@ -650,6 +655,8 @@ export function EmployeeDetailReport({
                               endDate,
                               employeeName: data.employee.name,
                             });
+                            setPreviewHtml(html);
+                            setPreviewOpen(true);
                           }}
                         >
                           <Printer className="h-4 w-4 mr-1" />
@@ -847,6 +854,13 @@ export function EmployeeDetailReport({
         )}
       </DialogContent>
     </Dialog>
+
+    <PrintPreviewModal
+      open={previewOpen}
+      onClose={() => setPreviewOpen(false)}
+      html={previewHtml}
+      title={`Items Sold — ${data?.employee?.name ?? ''}`}
+    />
 
     {/* Void Dialog */}
     <Dialog open={voidDialogOpen} onOpenChange={setVoidDialogOpen}>
