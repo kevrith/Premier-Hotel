@@ -603,7 +603,7 @@ export function HousekeepingManagement() {
 
       {/* Create Task Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Housekeeping Task</DialogTitle>
             <DialogDescription>Assign a cleaning or maintenance task to staff</DialogDescription>
@@ -884,7 +884,7 @@ function LinenInventoryPanel({ linenItems, onRefresh }: { linenItems: LinenItem[
 
       {/* Create / Edit dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editItem ? 'Edit Linen Item' : 'Add Linen Item'}</DialogTitle>
             <DialogDescription>
@@ -896,7 +896,7 @@ function LinenInventoryPanel({ linenItems, onRefresh }: { linenItems: LinenItem[
               <Label>Item Name *</Label>
               <Input placeholder="e.g. Bath Towel, Prayer Mat, Bathrobe..." value={form.item_name} onChange={e => setForm(p => ({ ...p, item_name: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Category</Label>
                 <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}>
@@ -911,7 +911,7 @@ function LinenInventoryPanel({ linenItems, onRefresh }: { linenItems: LinenItem[
                 <Input placeholder="piece, set, pair..." value={form.unit} onChange={e => setForm(p => ({ ...p, unit: e.target.value }))} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Total Quantity</Label>
                 <Input type="number" min={0} value={form.total_quantity} onChange={e => setForm(p => ({ ...p, total_quantity: Number(e.target.value) }))} />

@@ -120,10 +120,10 @@ export default function AdminDashboard() {
           {/* Inventory Tab - Stock management, purchases, and tracking */}
           <TabsContent value="inventory" className="space-y-4 sm:space-y-6">
             <Tabs defaultValue="stock-management" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-4">
-                <TabsTrigger value="stock-management">Stock Management</TabsTrigger>
-                <TabsTrigger value="purchases">Purchases & Receiving</TabsTrigger>
-                <TabsTrigger value="stock-take">Stock Taking</TabsTrigger>
+              <TabsList className="flex flex-wrap w-full h-auto gap-1 mb-4">
+                <TabsTrigger value="stock-management" className="text-xs sm:text-sm flex-1">Stock Management</TabsTrigger>
+                <TabsTrigger value="purchases" className="text-xs sm:text-sm flex-1">Purchases & Receiving</TabsTrigger>
+                <TabsTrigger value="stock-take" className="text-xs sm:text-sm flex-1">Stock Taking</TabsTrigger>
               </TabsList>
               <TabsContent value="stock-management">
                 <StockManagement />

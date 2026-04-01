@@ -112,7 +112,7 @@ export function UserAddDialog({ onUserAdded }: UserAddDialogProps) {
           Add User
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[calc(100vw-2rem)] max-w-md">
         <DialogHeader>
           <DialogTitle>Add New User</DialogTitle>
         </DialogHeader>

@@ -275,7 +275,7 @@ const ServiceRequests = () => {
                 New Request
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-[calc(100vw-2rem)] max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Create Service Request</DialogTitle>
               </DialogHeader>

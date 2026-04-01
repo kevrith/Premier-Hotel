@@ -299,7 +299,7 @@ export function EmployeeDetailReport({
             {/* Employee Info Card */}
             <Card>
               <CardContent className="pt-6">
-                <div className="grid md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="flex items-start gap-3">
                     <div className="p-3 bg-primary/10 rounded-full">
                       <User className="h-6 w-6 text-primary" />
@@ -345,9 +345,9 @@ export function EmployeeDetailReport({
             <Card>
               <CardContent className="pt-6">
                 <div className="flex flex-wrap gap-4 items-end">
-                  <div className="flex-1 min-w-[200px]">
+                  <div className="flex-1 min-w-0 w-full">
                     <Label>Quick Ranges</Label>
-                    <div className="flex gap-2 mt-2">
+                    <div className="flex flex-wrap gap-2 mt-2">
                       {[
                         { label: 'Today', value: 'today' },
                         { label: 'Yesterday', value: 'yesterday' },
@@ -396,7 +396,7 @@ export function EmployeeDetailReport({
             </Card>
 
             {/* Performance Summary Cards */}
-            <div className="grid md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
@@ -480,28 +480,30 @@ export function EmployeeDetailReport({
 
             {/* Tabs for detailed views */}
             <Tabs defaultValue="transactions" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="transactions">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Transactions
-                </TabsTrigger>
-                <TabsTrigger value="items">
-                  <ShoppingCart className="h-4 w-4 mr-2" />
-                  Top Items
-                </TabsTrigger>
-                <TabsTrigger value="items-by-dept">
-                  <Package className="h-4 w-4 mr-2" />
-                  Items Sold
-                </TabsTrigger>
-                <TabsTrigger value="payments">
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Payments
-                </TabsTrigger>
-                <TabsTrigger value="trends">
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Trends
-                </TabsTrigger>
-              </TabsList>
+              <div className="overflow-x-auto pb-1">
+                <TabsList className="inline-flex h-auto min-w-max gap-1 p-1">
+                  <TabsTrigger value="transactions" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+                    <FileText className="h-3.5 w-3.5 mr-1" />
+                    Transactions
+                  </TabsTrigger>
+                  <TabsTrigger value="items" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+                    <ShoppingCart className="h-3.5 w-3.5 mr-1" />
+                    Top Items
+                  </TabsTrigger>
+                  <TabsTrigger value="items-by-dept" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+                    <Package className="h-3.5 w-3.5 mr-1" />
+                    Items Sold
+                  </TabsTrigger>
+                  <TabsTrigger value="payments" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+                    <CreditCard className="h-3.5 w-3.5 mr-1" />
+                    Payments
+                  </TabsTrigger>
+                  <TabsTrigger value="trends" className="text-xs sm:text-sm px-2 sm:px-3 py-2">
+                    <BarChart3 className="h-3.5 w-3.5 mr-1" />
+                    Trends
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
               {/* Transactions Tab */}
               <TabsContent value="transactions">

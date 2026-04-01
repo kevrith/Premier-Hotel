@@ -221,7 +221,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="name">Promotion Name</Label>
           <Input
@@ -253,7 +253,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="discount_type">Discount Type</Label>
           <Select
@@ -283,7 +283,7 @@ function PromotionForm({ promotion, onSave, onCancel }: any) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="start_date">Start Date</Label>
           <Input

@@ -406,7 +406,7 @@ export default function MyOrders() {
 
       {/* Order Tracker Dialog */}
       <Dialog open={isTrackerOpen} onOpenChange={setIsTrackerOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-2xl">
           <DialogHeader>
             <DialogTitle>Track Your Order</DialogTitle>
             <DialogDescription>

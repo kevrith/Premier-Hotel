@@ -405,12 +405,12 @@ export default function ChefDashboard() {
   // Order Card Component - Kitchen optimized with larger buttons
   const OrderCard = ({ order }: { order: Order }) => (
     <Card className={`${order.priority === 'urgent' ? 'border-red-500 border-2' : ''}`}>
-      <CardHeader className="bg-muted/30">
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="text-xl flex items-center gap-2">
-              {order.location}
-              <Badge variant={getPriorityVariant(order.priority)} className="text-sm px-2 py-1">
+      <CardHeader className="bg-muted/30 pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+              <span className="font-bold text-base sm:text-xl truncate">{order.location}</span>
+              <Badge variant={getPriorityVariant(order.priority)} className="text-xs px-2 py-0.5">
                 {order.priority}
               </Badge>
               {(user?.role === 'manager' || user?.role === 'chef' || user?.role === 'admin') && (
@@ -427,23 +427,22 @@ export default function ChefDashboard() {
                   <Flag className="h-3 w-3" />
                 </Button>
               )}
-              {/* Status Badge - Shows current status */}
               <Badge
                 variant={order.status === 'pending' ? 'destructive' : order.status === 'confirmed' ? 'default' : 'secondary'}
-                className="text-sm px-2 py-1"
+                className="text-xs px-2 py-0.5"
               >
                 {order.status === 'pending' ? '🔴 New' :
                  order.status === 'confirmed' ? '✅ Accepted' :
                  order.status === 'preparing' ? '👨‍🍳 Cooking' :
                  order.status === 'ready' ? '🎉 Ready' : order.status}
               </Badge>
-            </CardTitle>
-            <CardDescription className="flex items-center gap-1 mt-2 text-base">
-              <Clock className="h-4 w-4" />
+            </div>
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Clock className="h-3 w-3" />
               {getTimeSince(order.created_at)}
-            </CardDescription>
+            </div>
           </div>
-          <Badge variant="outline" className="text-sm px-3 py-1">{order.order_number}</Badge>
+          <Badge variant="outline" className="text-xs px-2 py-1 shrink-0">{order.order_number}</Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4 pt-6">
@@ -679,20 +678,20 @@ export default function ChefDashboard() {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <div className="container mx-auto p-4 md:p-6 pt-20">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6 mt-14 sm:mt-16 pb-24 sm:pb-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6" style={{ paddingTop: '2.5em' }}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 sm:mb-6">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-2">
-              <ChefHat className="h-10 w-10" />
+            <h1 className="text-xl sm:text-3xl md:text-4xl font-bold flex items-center gap-2">
+              <ChefHat className="h-6 w-6 sm:h-10 sm:w-10" />
               Kitchen Dashboard
             </h1>
-            <p className="text-muted-foreground text-lg mt-1">
+            <p className="text-muted-foreground text-sm sm:text-lg mt-1">
               Manage orders and kitchen operations
             </p>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Bell mute toggle */}
             <Button
               variant="outline"
@@ -710,25 +709,25 @@ export default function ChefDashboard() {
 
             {/* Current Chef Workload - Show for chef, manager, and admin */}
             {user?.id && (user?.role === 'chef' || user?.role === 'manager' || user?.role === 'admin') && (
-              <Badge variant="outline" className="flex items-center gap-2 px-3 py-2 text-base">
-                <ChefHat className="h-5 w-5" />
-                <span className="font-semibold">{chefWorkloads[user.id] || 0}/5 Orders</span>
+              <Badge variant="outline" className="flex items-center gap-1 px-2 py-1 text-xs sm:text-sm">
+                <ChefHat className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="font-semibold">{chefWorkloads[user.id] || 0}/5</span>
               </Badge>
             )}
-            
+
             {/* WebSocket Status */}
-            <Badge 
-              variant={isConnected ? "default" : "destructive"} 
-              className="flex items-center gap-2 px-3 py-2 text-base"
+            <Badge
+              variant={isConnected ? "default" : "destructive"}
+              className="flex items-center gap-1 px-2 py-1 text-xs sm:text-sm"
             >
               {isConnected ? (
                 <>
-                  <Wifi className="h-5 w-5" />
+                  <Wifi className="h-3 w-3 sm:h-4 sm:w-4" />
                   <span className="font-semibold">Live</span>
                 </>
               ) : (
                 <>
-                  <WifiOff className="h-5 w-5" />
+                  <WifiOff className="h-3 w-3 sm:h-4 sm:w-4" />
                   <span className="font-semibold">Offline</span>
                 </>
               )}
@@ -738,7 +737,7 @@ export default function ChefDashboard() {
             {newOrderCount > 0 && (
               <Badge
                 variant="destructive"
-                className="cursor-pointer px-4 py-2 text-base font-bold"
+                className="cursor-pointer px-2 py-1 text-xs sm:text-sm font-bold"
                 onClick={clearNewOrderCount}
               >
                 {newOrderCount} new order{newOrderCount > 1 ? 's' : ''}
@@ -748,28 +747,30 @@ export default function ChefDashboard() {
         </div>
 
         {/* Main Tabs - Kitchen View */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 h-14">
-            <TabsTrigger value="orders" className="text-base font-semibold">
-              <ChefHat className="h-5 w-5 mr-2" />
-              Orders
-            </TabsTrigger>
-            <TabsTrigger value="inventory" className="text-base font-semibold">
-              <Package className="h-5 w-5 mr-2" />
-              Inventory
-            </TabsTrigger>
-            <TabsTrigger value="stock-take" className="text-base font-semibold">
-              Stock Take
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="text-base font-semibold">
-              <BarChart3 className="h-5 w-5 mr-2" />
-              Reports
-            </TabsTrigger>
-            <TabsTrigger value="recipes" className="text-base font-semibold">
-              <BookOpen className="h-5 w-5 mr-2" />
-              Recipes
-            </TabsTrigger>
-          </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+          <div className="overflow-x-auto pb-1">
+            <TabsList className="inline-flex h-auto min-w-max gap-1 p-1">
+              <TabsTrigger value="orders" className="text-xs sm:text-sm font-semibold px-2 sm:px-4 py-2">
+                <ChefHat className="h-4 w-4 mr-1 sm:mr-2" />
+                Orders
+              </TabsTrigger>
+              <TabsTrigger value="inventory" className="text-xs sm:text-sm font-semibold px-2 sm:px-4 py-2">
+                <Package className="h-4 w-4 mr-1 sm:mr-2" />
+                Inventory
+              </TabsTrigger>
+              <TabsTrigger value="stock-take" className="text-xs sm:text-sm font-semibold px-2 sm:px-4 py-2">
+                Stock Take
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="text-xs sm:text-sm font-semibold px-2 sm:px-4 py-2">
+                <BarChart3 className="h-4 w-4 mr-1 sm:mr-2" />
+                Reports
+              </TabsTrigger>
+              <TabsTrigger value="recipes" className="text-xs sm:text-sm font-semibold px-2 sm:px-4 py-2">
+                <BookOpen className="h-4 w-4 mr-1 sm:mr-2" />
+                Recipes
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Orders Tab */}
           <TabsContent value="orders" className="space-y-6">
@@ -806,14 +807,14 @@ export default function ChefDashboard() {
 
             {/* Orders Sections */}
             <Tabs defaultValue="pending" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3 h-12">
-                <TabsTrigger value="pending" className="text-base">
+              <TabsList className="grid w-full grid-cols-3 h-auto">
+                <TabsTrigger value="pending" className="text-xs sm:text-sm py-2">
                   Pending ({pendingOrders.length})
                 </TabsTrigger>
-                <TabsTrigger value="preparing" className="text-base">
+                <TabsTrigger value="preparing" className="text-xs sm:text-sm py-2">
                   Preparing ({preparingOrders.length})
                 </TabsTrigger>
-                <TabsTrigger value="ready" className="text-base">
+                <TabsTrigger value="ready" className="text-xs sm:text-sm py-2">
                   Ready ({readyOrders.length})
                 </TabsTrigger>
               </TabsList>

@@ -259,15 +259,17 @@ export function SystemConfiguration() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="payment" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-7">
-              <TabsTrigger value="payment"><CreditCard className="h-4 w-4 mr-1" />Payment</TabsTrigger>
-              <TabsTrigger value="tax"><Receipt className="h-4 w-4 mr-1" />Tax</TabsTrigger>
-              <TabsTrigger value="notifications"><Bell className="h-4 w-4 mr-1" />Alerts</TabsTrigger>
-              <TabsTrigger value="system"><Zap className="h-4 w-4 mr-1" />System</TabsTrigger>
-              <TabsTrigger value="localization"><Globe className="h-4 w-4 mr-1" />Locale</TabsTrigger>
-              <TabsTrigger value="pos"><Monitor className="h-4 w-4 mr-1" />POS</TabsTrigger>
-              <TabsTrigger value="receipt"><FileText className="h-4 w-4 mr-1" />Receipt</TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto pb-1">
+              <TabsList className="inline-flex h-auto min-w-max gap-1 p-1">
+                <TabsTrigger value="payment" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><CreditCard className="h-3.5 w-3.5 mr-1" />Payment</TabsTrigger>
+                <TabsTrigger value="tax" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><Receipt className="h-3.5 w-3.5 mr-1" />Tax</TabsTrigger>
+                <TabsTrigger value="notifications" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><Bell className="h-3.5 w-3.5 mr-1" />Alerts</TabsTrigger>
+                <TabsTrigger value="system" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><Zap className="h-3.5 w-3.5 mr-1" />System</TabsTrigger>
+                <TabsTrigger value="localization" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><Globe className="h-3.5 w-3.5 mr-1" />Locale</TabsTrigger>
+                <TabsTrigger value="pos" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><Monitor className="h-3.5 w-3.5 mr-1" />POS</TabsTrigger>
+                <TabsTrigger value="receipt" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><FileText className="h-3.5 w-3.5 mr-1" />Receipt</TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* ── Payment ── */}
             <TabsContent value="payment" className="space-y-4">
@@ -333,7 +335,7 @@ export function SystemConfiguration() {
                   <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
                     <p className="text-sm font-medium text-muted-foreground">Safaricom Daraja API Credentials</p>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label htmlFor="shortcode">Shortcode / Till Number</Label>
                         <Input id="shortcode" placeholder="e.g. 174379"
@@ -415,7 +417,7 @@ export function SystemConfiguration() {
                 {/* PayPal */}
                 <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
                   <p className="text-sm font-medium text-muted-foreground">PayPal Credentials</p>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label htmlFor="pp_mode">Mode</Label>
                       <Select value={payment.paypal_mode}
@@ -441,7 +443,7 @@ export function SystemConfiguration() {
                       value={payment.paypal_secret === '***' ? '' : payment.paypal_secret}
                       onChange={(e) => setPayment(p => ({ ...p, paypal_secret: e.target.value }))} />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label htmlFor="pp_currency">Charge Currency</Label>
                       <Select value={payment.paypal_currency}
@@ -675,7 +677,7 @@ export function SystemConfiguration() {
 
                   {geoEnabled && (
                     <div className="space-y-3 pt-1">
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label htmlFor="geo-lat" className="text-xs">Latitude</Label>
                           <Input
@@ -757,7 +759,7 @@ export function SystemConfiguration() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label htmlFor="r-pobox">P.O. Box</Label>
                         <Input
@@ -778,7 +780,7 @@ export function SystemConfiguration() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label htmlFor="r-email">Email</Label>
                         <Input

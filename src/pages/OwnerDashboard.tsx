@@ -726,7 +726,7 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
               <Label className="text-xs font-medium mb-1.5 block">Branch Name *</Label>
               <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Premier Hotel – CBD Branch" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs font-medium mb-1.5 block">City / Location</Label>
                 <Input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Nairobi, Kenya" />
@@ -748,7 +748,7 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
               <Label className="text-xs font-medium mb-1.5 block">Full Address</Label>
               <Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Street address" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs font-medium mb-1.5 block">Phone</Label>
                 <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+254700000000" />

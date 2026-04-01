@@ -121,7 +121,7 @@ const YoYCard = () => {
           ].map(({ label, d, bold }) => (
             <div key={label}>
               <p className="text-xs text-muted-foreground mb-1.5">{label}</p>
-              <div className="grid grid-cols-3 gap-2 text-sm">
+              <div className="grid grid-cols-3 gap-2 text-sm min-w-0">
                 {[['F&B', d.fb], ['Rooms', d.rooms], ['Total', d.total]].map(([k, v]) => (
                   <div key={k} className="text-center p-2 bg-muted/40 rounded-lg">
                     <p className="text-xs text-muted-foreground">{k}</p>
@@ -178,7 +178,7 @@ const ForecastChart = () => {
           </div>
         </div>
         {data && (
-          <div className="grid grid-cols-2 gap-3 mt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
             <div className="p-2.5 bg-indigo-500/5 rounded-lg border border-indigo-500/20">
               <p className="text-xs text-muted-foreground">Projected Total</p>
               <p className="font-bold text-indigo-600 dark:text-indigo-400">{fmtShort(data.projected_total)}</p>

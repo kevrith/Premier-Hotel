@@ -124,7 +124,7 @@ function QuickReceiveDialog({
   if (!item) return null;
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[calc(100vw-2rem)] max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
@@ -132,7 +132,7 @@ function QuickReceiveDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Quantity ({item.unit || 'units'}) *</Label>
               <Input type="number" min="0.01" step="0.01" value={qty} onChange={e => setQty(e.target.value)} placeholder="e.g. 24" autoFocus />
@@ -146,7 +146,7 @@ function QuickReceiveDialog({
             <Label className="text-xs">Supplier</Label>
             <Input value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="e.g. Nairobi Distributors" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Invoice Number</Label>
               <Input value={invoice} onChange={e => setInvoice(e.target.value)} placeholder="INV-0001" />
@@ -220,7 +220,7 @@ function QuickAdjustDialog({
   const diff = parseFloat(newQty || '0') - item.stock_quantity;
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[calc(100vw-2rem)] max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-indigo-600" />
@@ -634,14 +634,14 @@ function ItemManagementPanel({ onRefreshParent }: { onRefreshParent: () => void 
 
       {/* Add / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={v => !v && setDialogOpen(false)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {editItem ? <><Pencil className="h-4 w-4" /> Edit Item</> : <><Plus className="h-4 w-4" /> Add Inventory Item</>}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs">Item Name *</Label>
                 <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -709,7 +709,7 @@ function ItemManagementPanel({ onRefreshParent }: { onRefreshParent: () => void 
 
       {/* Delete Confirm Dialog */}
       <Dialog open={!!deleteItem} onOpenChange={v => !v && setDeleteItem(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-rose-600">
               <Trash2 className="h-4 w-4" /> Delete Item

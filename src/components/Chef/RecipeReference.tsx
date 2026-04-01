@@ -393,7 +393,7 @@ export function RecipeReference() {
       )}
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingRecipe ? 'Edit Recipe' : 'Create Recipe'}</DialogTitle>
           </DialogHeader>
@@ -406,7 +406,7 @@ export function RecipeReference() {
               <Label>Category</Label>
               <Input value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} placeholder="e.g., Main Course, Salad" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Prep Time (min)</Label>
                 <Input type="number" value={formData.prep_time} onChange={(e) => setFormData({ ...formData, prep_time: parseInt(e.target.value) })} />

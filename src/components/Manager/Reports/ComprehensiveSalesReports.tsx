@@ -113,7 +113,7 @@ export const ComprehensiveSalesReports: React.FC = () => {
           <CardDescription>Comprehensive sales analysis with employee performance tracking</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-5">
             <div>
               <label className="text-sm font-medium mb-2 block">Report Type</label>
               <Select value={reportType} onValueChange={(v: any) => setReportType(v)}>
@@ -175,7 +175,7 @@ export const ComprehensiveSalesReports: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex gap-2 mt-4">
+          <div className="flex flex-wrap gap-2 mt-4">
             <Button onClick={loadReportData} disabled={loading}>
               {loading ? 'Loading...' : 'Generate Report'}
             </Button>
@@ -196,7 +196,7 @@ export const ComprehensiveSalesReports: React.FC = () => {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
@@ -246,8 +246,8 @@ export const ComprehensiveSalesReports: React.FC = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
+          <div className="rounded-md border overflow-x-auto">
+            <Table className="min-w-[600px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Employee</TableHead>

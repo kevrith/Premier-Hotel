@@ -53,7 +53,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="text-sm font-medium mb-2 block">Name</label>
           <Input
@@ -82,7 +82,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="text-sm font-medium mb-2 block">Category</label>
           <Select 
@@ -180,7 +180,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
 
         {formData.track_inventory && (
           <div className="space-y-3 pt-1">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium mb-1 block text-muted-foreground">Opening Stock</label>
                 <Input
@@ -216,7 +216,7 @@ export default function MenuItemForm({ item, onSave, onCancel }) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium mb-1 flex items-center gap-1 text-amber-600">
                   <AlertTriangle className="h-3 w-3" />

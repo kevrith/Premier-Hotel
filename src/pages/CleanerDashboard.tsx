@@ -524,7 +524,7 @@ export default function CleanerDashboard() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <div className="container mx-auto px-4 py-8 mt-16">
+      <div className="container mx-auto px-4 py-8 mt-14 sm:mt-16 pb-24 sm:pb-8">
 
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
@@ -1026,7 +1026,7 @@ export default function CleanerDashboard() {
 
       {/* Inspection Dialog */}
       <Dialog open={showInspectionDialog} onOpenChange={setShowInspectionDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-2xl">
               Room {selectedTask ? getRoomNumber(selectedTask.room_id) : ''} — Inspection
@@ -1129,7 +1129,7 @@ export default function CleanerDashboard() {
 
       {/* Flag Repair Issue Dialog */}
       <Dialog open={showFlagForm} onOpenChange={setShowFlagForm}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600"><Wrench className="h-5 w-5" />Report Maintenance Issue</DialogTitle>
             <DialogDescription>Flag a repair or maintenance issue for the manager to action</DialogDescription>
@@ -1198,7 +1198,7 @@ export default function CleanerDashboard() {
 
       {/* Linen Movement Dialog */}
       <Dialog open={showLinenMove} onOpenChange={setShowLinenMove}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-md">
           <DialogHeader>
             <DialogTitle>Log Linen Movement</DialogTitle>
             <DialogDescription>Record issuing, returning, or sending linen to laundry</DialogDescription>
@@ -1260,7 +1260,7 @@ export default function CleanerDashboard() {
 
       {/* Headcount Dialog */}
       <Dialog open={showHeadcount} onOpenChange={setShowHeadcount}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ClipboardCheck className="h-5 w-5" /> Physical Headcount
@@ -1322,7 +1322,7 @@ export default function CleanerDashboard() {
 
       {/* Lost & Found Dialog */}
       <Dialog open={showLostFoundForm} onOpenChange={setShowLostFoundForm}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-md">
           <DialogHeader>
             <DialogTitle>Report Lost & Found Item</DialogTitle>
             <DialogDescription>Record an item found in a guest room</DialogDescription>

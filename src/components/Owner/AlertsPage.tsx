@@ -181,7 +181,7 @@ const AlertCenter = ({ isOwner }: { isOwner: boolean }) => {
       </Card>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-sm">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Bell className="h-4 w-4" />New Alert Threshold</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>

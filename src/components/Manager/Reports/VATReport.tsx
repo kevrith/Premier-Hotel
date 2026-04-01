@@ -34,14 +34,14 @@ export const VATReport: React.FC = () => {
   return (
     <Card>
       <CardHeader>
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap justify-between items-start gap-3">
           <div>
             <CardTitle>VAT Report (Kenya - 16%)</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
               {format(new Date(startDate), 'MMM dd, yyyy')} - {format(new Date(endDate), 'MMM dd, yyyy')}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-40" />
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-40" />
             <Button variant="outline" onClick={() => window.print()}>
@@ -59,30 +59,32 @@ export const VATReport: React.FC = () => {
               OUTPUT VAT (Sales)
               <span className="text-sm font-normal text-muted-foreground">VAT Collected</span>
             </h3>
-            <Table>
-              <TableBody>
-                <TableRow>
-                  <TableCell>Room Revenue</TableCell>
-                  <TableCell className="text-right">KES {output_vat.room_revenue.toLocaleString()}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>F&B Revenue</TableCell>
-                  <TableCell className="text-right">KES {output_vat.fb_revenue.toLocaleString()}</TableCell>
-                </TableRow>
-                <TableRow className="font-semibold">
-                  <TableCell>Total Sales (Incl. VAT)</TableCell>
-                  <TableCell className="text-right">KES {output_vat.total_sales_incl_vat.toLocaleString()}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Total Sales (Excl. VAT)</TableCell>
-                  <TableCell className="text-right">KES {output_vat.total_sales_excl_vat.toLocaleString()}</TableCell>
-                </TableRow>
-                <TableRow className="font-bold bg-green-500/10">
-                  <TableCell>Output VAT @ {(vat_rate * 100).toFixed(0)}%</TableCell>
-                  <TableCell className="text-right text-green-500">KES {output_vat.output_vat.toLocaleString()}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[400px]">
+                <TableBody>
+                  <TableRow>
+                    <TableCell>Room Revenue</TableCell>
+                    <TableCell className="text-right">KES {output_vat.room_revenue.toLocaleString()}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>F&B Revenue</TableCell>
+                    <TableCell className="text-right">KES {output_vat.fb_revenue.toLocaleString()}</TableCell>
+                  </TableRow>
+                  <TableRow className="font-semibold">
+                    <TableCell>Total Sales (Incl. VAT)</TableCell>
+                    <TableCell className="text-right">KES {output_vat.total_sales_incl_vat.toLocaleString()}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>Total Sales (Excl. VAT)</TableCell>
+                    <TableCell className="text-right">KES {output_vat.total_sales_excl_vat.toLocaleString()}</TableCell>
+                  </TableRow>
+                  <TableRow className="font-bold bg-green-500/10">
+                    <TableCell>Output VAT @ {(vat_rate * 100).toFixed(0)}%</TableCell>
+                    <TableCell className="text-right text-green-500">KES {output_vat.output_vat.toLocaleString()}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
           {/* Input VAT (Purchases) */}
@@ -91,22 +93,24 @@ export const VATReport: React.FC = () => {
               INPUT VAT (Purchases)
               <span className="text-sm font-normal text-muted-foreground">VAT Paid</span>
             </h3>
-            <Table>
-              <TableBody>
-                <TableRow>
-                  <TableCell>Total Purchases (Incl. VAT)</TableCell>
-                  <TableCell className="text-right">KES {input_vat.total_purchases_incl_vat.toLocaleString()}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell>Total Purchases (Excl. VAT)</TableCell>
-                  <TableCell className="text-right">KES {input_vat.total_purchases_excl_vat.toLocaleString()}</TableCell>
-                </TableRow>
-                <TableRow className="font-bold bg-blue-500/10">
-                  <TableCell>Input VAT @ {(vat_rate * 100).toFixed(0)}%</TableCell>
-                  <TableCell className="text-right text-blue-500">KES {input_vat.input_vat.toLocaleString()}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto">
+              <Table className="min-w-[400px]">
+                <TableBody>
+                  <TableRow>
+                    <TableCell>Total Purchases (Incl. VAT)</TableCell>
+                    <TableCell className="text-right">KES {input_vat.total_purchases_incl_vat.toLocaleString()}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>Total Purchases (Excl. VAT)</TableCell>
+                    <TableCell className="text-right">KES {input_vat.total_purchases_excl_vat.toLocaleString()}</TableCell>
+                  </TableRow>
+                  <TableRow className="font-bold bg-blue-500/10">
+                    <TableCell>Input VAT @ {(vat_rate * 100).toFixed(0)}%</TableCell>
+                    <TableCell className="text-right text-blue-500">KES {input_vat.input_vat.toLocaleString()}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
           {/* Net VAT Payable */}

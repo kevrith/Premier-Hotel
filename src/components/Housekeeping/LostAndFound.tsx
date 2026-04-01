@@ -504,7 +504,7 @@ function LostItemDialog({ isOpen, onClose, mode, item, onSave }: LostItemDialogP
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {mode === 'new' ? 'Register Lost Item' : mode === 'edit' ? 'Edit Item' : 'Item Details'}
@@ -519,7 +519,7 @@ function LostItemDialog({ isOpen, onClose, mode, item, onSave }: LostItemDialogP
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Item Type *</Label>
               <Select
@@ -566,7 +566,7 @@ function LostItemDialog({ isOpen, onClose, mode, item, onSave }: LostItemDialogP
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Found Location *</Label>
               <Input
@@ -592,7 +592,7 @@ function LostItemDialog({ isOpen, onClose, mode, item, onSave }: LostItemDialogP
 
           <div className="space-y-3">
             <Label>Guest Information (if known)</Label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 value={formData.guest_name || ''}
                 onChange={(e) => setFormData({ ...formData, guest_name: e.target.value })}
@@ -622,7 +622,7 @@ function LostItemDialog({ isOpen, onClose, mode, item, onSave }: LostItemDialogP
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Estimated Value (Optional)</Label>
               <Input

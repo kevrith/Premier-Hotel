@@ -61,7 +61,7 @@ const ReviewsWidget = () => {
                 })}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="grid grid-cols-3 gap-2 mb-4 min-w-0">
               {[
                 { label: 'Cleanliness', val: data.avg_cleanliness },
                 { label: 'Staff', val: data.avg_staff },
@@ -132,7 +132,7 @@ const RepeatRateWidget = () => {
       <CardContent>
         {!data ? <div className="p-6 text-center text-muted-foreground text-sm">Loading...</div> : (
           <>
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="grid grid-cols-3 gap-2 mb-4 min-w-0">
               {[
                 { label: 'Repeat Rate', val: `${data.repeat_rate_pct}%`, cls: 'text-blue-600 dark:text-blue-400' },
                 { label: 'Repeat Customers', val: data.repeat_customers, cls: '' },

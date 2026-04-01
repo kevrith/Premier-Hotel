@@ -159,7 +159,7 @@ export default function MenuItemCard({
       </CardContent>
     </Card>
 
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100vw-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Customize Your Order</DialogTitle>
           <DialogDescription>

@@ -222,7 +222,7 @@ export function BranchManagement() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editBranch} onOpenChange={open => !open && setEditBranch(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Branch</DialogTitle>
           </DialogHeader>

@@ -153,7 +153,7 @@ export function UserManagement() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="statistics" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="flex flex-wrap h-auto gap-1 w-full">
               <TabsTrigger value="statistics">
                 <BarChart3 className="h-4 w-4 mr-2" />
                 Statistics
@@ -186,8 +186,8 @@ export function UserManagement() {
                 <UserAddDialog onUserAdded={fetchUsers} />
               </div>
 
-              <div className="flex gap-4">
-                <div className="relative flex-1">
+              <div className="flex flex-wrap gap-4">
+                <div className="relative flex-1 min-w-[200px]">
                   <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search by name, email, or phone..."
@@ -235,8 +235,8 @@ export function UserManagement() {
                   <p className="text-muted-foreground">No users found</p>
                 </div>
               ) : (
-                <div className="border rounded-lg">
-                  <Table>
+                <div className="border rounded-lg overflow-x-auto">
+                  <Table className="min-w-[600px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead>User</TableHead>

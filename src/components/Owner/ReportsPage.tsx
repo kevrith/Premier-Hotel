@@ -139,7 +139,7 @@ const BudgetVsActual = () => {
       </Card>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[calc(100vw-2rem)] max-w-sm">
           <DialogHeader><DialogTitle>Set Monthly Budget</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>

@@ -42,14 +42,14 @@ export const ProfitLossStatement: React.FC = () => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap justify-between items-start gap-3">
             <div>
               <CardTitle>Profit & Loss Statement</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 {format(new Date(startDate), 'MMM dd, yyyy')} - {format(new Date(endDate), 'MMM dd, yyyy')}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-40" />
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-40" />
               <Button variant="outline" onClick={handlePrint}>
@@ -64,83 +64,91 @@ export const ProfitLossStatement: React.FC = () => {
             {/* Revenue Section */}
             <div>
               <h3 className="font-semibold text-lg mb-3">Revenue</h3>
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>Room Revenue</TableCell>
-                    <TableCell className="text-right">KES {revenue.room_revenue.toLocaleString()}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>Food & Beverage Revenue</TableCell>
-                    <TableCell className="text-right">KES {revenue.fb_revenue.toLocaleString()}</TableCell>
-                  </TableRow>
-                  <TableRow className="font-bold bg-muted">
-                    <TableCell>Total Revenue</TableCell>
-                    <TableCell className="text-right">KES {revenue.total_revenue.toLocaleString()}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[400px]">
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>Room Revenue</TableCell>
+                      <TableCell className="text-right">KES {revenue.room_revenue.toLocaleString()}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Food & Beverage Revenue</TableCell>
+                      <TableCell className="text-right">KES {revenue.fb_revenue.toLocaleString()}</TableCell>
+                    </TableRow>
+                    <TableRow className="font-bold bg-muted">
+                      <TableCell>Total Revenue</TableCell>
+                      <TableCell className="text-right">KES {revenue.total_revenue.toLocaleString()}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
             </div>
 
             {/* COGS Section */}
             <div>
               <h3 className="font-semibold text-lg mb-3">Cost of Goods Sold</h3>
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell>Inventory Usage</TableCell>
-                    <TableCell className="text-right text-red-500">
-                      (KES {cogs.total_cogs.toLocaleString()})
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="font-bold bg-green-500/10">
-                    <TableCell>Gross Profit</TableCell>
-                    <TableCell className="text-right flex items-center justify-end gap-2">
-                      KES {cogs.gross_profit.toLocaleString()}
-                      <span className="text-sm text-muted-foreground">({cogs.gross_margin.toFixed(1)}%)</span>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[400px]">
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>Inventory Usage</TableCell>
+                      <TableCell className="text-right text-red-500">
+                        (KES {cogs.total_cogs.toLocaleString()})
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="font-bold bg-green-500/10">
+                      <TableCell>Gross Profit</TableCell>
+                      <TableCell className="text-right flex items-center justify-end gap-2">
+                        KES {cogs.gross_profit.toLocaleString()}
+                        <span className="text-sm text-muted-foreground">({cogs.gross_margin.toFixed(1)}%)</span>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
             </div>
 
             {/* Operating Expenses */}
             <div>
               <h3 className="font-semibold text-lg mb-3">Operating Expenses</h3>
-              <Table>
-                <TableBody>
-                  {Object.entries(operating_expenses.by_category).map(([category, amount]: [string, any]) => (
-                    <TableRow key={category}>
-                      <TableCell className="capitalize">{category}</TableCell>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[400px]">
+                  <TableBody>
+                    {Object.entries(operating_expenses.by_category).map(([category, amount]: [string, any]) => (
+                      <TableRow key={category}>
+                        <TableCell className="capitalize">{category}</TableCell>
+                        <TableCell className="text-right text-red-500">
+                          (KES {amount.toLocaleString()})
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="font-bold bg-muted">
+                      <TableCell>Total Operating Expenses</TableCell>
                       <TableCell className="text-right text-red-500">
-                        (KES {amount.toLocaleString()})
+                        (KES {operating_expenses.total_expenses.toLocaleString()})
                       </TableCell>
                     </TableRow>
-                  ))}
-                  <TableRow className="font-bold bg-muted">
-                    <TableCell>Total Operating Expenses</TableCell>
-                    <TableCell className="text-right text-red-500">
-                      (KES {operating_expenses.total_expenses.toLocaleString()})
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+                  </TableBody>
+                </Table>
+              </div>
             </div>
 
             {/* Net Profit */}
             <div className="border-t-2 pt-4">
-              <Table>
-                <TableBody>
-                  <TableRow className="font-bold text-lg">
-                    <TableCell>Net Profit</TableCell>
-                    <TableCell className={`text-right flex items-center justify-end gap-2 ${profit.net_profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {profit.net_profit >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-                      KES {profit.net_profit.toLocaleString()}
-                      <span className="text-sm text-muted-foreground">({profit.net_margin.toFixed(1)}%)</span>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[400px]">
+                  <TableBody>
+                    <TableRow className="font-bold text-lg">
+                      <TableCell>Net Profit</TableCell>
+                      <TableCell className={`text-right flex items-center justify-end gap-2 ${profit.net_profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {profit.net_profit >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+                        KES {profit.net_profit.toLocaleString()}
+                        <span className="text-sm text-muted-foreground">({profit.net_margin.toFixed(1)}%)</span>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </div>
         </CardContent>

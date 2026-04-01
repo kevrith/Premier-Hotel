@@ -176,7 +176,7 @@ export const EnhancedFinancialReports: React.FC = () => {
         <Card>
           <CardHeader>
             <CardTitle>Revenue Trend</CardTitle>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => handleExportPDF('daily')}>
                 <FileText className="h-4 w-4 mr-2" />
                 PDF

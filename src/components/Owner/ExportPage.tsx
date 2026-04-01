@@ -132,7 +132,7 @@ const PLExport = () => {
         <p className="text-xs text-muted-foreground">Full profit &amp; loss with branch breakdown</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs mb-1 block">From</Label>
             <Input type="date" value={start} onChange={e => setStart(e.target.value)} className="h-8 text-xs" />
@@ -340,7 +340,7 @@ const RevenueExport = () => {
         <p className="text-xs text-muted-foreground">Branch revenue, expense breakdown, VAT on 3 sheets</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs mb-1 block">From</Label>
             <Input type="date" value={start} onChange={e => setStart(e.target.value)} className="h-8 text-xs" />

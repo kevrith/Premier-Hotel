@@ -430,11 +430,11 @@ export default function WaiterDashboard() {
         <CardHeader>
           <div className="flex items-start justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                {order.location}
+              <CardTitle className="flex flex-wrap items-center gap-1.5 text-base sm:text-lg">
+                <MapPin className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+                <span className="truncate">{order.location}</span>
                 {isReady && (
-                  <Bell className="h-4 w-4 text-green-500 animate-bounce" />
+                  <Bell className="h-4 w-4 text-green-500 animate-bounce shrink-0" />
                 )}
                 {isOtherWaiterOrder && (
                   <Badge variant="outline" className="text-xs">
@@ -597,7 +597,7 @@ export default function WaiterDashboard() {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 mt-16">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 mt-14 sm:mt-16 pb-24 sm:pb-8">
         {/* Header */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
