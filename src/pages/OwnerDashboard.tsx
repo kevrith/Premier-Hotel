@@ -20,11 +20,12 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, ChevronRight, Settings,
   Search, Menu, X, LayoutDashboard, GitBranch,
   PieChart as PieChartIcon, FileText, CheckCircle2, Clock, Wifi,
-  LineChart, Cog, ClipboardList, UserSquare2, HeartHandshake, Bell, Download, Package, LogOut
+  LineChart, Cog, ClipboardList, UserSquare2, HeartHandshake, Bell, Download, Package, LogOut, Home
 } from 'lucide-react';
 import api from '@/lib/api/client';
 import { formatKES } from '@/lib/utils/format';
 import { toast } from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { BalanceSheet } from '@/components/Manager/Reports/BalanceSheet';
 import { format } from 'date-fns';
 import { AnalyticsPage } from '@/components/Owner/AnalyticsPage';
@@ -1114,6 +1115,7 @@ const FinancialsPage = () => {
 
 export default function OwnerDashboard() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [page, setPage] = useState('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1179,6 +1181,16 @@ export default function OwnerDashboard() {
             </div>
 
             <ThemeToggle />
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              title="Go to Home"
+              onClick={() => navigate('/')}
+            >
+              <Home className="h-4 w-4" />
+            </Button>
 
             <Button variant="ghost" size="icon" className="relative h-8 w-8" onClick={loadOverview} disabled={overviewLoading}>
               <RefreshCw className={`h-4 w-4 ${overviewLoading ? 'animate-spin' : ''}`} />
