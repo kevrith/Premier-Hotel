@@ -25,6 +25,24 @@ const ROLE_COLORS: Record<string, string> = {
 // Shift code is stored per-day in localStorage by the manager
 const SHIFT_KEY = () => `staff:shift_code:${new Date().toISOString().slice(0, 10)}`;
 const SESSION_UNLOCKED_KEY = 'staff:shift_unlocked';
+const STAFF_CACHE_KEY = 'staff:list_cache';
+const STAFF_CACHE_TTL_H = 24; // hours
+
+function getCachedStaff(): StaffMember[] | null {
+  try {
+    const raw = localStorage.getItem(STAFF_CACHE_KEY);
+    if (!raw) return null;
+    const { staff, cachedAt } = JSON.parse(raw);
+    const ageH = (Date.now() - new Date(cachedAt).getTime()) / 3_600_000;
+    return ageH < STAFF_CACHE_TTL_H ? staff : null;
+  } catch { return null; }
+}
+
+function cacheStaff(staff: StaffMember[]) {
+  try {
+    localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify({ staff, cachedAt: new Date().toISOString() }));
+  } catch { /* storage full — ignore */ }
+}
 
 export default function StaffPinLogin() {
   const navigate = useNavigate();
@@ -49,8 +67,21 @@ export default function StaffPinLogin() {
     if (!shiftCodeRequired || shiftUnlocked) {
       api
         .get<{ staff: StaffMember[] }>('/auth/staff-list')
-        .then((r) => setStaff((r.data as any)?.staff ?? r.data))
-        .catch(() => toast.error('Could not load staff list'))
+        .then((r) => {
+          const list: StaffMember[] = (r.data as any)?.staff ?? r.data;
+          setStaff(list);
+          cacheStaff(list); // persist for offline use
+        })
+        .catch(() => {
+          // Offline fallback — use cached staff list if available
+          const cached = getCachedStaff();
+          if (cached && cached.length > 0) {
+            setStaff(cached);
+            toast('Offline — showing cached staff list', { icon: '📶' });
+          } else {
+            toast.error('Could not load staff list. Connect to internet first.');
+          }
+        })
         .finally(() => setLoadingStaff(false));
     } else {
       setLoadingStaff(false);
@@ -66,8 +97,20 @@ export default function StaffPinLogin() {
       setLoadingStaff(true);
       api
         .get<{ staff: StaffMember[] }>('/auth/staff-list')
-        .then((r) => setStaff((r.data as any)?.staff ?? r.data))
-        .catch(() => toast.error('Could not load staff list'))
+        .then((r) => {
+          const list: StaffMember[] = (r.data as any)?.staff ?? r.data;
+          setStaff(list);
+          cacheStaff(list);
+        })
+        .catch(() => {
+          const cached = getCachedStaff();
+          if (cached && cached.length > 0) {
+            setStaff(cached);
+            toast('Offline — showing cached staff list', { icon: '📶' });
+          } else {
+            toast.error('Could not load staff list');
+          }
+        })
         .finally(() => setLoadingStaff(false));
     } else {
       setShiftError('Incorrect shift code. Please check with your manager.');
@@ -109,6 +152,13 @@ export default function StaffPinLogin() {
         });
         toast.success(`Welcome, ${user.full_name}!`);
         redirectByRole(user.role);
+      } else if ((data as any)?.offline || (data as any)?.queued) {
+        // Synthetic 202 from offline queue — PIN cannot be verified without internet
+        toast.error('PIN login requires internet connection. Please connect and try again.', { duration: 5000 });
+        setPin('');
+      } else {
+        toast.error('Invalid PIN. Please try again.');
+        setPin('');
       }
     } catch (err: any) {
       const msg = err?.response?.data?.detail || 'Invalid PIN';

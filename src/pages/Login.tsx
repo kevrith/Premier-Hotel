@@ -181,11 +181,6 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!isOnline) {
-      toast.error('You must be online to login');
-      return;
-    }
-
     // Validate based on login type
     if (loginType === 'email') {
       if (!validateEmailForm()) return;
@@ -492,7 +487,7 @@ export default function Login() {
                 <Button
                   type="submit"
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
-                  disabled={isLoading || !isOnline}
+                  disabled={isLoading}
                 >
                   {isLoading ? (
                     <>
@@ -588,7 +583,7 @@ export default function Login() {
                 <Button
                   type="submit"
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
-                  disabled={isLoading || !isOnline}
+                  disabled={isLoading}
                 >
                   {isLoading ? (
                     <>
