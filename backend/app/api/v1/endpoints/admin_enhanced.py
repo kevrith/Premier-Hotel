@@ -869,7 +869,7 @@ async def set_staff_pin(
     user_id: str,
     body: SetPinRequest,
     request: Request,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -908,7 +908,7 @@ async def set_staff_pin(
 async def unlock_pin(
     user_id: str,
     request: Request,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     current_user: dict = Depends(get_current_user),
 ):
     """Reset PIN lockout for a staff member (admin/manager only)."""
@@ -926,7 +926,7 @@ async def unlock_pin(
 async def remove_staff_pin(
     user_id: str,
     request: Request,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     current_user: dict = Depends(get_current_user),
 ):
     """Remove PIN from a staff member (admin/manager only)."""
