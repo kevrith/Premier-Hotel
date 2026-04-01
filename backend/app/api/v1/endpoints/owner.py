@@ -1141,7 +1141,7 @@ async def staff_performance(
     orders, tasks_done, staff, branches = await _par(
         lambda: supabase.table("orders").select("total_amount, status, assigned_waiter_id, created_by_staff_id, created_at")
             .gte("created_at", start.isoformat()).lte("created_at", end.isoformat())
-            .in_("status", ["completed", "delivered", "served"]).execute().data or [],
+            .not_.in_("status", ["cancelled", "canceled", "void", "voided", "void_requested"]).execute().data or [],
         lambda: supabase.table("housekeeping_tasks").select("assigned_to, task_type, created_at")
             .gte("created_at", start.isoformat()).lte("created_at", end.isoformat())
             .eq("status", "completed").execute().data or [],
