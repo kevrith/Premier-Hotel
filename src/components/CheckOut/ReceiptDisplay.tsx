@@ -48,7 +48,86 @@ export function ReceiptDisplay({ receiptData, showActions = true, guestEmail }: 
   };
 
   const handlePrint = () => {
-    window.print();
+    const fmt = (n: number) =>
+      `KES ${(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const fmtDate = (d: string) =>
+      new Date(d).toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' });
+    const now = new Date().toLocaleString('en-KE', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+
+    const itemRows = receiptData.items.map(item => `
+      <div class="row">
+        <span style="flex:1;padding-right:6px">${item.description}${item.quantity ? ` x${item.quantity}` : ''}</span>
+        <span style="white-space:nowrap">${fmt(item.amount)}</span>
+      </div>
+    `).join('');
+
+    const statusLine =
+      receiptData.paymentStatus === 'paid' ? '*** PAID IN FULL ***' :
+      receiptData.paymentStatus === 'partial' ? '--- PARTIALLY PAID ---' :
+      '--- PAYMENT PENDING ---';
+
+    const html = `<!DOCTYPE html>
+      <html>
+      <head><title>Receipt ${receiptData.receiptNumber}</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Courier New', Courier, monospace; font-size: 12px; width: 280px; margin: 0 auto; padding: 8px; color: #000; }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .divider { border-top: 1px dashed #000; margin: 6px 0; }
+        .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
+        .row { display: flex; justify-content: space-between; margin: 2px 0; }
+        .total { font-size: 14px; font-weight: bold; }
+        .small { font-size: 10px; }
+        @media print { @page { size: 80mm auto; margin: 0; } body { padding: 4px; } }
+      </style>
+      </head>
+      <body>
+        <div class="center">
+          <div class="bold" style="font-size:15px;">Premier Hotel</div>
+          <div class="small">Nairobi, Kenya | +254 700 000000</div>
+          <div class="bold" style="font-size:13px;margin-top:4px;">ROOM CHECKOUT RECEIPT</div>
+        </div>
+        <div class="divider-solid"></div>
+
+        <div class="row"><span class="bold">Receipt #</span><span>${receiptData.receiptNumber}</span></div>
+        <div class="row"><span class="bold">Guest</span><span>${receiptData.guestName}</span></div>
+        <div class="row"><span class="bold">Room</span><span>${receiptData.roomNumber}</span></div>
+        <div class="row"><span class="bold">Check-In</span><span>${fmtDate(receiptData.checkInDate)}</span></div>
+        <div class="row"><span class="bold">Check-Out</span><span>${fmtDate(receiptData.checkOutDate)}</span></div>
+        ${receiptData.paymentMethod ? `<div class="row"><span class="bold">Payment</span><span>${receiptData.paymentMethod}</span></div>` : ''}
+        <div class="row"><span class="bold">Issued</span><span>${now}</span></div>
+
+        <div class="divider"></div>
+        <div class="bold" style="margin-bottom:3px;">CHARGES</div>
+        ${itemRows}
+        <div class="divider"></div>
+
+        <div class="row"><span>Subtotal</span><span>${fmt(receiptData.subtotal)}</span></div>
+        ${receiptData.tax && receiptData.tax > 0 ? `<div class="row"><span>Tax (16% VAT)</span><span>${fmt(receiptData.tax)}</span></div>` : ''}
+        ${receiptData.deposit && receiptData.deposit > 0 ? `<div class="row"><span>Deposit Paid</span><span>-${fmt(receiptData.deposit)}</span></div>` : ''}
+        <div class="divider-solid"></div>
+        <div class="row total"><span>TOTAL</span><span>${fmt(receiptData.total)}</span></div>
+
+        <div class="center bold" style="margin-top:8px;">${statusLine}</div>
+        <div class="divider"></div>
+        <div class="center small">Thank you for staying with us!</div>
+        <div class="center small">This is a computer-generated receipt</div>
+      </body>
+      </html>`;
+
+    const w = window.open('', '_blank', 'width=340,height=600,menubar=no,toolbar=no');
+    if (!w) { alert('Please allow pop-ups to enable printing.'); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => {
+      w.print();
+      w.addEventListener('afterprint', () => w.close());
+    }, 300);
   };
 
   const handleEmailReceipt = async () => {
@@ -272,18 +351,6 @@ export function ReceiptDisplay({ receiptData, showActions = true, guestEmail }: 
         </CardContent>
       </Card>
 
-      {/* Print Styles */}
-      <style>{`
-        @media print {
-          @page {
-            margin: 20mm;
-          }
-          body {
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-          }
-        }
-      `}</style>
     </div>
   );
 }

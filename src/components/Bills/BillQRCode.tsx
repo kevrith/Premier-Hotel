@@ -63,91 +63,60 @@ export function BillQRCode({ bill, open, onOpenChange }: BillQRCodeProps) {
         <head>
           <title>Bill ${safeBillNumber} - QR Code</title>
           <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
             body {
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-              font-family: Arial, sans-serif;
-              padding: 20px;
-            }
-            .header {
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 12px;
+              width: 280px;
+              margin: 0 auto;
+              padding: 8px;
+              color: #000;
               text-align: center;
-              margin-bottom: 30px;
             }
-            h1 {
-              font-size: 32px;
-              margin-bottom: 10px;
-            }
-            .bill-info {
-              text-align: center;
-              margin-bottom: 30px;
-              font-size: 18px;
-            }
-            .qr-container {
-              text-align: center;
-              margin: 30px 0;
-            }
-            .instructions {
-              text-align: center;
-              margin-top: 30px;
-              max-width: 500px;
-            }
-            .amount {
-              font-size: 28px;
-              font-weight: bold;
-              color: #2563eb;
-              margin: 20px 0;
-            }
+            .bold { font-weight: bold; }
+            .divider { border-top: 1px dashed #000; margin: 6px 0; }
+            .divider-solid { border-top: 2px solid #000; margin: 6px 0; }
+            .amount { font-size: 16px; font-weight: bold; margin: 8px 0; }
+            .small { font-size: 10px; }
+            .qr-wrap { margin: 10px 0; }
+            .qr-wrap svg { width: 160px !important; height: 160px !important; }
+            .steps { text-align: left; font-size: 11px; margin-top: 6px; }
+            .steps li { margin: 2px 0 2px 14px; }
             @media print {
-              body {
-                margin: 0;
-                padding: 20px;
-              }
+              @page { size: 80mm auto; margin: 0; }
+              body { padding: 4px; }
             }
           </style>
         </head>
         <body>
-          <div class="header">
-            <h1>Premier Hotel</h1>
-            <p>Scan to Pay Your Bill</p>
-          </div>
+          <div class="bold" style="font-size:15px;">Premier Hotel</div>
+          <div class="bold" style="font-size:13px;margin-top:2px;">SCAN TO PAY</div>
+          <div class="divider-solid"></div>
 
-          <div class="bill-info">
-            <div><strong>Bill Number:</strong> ${safeBillNumber}</div>
-            <div><strong>Location:</strong> ${
-              bill.location_type === 'table' ? `Table ${safeTableNumber}` : `Room ${safeRoomNumber}`
-            }</div>
-            ${safeCustomerName ? `<div><strong>Customer:</strong> ${safeCustomerName}</div>` : ''}
-          </div>
+          <div><strong>Bill #:</strong> ${safeBillNumber}</div>
+          <div><strong>Location:</strong> ${bill.location_type === 'table' ? `Table ${safeTableNumber}` : `Room ${safeRoomNumber}`}</div>
+          ${safeCustomerName ? `<div><strong>Customer:</strong> ${safeCustomerName}</div>` : ''}
 
-          <div class="amount">
-            Amount: KES ${safeTotalAmount}
-          </div>
+          <div class="divider"></div>
+          <div class="amount">KES ${safeTotalAmount}</div>
+          <div class="divider"></div>
 
-          <div class="qr-container">
-            ${qrCodeHtml}
-          </div>
+          <div class="qr-wrap">${qrCodeHtml}</div>
 
-          <div class="instructions">
-            <h3>How to Pay:</h3>
-            <ol style="text-align: left;">
-              <li>Open your phone's camera or QR scanner</li>
-              <li>Scan the QR code above</li>
-              <li>Choose M-Pesa or Card payment</li>
-              <li>Complete the payment</li>
-            </ol>
-            <p style="margin-top: 20px; font-size: 14px; color: #666;">
-              For assistance, please contact our staff
-            </p>
-          </div>
+          <div class="divider"></div>
+          <div class="bold small">How to Pay:</div>
+          <ol class="steps">
+            <li>Open camera or QR scanner</li>
+            <li>Scan the code above</li>
+            <li>Choose M-Pesa or Card</li>
+            <li>Complete payment</li>
+          </ol>
+          <div class="divider"></div>
+          <div class="small">Need help? Ask our staff</div>
 
           <script>
             window.onload = function() {
-              setTimeout(function() {
-                window.print();
-              }, 500);
+              setTimeout(function() { window.print(); }, 500);
             };
           </script>
         </body>
