@@ -820,16 +820,20 @@ async def get_staff_list(
     Return active staff members for the PIN login picker.
     Only returns staff roles (not admin/owner) so the picker stays relevant.
     """
+    ROLE_ORDER = {"manager": 0, "waiter": 1, "chef": 2, "cleaner": 3, "housekeeping": 3}
     try:
         response = (
             supabase.table("users")
             .select("id, full_name, role, profile_picture")
             .in_("role", STAFF_ROLES)
             .eq("status", "active")
-            .order("full_name")
             .execute()
         )
-        return {"staff": response.data or []}
+        staff = sorted(
+            response.data or [],
+            key=lambda u: (ROLE_ORDER.get(u.get("role", ""), 99), (u.get("full_name") or "").lower())
+        )
+        return {"staff": staff}
     except Exception as e:
         logging.error(f"Staff list error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch staff list")
