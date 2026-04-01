@@ -47,9 +47,9 @@ class UserDelete(BaseModel):
 
 class UserResponse(BaseModel):
     id: str
-    email: str
+    email: Optional[str] = None
     full_name: str
-    phone_number: Optional[str]
+    phone_number: Optional[str] = None
     role: str
     status: str
     created_at: str
@@ -189,7 +189,7 @@ async def create_user(
     user_data: UserCreate,
     request: Request,
     current_user: dict = Depends(require_role(["admin", "owner", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Create a new user account.
@@ -266,7 +266,7 @@ async def create_user(
 
         return UserResponse(
             id=created_user["id"],
-            email=created_user.get("email") or "",
+            email=created_user.get("email"),
             full_name=created_user["full_name"],
             phone_number=created_user.get("phone"),
             role=user_data.role,
@@ -299,7 +299,7 @@ async def list_users(
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_role(["admin", "owner", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """List all users with optional filtering"""
     try:
@@ -318,7 +318,7 @@ async def list_users(
         return [
             UserResponse(
                 id=user["id"],
-                email=user["email"],
+                email=user.get("email"),
                 full_name=user.get("full_name", ""),
                 phone_number=user.get("phone"),
                 role=user.get("role", "customer"),
@@ -331,7 +331,11 @@ async def list_users(
             for user in result.data
         ]
 
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
+        print(f"ERROR in list_users: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching users: {str(e)}"
@@ -738,7 +742,7 @@ async def get_user_statistics(
 async def get_user(
     user_id: str,
     current_user: dict = Depends(require_role(["admin", "owner", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get details of a specific user"""
     try:
@@ -751,7 +755,7 @@ async def get_user(
 
         return UserResponse(
             id=user["id"],
-            email=user["email"],
+            email=user.get("email"),
             full_name=user.get("full_name", ""),
             phone_number=user.get("phone"),
             role=user.get("role", "customer"),
