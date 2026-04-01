@@ -182,7 +182,10 @@ async def update_menu_item(
         if not update_data:
             # Return existing item if no updates
             response = supabase.table("menu_items").select("*").eq("id", item_id).execute()
-            return MenuItemResponse(**response.data[0])
+            item_dict = dict(response.data[0])
+            if 'is_available' in item_dict:
+                item_dict['available'] = item_dict['is_available']
+            return item_dict
 
         # Map 'available' to 'is_available' for database compatibility
         if "available" in update_data:
@@ -190,8 +193,9 @@ async def update_menu_item(
 
         # Convert Decimal to float for JSON serialization
         from decimal import Decimal
-        if 'base_price' in update_data and isinstance(update_data['base_price'], Decimal):
-            update_data['base_price'] = float(update_data['base_price'])
+        for field in ('base_price', 'cost_price'):
+            if field in update_data and isinstance(update_data[field], Decimal):
+                update_data[field] = float(update_data[field])
 
         # Check if name is being changed and if it already exists
         if "name" in update_data:
@@ -259,8 +263,8 @@ async def delete_menu_item(
                 detail="Menu item not found",
             )
 
-        # Soft delete by updating available status
-        supabase.table("menu_items").update({"available": False}).eq("id", item_id).execute()
+        # Soft delete by setting is_available = false
+        supabase.table("menu_items").update({"is_available": False}).eq("id", item_id).execute()
 
         return None
 
