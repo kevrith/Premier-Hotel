@@ -45,6 +45,7 @@ import { api } from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 import { reportsService, EmployeeDetailResponse } from '@/lib/api/reports';
 import { format } from 'date-fns';
+import { printItemSummary } from '@/lib/print';
 
 interface EmployeeDetailReportProps {
   employeeId: string;
@@ -628,10 +629,33 @@ export function EmployeeDetailReport({
               <TabsContent value="items-by-dept">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Items Sold by Department</CardTitle>
-                    <CardDescription>
-                      All items served to customers, grouped by department
-                    </CardDescription>
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <div>
+                        <CardTitle>Items Sold by Department</CardTitle>
+                        <CardDescription>
+                          All items served to customers, grouped by department
+                        </CardDescription>
+                      </div>
+                      {data.items_by_category?.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const cats = data.items_by_category;
+                            printItemSummary({
+                              categories: cats,
+                              grand_total_qty: cats.reduce((s, c) => s + c.total_qty, 0),
+                              grand_total_revenue: cats.reduce((s, c) => s + c.total_revenue, 0),
+                              startDate,
+                              endDate,
+                            });
+                          }}
+                        >
+                          <Printer className="h-4 w-4 mr-1" />
+                          Print
+                        </Button>
+                      )}
+                    </div>
                   </CardHeader>
                   <CardContent>
                     {!data.items_by_category?.length ? (
