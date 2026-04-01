@@ -101,7 +101,11 @@ function ImportWidget({ cfg }: { cfg: ImportConfig }) {
           else { await cfg.apiCall(data); res.success++; }
         } catch (err: any) {
           res.failed++;
-          res.errors.push({ row: i + 2, name: label, error: err?.response?.data?.detail || err?.message || 'Unknown error' });
+          const det = err?.response?.data?.detail;
+          const errMsg = Array.isArray(det)
+            ? det.map((e: any) => `${Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : 'field'}: ${e.msg}`).join('; ')
+            : (typeof det === 'string' ? det : (err?.message || 'Unknown error'));
+          res.errors.push({ row: i + 2, name: label, error: errMsg });
         }
         setProgress(Math.round(((i + 1) / rows.length) * 100));
       }
@@ -367,13 +371,24 @@ const menuConfig: ImportConfig = {
   parseRow: r => {
     if (!r.name || !r.base_price) return null;
     const qty = r.stock_quantity ? parseFloat(r.stock_quantity) : 0;
+    const catRaw = (r.category || 'mains').toLowerCase().trim();
+    const catMap: Record<string, string> = {
+      starter: 'starters', starters: 'starters',
+      main: 'mains', mains: 'mains', 'main course': 'mains', entree: 'mains',
+      dessert: 'desserts', desserts: 'desserts',
+      drink: 'drinks', drinks: 'drinks',
+      beverage: 'beverages', beverages: 'beverages',
+      appetizer: 'appetizers', appetizers: 'appetizers',
+      snack: 'snacks', snacks: 'snacks',
+      breakfast: 'breakfast',
+    };
     return {
       name: r.name,
-      category: (r.category || 'mains').toLowerCase(),
+      category: catMap[catRaw] || catRaw,
       base_price: parseFloat(r.base_price),
       description: r.description || '',
       preparation_time: r.preparation_time ? parseInt(r.preparation_time) : 0,
-      is_available: r.available?.toLowerCase() !== 'false',
+      available: r.available?.toLowerCase() !== 'false',
       unit: r.unit || 'piece',
       stock_quantity: qty,
       track_inventory: qty > 0,

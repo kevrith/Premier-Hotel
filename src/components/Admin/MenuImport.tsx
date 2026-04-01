@@ -82,9 +82,21 @@ export default function MenuImport() {
           case 'swahili_description':
             item.description_sw = value;
             break;
-          case 'category':
-            item.category = value.toLowerCase();
+          case 'category': {
+            const catRaw = value.toLowerCase().trim();
+            const catMap: Record<string, string> = {
+              starter: 'starters', starters: 'starters',
+              main: 'mains', mains: 'mains', 'main course': 'mains', entree: 'mains',
+              dessert: 'desserts', desserts: 'desserts',
+              drink: 'drinks', drinks: 'drinks',
+              beverage: 'beverages', beverages: 'beverages',
+              appetizer: 'appetizers', appetizers: 'appetizers',
+              snack: 'snacks', snacks: 'snacks',
+              breakfast: 'breakfast',
+            };
+            item.category = catMap[catRaw] || catRaw;
             break;
+          }
           case 'price':
           case 'base_price':
           case 'price_kes':
@@ -228,9 +240,19 @@ export default function MenuImport() {
           importResult.success++;
         } catch (error: any) {
           importResult.failed++;
+          const detail = error.response?.data?.detail;
+          let errorMsg: string;
+          if (Array.isArray(detail)) {
+            errorMsg = detail.map((e: any) => {
+              const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : 'field';
+              return `${field}: ${e.msg}`;
+            }).join('; ');
+          } else {
+            errorMsg = typeof detail === 'string' ? detail : (error.message || 'Unknown error');
+          }
           importResult.errors.push({
             row: i + 2, // +2 because row 1 is headers and arrays are 0-indexed
-            error: error.response?.data?.detail || error.message || 'Unknown error'
+            error: errorMsg
           });
         }
 
