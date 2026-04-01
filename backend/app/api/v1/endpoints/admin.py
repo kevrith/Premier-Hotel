@@ -133,20 +133,20 @@ async def create_user(
         )
 
 
-@router.get("/users", response_model=List[UserResponse])
+@router.get("/users")
 async def list_users(
     role: Optional[str] = None,
     user_status: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     List all users with optional role and status filtering.
     """
     try:
-        query = supabase.table("users").select("*")
+        query = supabase.table("users").select("id, email, full_name, phone, role, created_at")
 
         if role:
             query = query.eq("role", role)
@@ -159,14 +159,14 @@ async def list_users(
         result = query.execute()
 
         return [
-            UserResponse(
-                id=user["id"],
-                email=user.get("email"),
-                full_name=user.get("full_name", ""),
-                phone_number=user.get("phone"),
-                role=user.get("role", "customer"),
-                created_at=user["created_at"]
-            )
+            {
+                "id": user["id"],
+                "email": user.get("email"),
+                "full_name": user.get("full_name", ""),
+                "phone_number": user.get("phone"),
+                "role": user.get("role", "customer"),
+                "created_at": user["created_at"],
+            }
             for user in result.data
         ]
 
@@ -298,17 +298,17 @@ async def delete_user(
         )
 
 
-@router.get("/users/{user_id}", response_model=UserResponse)
+@router.get("/users/{user_id}")
 async def get_user(
     user_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get details of a specific user.
     """
     try:
-        result = supabase.table("users").select("*").eq("id", user_id).execute()
+        result = supabase.table("users").select("id, email, full_name, phone, role, created_at").eq("id", user_id).execute()
 
         if not result.data:
             raise HTTPException(
@@ -318,14 +318,14 @@ async def get_user(
 
         user = result.data[0]
 
-        return UserResponse(
-            id=user["id"],
-            email=user["email"],
-            full_name=user.get("full_name", ""),
-            phone_number=user.get("phone"),  # Map 'phone' to 'phone_number'
-            role=user.get("role", "customer"),
-            created_at=user["created_at"]
-        )
+        return {
+            "id": user["id"],
+            "email": user.get("email"),
+            "full_name": user.get("full_name", ""),
+            "phone_number": user.get("phone"),
+            "role": user.get("role", "customer"),
+            "created_at": user["created_at"],
+        }
 
     except HTTPException:
         raise
