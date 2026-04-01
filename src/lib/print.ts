@@ -251,6 +251,7 @@ export function printItemSummary(params: {
   grand_total_revenue: number;
   startDate: string;
   endDate: string;
+  employeeName?: string;
 }) {
   const cfg = getReceiptConfig();
   const fmtAmt = (n: number) =>
@@ -305,7 +306,8 @@ export function printItemSummary(params: {
           <span style="font-size:11px">Item Summary</span>
         </div>
       </div>
-      <div class="small" style="margin-bottom:4px">${dateLabel}</div>
+      <div class="small" style="margin-bottom:2px">${dateLabel}</div>
+      ${params.employeeName ? `<div class="small" style="margin-bottom:4px">Waiter: <span class="bold">${params.employeeName}</span></div>` : ''}
       <div class="divider-solid"></div>
       ${COL}
       ${rows}

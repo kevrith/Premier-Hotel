@@ -648,6 +648,7 @@ export function EmployeeDetailReport({
                               grand_total_revenue: cats.reduce((s, c) => s + c.total_revenue, 0),
                               startDate,
                               endDate,
+                              employeeName: data.employee.name,
                             });
                           }}
                         >
