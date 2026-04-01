@@ -21,82 +21,6 @@ import useAuthStore from '@/stores/authStore.secure';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { MenuItem } from '@/types';
 
-// Mock menu data - will be replaced with API call
-const mockMenuData = [
-  {
-    id: '1',
-    name: 'Grilled Salmon',
-    description: 'Fresh Atlantic salmon with herbs and lemon butter',
-    price: 1200,
-    category: 'mains',
-    available: true,
-    preparation_time: 25,
-    created_at: new Date().toISOString(),
-    image_url: 'https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400',
-    ingredients: ['Salmon', 'Herbs', 'Lemon', 'Butter'],
-    customization_options: [
-      { name: 'Lemon', options: ['Extra', 'Normal', 'None'], required: false, additional_cost: 50 },
-      { name: 'Butter', options: ['With', 'Without'], required: false }
-    ]
-  },
-  {
-    id: '2',
-    name: 'Margherita Pizza',
-    description: 'Classic pizza with fresh mozzarella and basil',
-    price: 950,
-    category: 'mains',
-    available: true,
-    preparation_time: 20,
-    created_at: new Date().toISOString(),
-    image_url: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400',
-    ingredients: ['Dough', 'Tomato Sauce', 'Mozzarella', 'Basil'],
-    customization_options: [
-      { name: 'Cheese', options: ['Extra', 'Normal'], required: false, additional_cost: 150 },
-      { name: 'Toppings', options: ['Pepperoni', 'Mushrooms', 'None'], required: false, additional_cost: 200 }
-    ]
-  },
-  {
-    id: '3',
-    name: 'Caesar Salad',
-    description: 'Crisp romaine lettuce with Caesar dressing and croutons',
-    price: 650,
-    category: 'starters',
-    available: true,
-    preparation_time: 10,
-    created_at: new Date().toISOString(),
-    image_url: 'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400',
-    ingredients: ['Romaine Lettuce', 'Caesar Dressing', 'Croutons', 'Parmesan'],
-    customization_options: []
-  },
-  {
-    id: '4',
-    name: 'Chocolate Lava Cake',
-    description: 'Warm chocolate cake with molten center',
-    price: 550,
-    category: 'desserts',
-    available: true,
-    preparation_time: 15,
-    created_at: new Date().toISOString(),
-    image_url: 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400',
-    ingredients: ['Chocolate', 'Flour', 'Sugar', 'Eggs'],
-    customization_options: [
-      { name: 'Ice Cream', options: ['Vanilla', 'Chocolate', 'None'], required: false, additional_cost: 100 }
-    ]
-  },
-  {
-    id: '5',
-    name: 'Mango Smoothie',
-    description: 'Fresh mango blended with yogurt and honey',
-    price: 450,
-    category: 'beverages',
-    available: true,
-    preparation_time: 5,
-    created_at: new Date().toISOString(),
-    image_url: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400',
-    ingredients: ['Mango', 'Yogurt', 'Honey'],
-    customization_options: []
-  }
-];
 
 const categories = [
   { id: 'all', name: 'All Items', name_sw: 'Vyote' },
@@ -169,24 +93,19 @@ export default function EnhancedMenu() {
         const raw = await menuService.getAllMenuItems();
         const response: any[] = (raw as any) || [];
         if (cancelled) return;
-        if (response && response.length > 0) {
-          const transformedItems: any[] = response.map((item: any) => ({
-            ...item,
-            price: parseFloat(item.base_price) || 0,
-            available: item.is_available ?? item.available ?? true,
-            preparation_time: item.preparation_time || 20,
-            ingredients: item.ingredients || [],
-            customization_options: item.customization_options || []
-          }));
-          setMenuItems(transformedItems as unknown as MenuItem[]);
-        } else {
-          setMenuItems(mockMenuData as unknown as MenuItem[]);
-        }
+        const transformedItems: any[] = (response || []).map((item: any) => ({
+          ...item,
+          price: parseFloat(item.base_price) || 0,
+          available: item.is_available ?? item.available ?? true,
+          preparation_time: item.preparation_time || 20,
+          ingredients: item.ingredients || [],
+          customization_options: item.customization_options || []
+        }));
+        setMenuItems(transformedItems as unknown as MenuItem[]);
       } catch (error) {
         if (cancelled) return;
         console.error('Error fetching menu items:', error);
-        toast.error('Failed to load menu, showing sample data');
-        setMenuItems(mockMenuData as unknown as MenuItem[]);
+        toast.error('Failed to load menu items');
       } finally {
         if (!cancelled) setLoading(false);
       }
