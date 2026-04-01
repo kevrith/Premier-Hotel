@@ -28,7 +28,10 @@ export default function Login() {
 
   const [loginType, setLoginType] = useState<'email' | 'phone' | 'pin'>('email');
   const { status: geoStatus, distance: geoDistance } = useGeoGate();
-  const staffPinAllowed = geoStatus === 'allowed' || geoStatus === 'disabled';
+  // Allow PIN tab when: confirmed in range, geo disabled, OR location simply unavailable
+  // (e.g. Google location API rate-limited 429, no GPS on desktop).
+  // Only block when explicitly out_of_range or permission denied.
+  const staffPinAllowed = geoStatus === 'allowed' || geoStatus === 'disabled' || geoStatus === 'unavailable';
 
   // If user was on Staff PIN tab but moves out of range, kick them back to email
   useEffect(() => {
