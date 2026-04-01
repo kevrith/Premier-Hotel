@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, X } from 'lucide-react';
@@ -18,22 +18,37 @@ interface PrintPreviewModalProps {
  */
 export function PrintPreviewModal({ open, onClose, html, title }: PrintPreviewModalProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!open || !html || !iframeRef.current) return;
-    const doc = iframeRef.current.contentDocument;
+    if (!open || !html) return;
+    setReady(false);
+  }, [open, html]);
+
+  const handleLoad = () => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
     if (doc) {
       doc.open();
       doc.write(html);
       doc.close();
     }
-  }, [open, html]);
+    setReady(true);
+  };
 
   const handlePrint = () => {
-    if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.focus();
-      iframeRef.current.contentWindow.print();
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    // Write content fresh if somehow not ready
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (doc && doc.body && doc.body.innerHTML === '') {
+      doc.open();
+      doc.write(html);
+      doc.close();
     }
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
   };
 
   return (
@@ -53,7 +68,7 @@ export function PrintPreviewModal({ open, onClose, html, title }: PrintPreviewMo
             title={title}
             className="w-full border-0"
             style={{ minHeight: '400px', height: '60vh' }}
-            sandbox="allow-modals allow-scripts"
+            onLoad={handleLoad}
           />
         </div>
 
