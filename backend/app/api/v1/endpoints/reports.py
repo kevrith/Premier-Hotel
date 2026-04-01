@@ -531,11 +531,14 @@ async def get_employee_sales_report(
             end_date = end_date + 'T23:59:59'
 
         # ── Step 1: Fetch all orders in the period ────────────────────
+        VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
+
         orders_res = supabase.table("orders").select(
             "id, total_amount, status, created_at, items, bill_id, "
             "assigned_waiter_id, created_by_staff_id"
         ).gte("created_at", start_date).lte("created_at", end_date).execute()
-        all_orders = orders_res.data or []
+        # Exclude voided/cancelled — must match item-summary exclusion list exactly
+        all_orders = [o for o in (orders_res.data or []) if o.get("status") not in VOID_STATUSES]
 
         # ── Step 2: Collect staff IDs who have orders ─────────────────
         staff_order_map: Dict[str, list] = {}
@@ -551,11 +554,19 @@ async def get_employee_sales_report(
         if employee_id:
             staff_order_map = {k: v for k, v in staff_order_map.items() if k == employee_id}
 
+        def _order_revenue(order: dict) -> float:
+            """Sum price*qty from line items — same method item-summary uses."""
+            return sum(
+                float(i.get("price", 0)) * int(i.get("quantity", 0))
+                for i in (order.get("items") or [])
+                if isinstance(i, dict)
+            )
+
         if not staff_order_map:
             return {
                 "period": {"start": start_date, "end": end_date},
                 "total_employees": 0, "total_sales": 0, "total_orders": 0,
-                "unattributed_sales": sum(float(o.get("total_amount", 0)) for o in unattributed_orders),
+                "unattributed_sales": round(sum(_order_revenue(o) for o in unattributed_orders), 2),
                 "unattributed_orders": len(unattributed_orders),
                 "employees": []
             }
@@ -623,7 +634,9 @@ async def get_employee_sales_report(
             if role and emp_role != role:
                 continue
 
-            total_sales = sum(float(o.get("total_amount", 0)) for o in emp_orders)
+            # Use price*qty from line items — same method as item-summary endpoint
+            # so both reports show identical grand totals
+            total_sales = round(sum(_order_revenue(o) for o in emp_orders), 2)
             total_orders = len(emp_orders)
             completed_orders = len([o for o in emp_orders if o.get("status") in ["delivered", "completed", "served"]])
 
@@ -758,7 +771,7 @@ async def get_employee_sales_report(
             })
 
         employee_sales_list.sort(key=lambda x: x["total_sales"], reverse=True)
-        unattributed_sales = sum(float(o.get("total_amount", 0)) for o in unattributed_orders)
+        unattributed_sales = round(sum(_order_revenue(o) for o in unattributed_orders), 2)
 
         return {
             "period": {"start": start_date, "end": end_date},
