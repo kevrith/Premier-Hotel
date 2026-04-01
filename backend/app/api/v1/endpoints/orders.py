@@ -1798,3 +1798,96 @@ async def void_order_item(
         "new_order_total": new_total,
         "order_id": order_id,
     }
+
+
+class VoidReceiptRequest(_BaseModel):
+    void_reason: str
+
+@router.post("/{order_id}/void-receipt")
+async def void_entire_receipt(
+    order_id: str,
+    req: VoidReceiptRequest,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Void an entire order/receipt.
+    Marks all items as voided, sets order status to 'voided', and updates bill totals.
+    Requires manager or admin role.
+    """
+    user_role = current_user.get("role", "")
+    if user_role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only managers and admins can void receipts")
+
+    order_res = supabase.table("orders").select("*").eq("id", order_id).execute()
+    if not order_res.data:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order = order_res.data[0]
+
+    if order.get("status") == "voided":
+        raise HTTPException(status_code=400, detail="Order is already voided")
+
+    # Mark all items as voided
+    items = list(order.get("items") or [])
+    voided_amount = 0.0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for item in items:
+        if not item.get("voided"):
+            voided_amount += float(item.get("price", 0)) * int(item.get("quantity", 0))
+            item["voided"] = True
+            item["void_reason"] = req.void_reason
+            item["voided_by"] = current_user["id"]
+            item["voided_at"] = now_iso
+
+    update_data = {
+        "items": items,
+        "status": "voided",
+        "subtotal": 0,
+        "tax": 0,
+        "total_amount": 0,
+        "updated_at": now_iso,
+        "notes": f"{order.get('notes', '')} | Receipt voided: {req.void_reason}".strip(" |"),
+    }
+    supabase.table("orders").update(update_data).eq("id", order_id).execute()
+
+    # Update bill if linked
+    bill_id = order.get("bill_id")
+    if bill_id:
+        try:
+            bo_res = supabase.table("bill_orders").select("order_id, order_amount").eq("bill_id", bill_id).execute()
+            new_bill_total = sum(
+                float(bo.get("order_amount", 0))
+                for bo in (bo_res.data or [])
+                if bo["order_id"] != order_id
+            )
+            supabase.table("bill_orders").update({"order_amount": 0}).eq("bill_id", bill_id).eq("order_id", order_id).execute()
+            supabase.table("bills").update({
+                "total_amount": round(new_bill_total, 2),
+                "subtotal": round(new_bill_total / 1.16, 2),
+                "tax": round(new_bill_total - new_bill_total / 1.16, 2),
+            }).eq("id", bill_id).execute()
+        except Exception as e:
+            logging.warning(f"Failed to update bill after receipt void: {e}")
+
+    # Log the void
+    try:
+        supabase.table("void_log").insert({
+            "order_id": order_id,
+            "bill_id": bill_id,
+            "item_name": "ENTIRE RECEIPT",
+            "item_index": -1,
+            "void_reason": req.void_reason,
+            "voided_amount": voided_amount,
+            "voided_by": current_user["id"],
+            "voided_at": now_iso,
+        }).execute()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": f"Receipt #{order.get('order_number')} voided successfully",
+        "voided_amount": voided_amount,
+        "order_id": order_id,
+    }

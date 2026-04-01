@@ -70,71 +70,154 @@ interface VoidItemDialogProps {
 }
 
 function VoidItemDialog({ open, onOpenChange, orderId, orderNumber, items, onVoidSuccess }: VoidItemDialogProps) {
+  const [mode, setMode] = useState<'item' | 'receipt'>('item');
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [voidQty, setVoidQty] = useState<number>(0); // 0 = full item void
   const [reason, setReason] = useState('');
   const [processing, setProcessing] = useState(false);
 
+  const selectedItem = selectedIndex !== null ? items[selectedIndex] : null;
+  const maxQty = selectedItem ? parseInt(selectedItem.quantity) : 1;
+
+  const reset = () => {
+    setSelectedIndex(null);
+    setVoidQty(0);
+    setReason('');
+    setMode('item');
+  };
+
   const handleVoid = async () => {
-    if (selectedIndex === null || !reason.trim()) return;
+    if (!reason.trim()) return;
+    if (mode === 'item' && selectedIndex === null) return;
     setProcessing(true);
     try {
-      await api.post(`/orders/${orderId}/void-item`, {
-        item_index: selectedIndex,
-        void_reason: reason,
-        quantity: 0, // full void
-      });
-      toast.success('Item voided successfully');
+      if (mode === 'receipt') {
+        await api.post(`/orders/${orderId}/void-receipt`, { void_reason: reason });
+        toast.success(`Receipt #${orderNumber} voided`);
+      } else {
+        await api.post(`/orders/${orderId}/void-item`, {
+          item_index: selectedIndex,
+          void_reason: reason,
+          quantity: voidQty, // 0 = full void, >0 = partial
+        });
+        const isPartial = voidQty > 0 && voidQty < maxQty;
+        toast.success(isPartial
+          ? `Voided ${voidQty}x ${selectedItem?.name}`
+          : `${selectedItem?.name} fully voided`);
+      }
       onVoidSuccess();
       onOpenChange(false);
-      setSelectedIndex(null);
-      setReason('');
+      reset();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to void item');
+      toast.error(error.response?.data?.detail || 'Failed to void');
     } finally {
       setProcessing(false);
     }
   };
 
+  const activeItems = items.filter(i => !i.voided);
+  const voidedAmount = mode === 'receipt'
+    ? activeItems.reduce((s, i) => s + (parseFloat(i.price || 0) * parseInt(i.quantity || 0)), 0)
+    : selectedItem
+      ? (voidQty > 0 ? parseFloat(selectedItem.price || 0) * voidQty : parseFloat(selectedItem.total || 0))
+      : 0;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) reset(); }}>
+      <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-orange-600">
+          <DialogTitle className="flex items-center gap-2 text-red-600">
             <AlertTriangle className="h-5 w-5" />
-            Void Order Item
+            Void — Order #{orderNumber}
           </DialogTitle>
-          <DialogDescription>
-            Order #{orderNumber} — Select item to void and provide reason
-          </DialogDescription>
+          <DialogDescription>Select void type, item, and provide a reason.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label>Select Item to Void</Label>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {items.map((item: any, idx: number) => (
-                <div
-                  key={idx}
-                  onClick={() => !item.voided && setSelectedIndex(idx)}
-                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                    item.voided ? 'opacity-40 cursor-not-allowed bg-gray-50' :
-                    selectedIndex === idx ? 'border-orange-500 bg-orange-50' :
-                    'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">{item.name} {item.voided ? '(Already voided)' : ''}</span>
-                    <span>x{item.quantity} — KES {item.total?.toLocaleString()}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+
+        <div className="space-y-4 py-2">
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            <Button
+              size="sm" variant={mode === 'item' ? 'default' : 'outline'}
+              onClick={() => setMode('item')} className="flex-1"
+            >Void Item(s)</Button>
+            <Button
+              size="sm" variant={mode === 'receipt' ? 'destructive' : 'outline'}
+              onClick={() => setMode('receipt')} className="flex-1"
+            >Void Entire Receipt</Button>
           </div>
+
+          {mode === 'item' && (
+            <>
+              <div className="space-y-2">
+                <Label>Select Item</Label>
+                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                  {items.map((item: any, idx: number) => (
+                    <div
+                      key={idx}
+                      onClick={() => { if (!item.voided) { setSelectedIndex(idx); setVoidQty(0); } }}
+                      className={`p-2.5 rounded-lg border cursor-pointer transition-colors text-sm ${
+                        item.voided ? 'opacity-40 cursor-not-allowed bg-muted' :
+                        selectedIndex === idx ? 'border-orange-500 bg-orange-50 dark:bg-orange-950' :
+                        'border-border hover:border-orange-300'
+                      }`}
+                    >
+                      <div className="flex justify-between">
+                        <span className="font-medium">
+                          {item.name}
+                          {item.voided_quantity ? ` (${item.voided_quantity} already voided)` : ''}
+                          {item.voided ? ' — VOIDED' : ''}
+                        </span>
+                        <span className="text-muted-foreground">x{item.quantity} · KES {parseFloat(item.total || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {selectedItem && !selectedItem.voided && (
+                <div className="space-y-2">
+                  <Label>Qty to Void</Label>
+                  <div className="flex items-center gap-3">
+                    <Button size="sm" variant="outline"
+                      onClick={() => setVoidQty(q => Math.max(0, q - 1))}>
+                      −
+                    </Button>
+                    <span className="w-16 text-center font-bold text-lg">
+                      {voidQty === 0 ? 'ALL' : voidQty}
+                    </span>
+                    <Button size="sm" variant="outline"
+                      onClick={() => setVoidQty(q => Math.min(maxQty, q + 1))}>
+                      +
+                    </Button>
+                    <span className="text-sm text-muted-foreground">of {maxQty}</span>
+                    {voidQty > 0 && (
+                      <Button size="sm" variant="ghost" onClick={() => setVoidQty(0)}
+                        className="text-xs text-muted-foreground">Reset to ALL</Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {voidQty === 0
+                      ? `Voiding all ${maxQty} — KES ${parseFloat(selectedItem.total || 0).toLocaleString()}`
+                      : `Voiding ${voidQty} of ${maxQty} — KES ${(parseFloat(selectedItem.price || 0) * voidQty).toLocaleString()}`
+                    }
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {mode === 'receipt' && (
+            <div className="bg-red-50 dark:bg-red-950 border border-red-200 rounded-lg p-3 text-sm space-y-1">
+              <p className="font-semibold text-red-700 dark:text-red-400">⚠ This will void the entire receipt</p>
+              <p className="text-muted-foreground">All {activeItems.length} active items will be voided and the order total set to KES 0.</p>
+              <p className="font-medium">Total to void: KES {voidedAmount.toLocaleString()}</p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label>Void Reason *</Label>
             <Select onValueChange={setReason} value={reason}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select reason..." />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Select reason..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Customer changed mind">Customer changed mind</SelectItem>
                 <SelectItem value="Wrong item ordered">Wrong item ordered</SelectItem>
@@ -145,21 +228,25 @@ function VoidItemDialog({ open, onOpenChange, orderId, orderNumber, items, onVoi
               </SelectContent>
             </Select>
           </div>
-          {selectedIndex !== null && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
-              <strong>Voiding:</strong> {items[selectedIndex]?.name} — KES {items[selectedIndex]?.total?.toLocaleString()}<br/>
-              <strong>Impact:</strong> Order total will be reduced by this amount
+
+          {(mode === 'receipt' || selectedIndex !== null) && reason && (
+            <div className="bg-orange-50 dark:bg-orange-950 border border-orange-200 rounded-lg p-3 text-sm">
+              <strong>Amount to void: KES {voidedAmount.toLocaleString()}</strong>
             </div>
           )}
         </div>
+
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => { onOpenChange(false); reset(); }}>Cancel</Button>
           <Button
             variant="destructive"
             onClick={handleVoid}
-            disabled={selectedIndex === null || !reason || processing}
+            disabled={(mode === 'item' && selectedIndex === null) || !reason || processing}
           >
-            {processing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Voiding...</> : 'Confirm Void'}
+            {processing
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Voiding...</>
+              : mode === 'receipt' ? 'Void Entire Receipt' : 'Confirm Void'
+            }
           </Button>
         </DialogFooter>
       </DialogContent>
