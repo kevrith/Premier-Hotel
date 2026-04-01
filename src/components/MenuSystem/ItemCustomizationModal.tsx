@@ -2,8 +2,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Minus } from 'lucide-react';
@@ -13,79 +11,18 @@ export default function ItemCustomizationModal({
   quantity,
   onQuantityChange,
   onAddToCart,
-  customizations = []
 }) {
-  const [selectedCustomizations, setSelectedCustomizations] = useState({});
   const [specialInstructions, setSpecialInstructions] = useState('');
 
-  // Mock customization data for demo
-  const mockCustomizations = [
-    {
-      id: 'spice-level',
-      option_name: 'Spice Level',
-      option_type: 'single_select',
-      is_required: false,
-      values: [
-        { id: 'mild', value_name: 'Mild', additional_price_kes: 0 },
-        { id: 'medium', value_name: 'Medium', additional_price_kes: 0 },
-        { id: 'hot', value_name: 'Hot', additional_price_kes: 0 },
-        { id: 'extra-hot', value_name: 'Extra Hot', additional_price_kes: 50 }
-      ]
-    },
-    {
-      id: 'extras',
-      option_name: 'Extra Toppings',
-      option_type: 'multi_select',
-      is_required: false,
-      values: [
-        { id: 'cheese', value_name: 'Extra Cheese', additional_price_kes: 100 },
-        { id: 'avocado', value_name: 'Avocado', additional_price_kes: 150 },
-        { id: 'bacon', value_name: 'Bacon', additional_price_kes: 200 }
-      ]
-    }
-  ];
-
-  const activeCustomizations = customizations.length > 0 ? customizations : mockCustomizations;
-
-  const handleCustomizationChange = (optionId, value, optionType) => {
-    setSelectedCustomizations(prev => ({
-      ...prev,
-      [optionId]: optionType === 'multi_select' 
-        ? { ...(prev[optionId] || {}), ...value }
-        : value
-    }));
-  };
-
   const calculateTotalPrice = () => {
-    let additionalPrice = 0;
     const basePrice = item.base_price || item.price_kes || 0;
-
-    Object.entries(selectedCustomizations).forEach(([optionId, values]) => {
-      const option = activeCustomizations.find(opt => opt.id === optionId);
-      if (!option) return;
-
-      if (option.option_type === 'multi_select' && typeof values === 'object') {
-        Object.entries(values).forEach(([valueId, isSelected]) => {
-          if (isSelected) {
-            const optionValue = option.values.find(v => v.id === valueId);
-            if (optionValue) additionalPrice += optionValue.additional_price_kes;
-          }
-        });
-      } else if (option.option_type === 'single_select') {
-        const optionValue = option.values.find(v => v.id === values);
-        if (optionValue) additionalPrice += optionValue.additional_price_kes;
-      }
-    });
-
-    return (basePrice + additionalPrice) * quantity;
+    return basePrice * quantity;
   };
 
   const handleAddToCart = () => {
-    const finalCustomizations = {
-      ...selectedCustomizations,
-      ...(specialInstructions && { special_instructions: specialInstructions })
-    };
-    
+    const finalCustomizations = specialInstructions
+      ? { special_instructions: specialInstructions }
+      : {};
     onAddToCart(finalCustomizations);
   };
 
@@ -110,73 +47,6 @@ export default function ItemCustomizationModal({
       </div>
 
       <Separator />
-
-      {/* Customization Options */}
-      {activeCustomizations.map((option) => (
-        <div key={option.id} className="space-y-3">
-          <div>
-            <Label className="text-base font-semibold">
-              {option.option_name}
-              {option.is_required && <span className="text-destructive ml-1">*</span>}
-            </Label>
-          </div>
-
-          {option.option_type === 'single_select' && (
-            <RadioGroup
-              value={selectedCustomizations[option.id] || ''}
-              onValueChange={(value) => handleCustomizationChange(option.id, value, 'single_select')}
-            >
-              {option.values.map((value) => (
-                <div key={value.id} className="flex items-center justify-between py-2">
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value={value.id} id={`${option.id}-${value.id}`} />
-                    <Label htmlFor={`${option.id}-${value.id}`} className="cursor-pointer">
-                      {value.value_name}
-                    </Label>
-                  </div>
-                  {value.additional_price_kes > 0 && (
-                    <span className="text-sm text-muted-foreground">
-                      +KES {value.additional_price_kes}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </RadioGroup>
-          )}
-
-          {option.option_type === 'multi_select' && (
-            <div className="space-y-2">
-              {option.values.map((value) => (
-                <div key={value.id} className="flex items-center justify-between py-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`${option.id}-${value.id}`}
-                      checked={selectedCustomizations[option.id]?.[value.id] || false}
-                      onCheckedChange={(checked) => 
-                        handleCustomizationChange(
-                          option.id, 
-                          { [value.id]: checked },
-                          'multi_select'
-                        )
-                      }
-                    />
-                    <Label htmlFor={`${option.id}-${value.id}`} className="cursor-pointer">
-                      {value.value_name}
-                    </Label>
-                  </div>
-                  {value.additional_price_kes > 0 && (
-                    <span className="text-sm text-muted-foreground">
-                      +KES {value.additional_price_kes}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <Separator />
-        </div>
-      ))}
 
       {/* Special Instructions */}
       <div className="space-y-2">
