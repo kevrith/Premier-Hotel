@@ -16,7 +16,6 @@ import {
 import { api } from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 
-// Default crop aspect ratios per storage bucket
 const BUCKET_ASPECT: Record<string, number> = {
   'menu-images':    4 / 3,
   'room-images':   16 / 9,
@@ -30,20 +29,7 @@ interface ImageUploadProps {
   label?: string;
 }
 
-/** Build a centred crop using the image's natural (intrinsic) dimensions. */
-function buildCrop(naturalW: number, naturalH: number, aspect: number | undefined): Crop {
-  if (!aspect) {
-    // Free-form: start with 80% of the image selected
-    return { unit: '%', x: 10, y: 10, width: 80, height: 80 };
-  }
-  return centerCrop(
-    makeAspectCrop({ unit: '%', width: 90 }, aspect, naturalW, naturalH),
-    naturalW,
-    naturalH,
-  );
-}
-
-/** Render the cropped area to a canvas and return a Blob for upload. */
+/** Render the cropped region to a canvas and return a Blob. */
 async function cropToBlob(
   img: HTMLImageElement,
   pixel: PixelCrop,
@@ -53,18 +39,14 @@ async function cropToBlob(
   canvas.width  = pixel.width;
   canvas.height = pixel.height;
   const ctx = canvas.getContext('2d')!;
-
-  // pixel crop is in *display* pixels; scale to natural pixels for drawImage
   const scaleX = img.naturalWidth  / img.width;
   const scaleY = img.naturalHeight / img.height;
-
   ctx.drawImage(
     img,
     pixel.x * scaleX, pixel.y * scaleY,
     pixel.width * scaleX, pixel.height * scaleY,
     0, 0, pixel.width, pixel.height,
   );
-
   return new Promise((res, rej) =>
     canvas.toBlob(b => (b ? res(b) : rej(new Error('toBlob failed'))), mime, 0.92),
   );
@@ -76,27 +58,27 @@ export default function ImageUpload({
   bucket = 'menu-images',
   label = 'Image',
 }: ImageUploadProps) {
-  const [uploading,    setUploading]    = useState(false);
-  const [showUrl,      setShowUrl]      = useState(false);
-  const [cropOpen,     setCropOpen]     = useState(false);
-  const [srcUrl,       setSrcUrl]       = useState('');
-  const [mime,         setMime]         = useState('image/jpeg');
-  const [aspect,       setAspect]       = useState<number | undefined>(BUCKET_ASPECT[bucket]);
-  const [crop,         setCrop]         = useState<Crop>();
-  const [doneCrop,     setDoneCrop]     = useState<PixelCrop>();
+  const [uploading, setUploading] = useState(false);
+  const [showUrl,   setShowUrl]   = useState(false);
+  const [cropOpen,  setCropOpen]  = useState(false);
+  const [srcUrl,    setSrcUrl]    = useState('');
+  const [mime,      setMime]      = useState('image/jpeg');
+  const [aspect,    setAspect]    = useState<number | undefined>(BUCKET_ASPECT[bucket]);
+  const [crop,      setCrop]      = useState<Crop>();
+  const [doneCrop,  setDoneCrop]  = useState<PixelCrop>();
 
   const imgRef  = useRef<HTMLImageElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  /* ── Open file picker ─────────────────────────────────────────────── */
-  const pickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /* ── File picker ──────────────────────────────────────────────────── */
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setMime(file.type || 'image/jpeg');
     const reader = new FileReader();
     reader.onload = () => {
       setSrcUrl(reader.result as string);
-      setAspect(BUCKET_ASPECT[bucket]);   // reset to bucket default
+      setAspect(BUCKET_ASPECT[bucket]);
       setCrop(undefined);
       setDoneCrop(undefined);
       setCropOpen(true);
@@ -105,32 +87,45 @@ export default function ImageUpload({
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  /* ── Image loaded inside dialog — set initial crop box ───────────── */
+  /* ── Set initial crop once image has rendered (use DISPLAY dimensions) */
   const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const { naturalWidth: nw, naturalHeight: nh } = e.currentTarget;
-    // Always use natural dimensions so percentages are correct
-    const defaultAspect = aspect ?? BUCKET_ASPECT[bucket] ?? 4 / 3;
-    setCrop(buildCrop(nw, nh, defaultAspect));
+    // Official react-image-crop pattern: use rendered width/height, not natural
+    const { width, height } = e.currentTarget;
+    const a = aspect ?? BUCKET_ASPECT[bucket] ?? 4 / 3;
+    const initial = centerCrop(
+      makeAspectCrop({ unit: '%', width: 90 }, a, width, height),
+      width,
+      height,
+    );
+    setCrop(initial);
   };
 
-  /* ── Change aspect ratio preset ──────────────────────────────────── */
+  /* ── Change aspect ratio ──────────────────────────────────────────── */
   const changeAspect = (a: number | undefined) => {
     setAspect(a);
-    if (imgRef.current) {
-      const { naturalWidth: nw, naturalHeight: nh } = imgRef.current;
-      setCrop(buildCrop(nw, nh, a));
-      setDoneCrop(undefined);
+    setDoneCrop(undefined);
+    const img = imgRef.current;
+    if (!img) return;
+    const { width, height } = img;
+    if (a === undefined) {
+      // Free — select 80%
+      setCrop({ unit: '%', x: 10, y: 10, width: 80, height: 80 });
+    } else {
+      setCrop(centerCrop(
+        makeAspectCrop({ unit: '%', width: 90 }, a, width, height),
+        width, height,
+      ));
     }
   };
 
   /* ── Crop & upload ────────────────────────────────────────────────── */
   const handleUpload = async () => {
     if (!doneCrop || !imgRef.current) {
-      toast.error('Adjust the crop area and release the mouse to confirm it.');
+      toast.error('Finish selecting the crop area first (release the mouse).');
       return;
     }
     if (doneCrop.width < 20 || doneCrop.height < 20) {
-      toast.error('Crop area is too small — drag the handles to make it bigger.');
+      toast.error('Selected area is too small — drag the handles outward.');
       return;
     }
     setUploading(true);
@@ -138,15 +133,12 @@ export default function ImageUpload({
       const blob = await cropToBlob(imgRef.current, doneCrop, mime);
       const ext  = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
       const file = new File([blob], `upload.${ext}`, { type: mime });
-
       const form = new FormData();
       form.append('file', file);
       form.append('bucket', bucket);
-
-      const res = await api.post('/upload/image', form, {
+      const res  = await api.post('/upload/image', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       } as any);
-
       const url: string = (res.data as any)?.url ?? '';
       if (url) {
         onChange(url);
@@ -162,12 +154,11 @@ export default function ImageUpload({
     }
   };
 
-  /* ── Aspect presets ───────────────────────────────────────────────── */
   const PRESETS: { label: string; value: number | undefined }[] = [
-    { label: '4:3',   value: 4 / 3 },
-    { label: '16:9',  value: 16 / 9 },
-    { label: '1:1',   value: 1 },
-    { label: 'Free',  value: undefined },
+    { label: '4:3',  value: 4 / 3 },
+    { label: '16:9', value: 16 / 9 },
+    { label: '1:1',  value: 1 },
+    { label: 'Free', value: undefined },
   ];
 
   return (
@@ -192,7 +183,6 @@ export default function ImageUpload({
         </div>
       )}
 
-      {/* Buttons */}
       <div className="flex gap-2">
         <Button type="button" variant="outline" size="sm" disabled={uploading}
           onClick={() => fileRef.current?.click()} className="flex-1">
@@ -206,7 +196,7 @@ export default function ImageUpload({
       </div>
 
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
-        className="hidden" onChange={pickFile} />
+        className="hidden" onChange={handleFileSelect} />
 
       {showUrl && (
         <Input value={value} onChange={e => onChange(e.target.value)}
@@ -222,7 +212,7 @@ export default function ImageUpload({
             </DialogTitle>
           </DialogHeader>
 
-          {/* Aspect ratio strip */}
+          {/* Ratio presets */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">Ratio:</span>
             {PRESETS.map(({ label: l, value: v }) => {
@@ -231,24 +221,28 @@ export default function ImageUpload({
                 : aspect !== undefined && Math.abs(aspect - v) < 0.01;
               return (
                 <button key={l} type="button" onClick={() => changeAspect(v)}
-                  className={`px-3 py-1 rounded-full border text-xs transition-colors
-                    ${active
+                  className={`px-3 py-1 rounded-full border text-xs transition-colors ${
+                    active
                       ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border hover:bg-muted'}`}>
+                      : 'border-border hover:bg-muted'
+                  }`}>
                   {l}
                 </button>
               );
             })}
             <button type="button" onClick={() => changeAspect(BUCKET_ASPECT[bucket])}
-              className="px-3 py-1 rounded-full border text-xs border-border hover:bg-muted
-                flex items-center gap-1">
+              className="px-3 py-1 rounded-full border text-xs border-border hover:bg-muted flex items-center gap-1">
               <RotateCcw className="h-3 w-3" /> Reset
             </button>
           </div>
 
-          {/* Scrollable crop area */}
-          <div className="w-full overflow-y-auto rounded border bg-neutral-900"
-            style={{ maxHeight: 'min(60vh, 480px)' }}>
+          {/*
+            Crop area.
+            - NO overflow:hidden/auto on the wrapper (clips the handles)
+            - ReactCrop gets display:block via inline style to override inline-block
+            - Image is constrained to max 65vh so it fits on screen
+          */}
+          <div className="rounded border border-border bg-neutral-900 flex items-start justify-center">
             <ReactCrop
               crop={crop}
               onChange={c => setCrop(c)}
@@ -257,27 +251,33 @@ export default function ImageUpload({
               minWidth={40}
               minHeight={40}
               keepSelection
-              style={{ width: '100%' }}
+              style={{ display: 'block', width: '100%' }}
             >
               <img
                 ref={imgRef}
                 src={srcUrl}
                 alt="crop-src"
                 onLoad={onImgLoad}
-                style={{ display: 'block', width: '100%', height: 'auto' }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  maxHeight: '65vh',
+                  objectFit: 'contain',
+                }}
               />
             </ReactCrop>
           </div>
 
           <p className="text-xs text-muted-foreground text-center">
-            Drag the shaded border to move · Drag the corner/edge handles to resize
+            Drag the box to reposition · Drag corner handles to resize · Switch ratio above to change shape
           </p>
 
           <DialogFooter className="gap-2 pt-1">
             <Button type="button" variant="outline" disabled={uploading}
-              onClick={() => setCropOpen(false)}>Cancel</Button>
-            <Button type="button" onClick={handleUpload}
-              disabled={uploading || !doneCrop}>
+              onClick={() => setCropOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleUpload} disabled={uploading || !doneCrop}>
               {uploading
                 ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</>
                 : <><CropIcon className="h-4 w-4 mr-2" />Crop &amp; Upload</>}

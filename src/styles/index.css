@@ -1,7 +1,16 @@
+@import 'react-image-crop/dist/ReactCrop.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import 'react-image-crop/dist/ReactCrop.css';
+
+/* Restore react-image-crop borders that Tailwind preflight resets to 0 */
+.ReactCrop__drag-handle {
+  border-width: 1px !important;
+}
+.ReactCrop__crop-selection {
+  box-sizing: border-box;
+}
 
 /* Luxury Hotel Management Design System - All colors MUST be HSL */
 
