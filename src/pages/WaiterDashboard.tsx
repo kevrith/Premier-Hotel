@@ -137,7 +137,7 @@ export default function WaiterDashboard() {
       try {
         setLoading(true);
         // Get all active orders (pending, confirmed, preparing, ready)
-        const data = await ordersApi.getAll({ limit: 500, date: 'today' });
+        const data = await ordersApi.getAll({ date: 'today' });
         console.log('All orders loaded:', data);
         
         // Filter to show active orders only (including served orders with unpaid bills)
