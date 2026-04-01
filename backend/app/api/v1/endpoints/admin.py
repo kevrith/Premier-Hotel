@@ -19,8 +19,9 @@ router = APIRouter()
 # ============================================
 
 class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    pin: Optional[str] = None
     full_name: str
     phone_number: Optional[str] = None
     role: str = "customer"
@@ -34,9 +35,9 @@ class UserUpdate(BaseModel):
 
 class UserResponse(BaseModel):
     id: str
-    email: str
+    email: Optional[str] = None
     full_name: str
-    phone_number: Optional[str]
+    phone_number: Optional[str] = None
     role: str
     created_at: str
 
@@ -72,21 +73,37 @@ async def create_user(
                 detail="Insufficient permissions to create users"
             )
 
-        # Hash the password using bcrypt (same as auth registration)
-        password_hash = get_password_hash(user_data.password)
+        # Validate: staff need at least a PIN or password; customers need email+password
+        STAFF_ROLES = ["waiter", "chef", "cleaner", "housekeeping", "manager"]
+        is_staff = user_data.role in STAFF_ROLES
+        if not is_staff and (not user_data.email or not user_data.password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email and password are required for customer accounts"
+            )
+        if is_staff and not user_data.pin and not user_data.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Staff accounts require at least a PIN or password"
+            )
 
-        # Create user in users table
+        # Build user record
         user_insert = {
-            "email": user_data.email,
             "full_name": user_data.full_name,
-            "phone": user_data.phone_number,  # Use 'phone' not 'phone_number'
-            "password_hash": password_hash,
+            "phone": user_data.phone_number,
             "role": user_data.role,
-            "email_verified": True,  # Admin-created users are auto-verified
+            "email_verified": True,
             "phone_verified": True if user_data.phone_number else False,
             "is_verified": True,
             "status": "active"
         }
+
+        if user_data.email:
+            user_insert["email"] = user_data.email
+        if user_data.password:
+            user_insert["password_hash"] = get_password_hash(user_data.password)
+        if user_data.pin:
+            user_insert["pin_hash"] = get_password_hash(user_data.pin)
 
         result = supabase.table("users").insert(user_insert).execute()
 
@@ -100,10 +117,10 @@ async def create_user(
 
         return UserResponse(
             id=created_user["id"],
-            email=created_user["email"],
+            email=created_user.get("email"),
             full_name=created_user["full_name"],
-            phone_number=created_user.get("phone"),  # Map 'phone' to 'phone_number' for API response
-            role=user_data.role,
+            phone_number=created_user.get("phone"),
+            role=created_user.get("role", user_data.role),
             created_at=created_user["created_at"]
         )
 

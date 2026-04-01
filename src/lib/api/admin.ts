@@ -53,18 +53,11 @@ class AdminAPIService {
    */
   async createUser(userData: UserCreate): Promise<User> {
     try {
-      console.log('API client: Creating user with data:', userData);
-      console.log('API client: Using cookie-based authentication');
-      console.log('API client: Base URL:', api.defaults.baseURL);
-
       const response = await api.post<User>('/users', userData);
       console.log('API client: Response received:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('API client: Error response:', error.response);
-      console.error('API client: Error status:', error.response?.status);
-      console.error('API client: Error data:', error.response?.data);
-      throw new Error(error.response?.data?.detail || 'Failed to create user');
+      throw new Error(error.response?.data?.detail || error.message || 'Failed to create user');
     }
   }
 
