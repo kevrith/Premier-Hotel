@@ -237,6 +237,93 @@ export function printBill(order: {
 }
 
 /**
+ * Thermal print for the Item Summary report.
+ * Format mirrors QuickBooks POS: Dept | Qty | Ext Price | Item Name
+ */
+export function printItemSummary(params: {
+  categories: Array<{
+    category: string;
+    items: Array<{ name: string; qty: number; revenue: number }>;
+    total_qty: number;
+    total_revenue: number;
+  }>;
+  grand_total_qty: number;
+  grand_total_revenue: number;
+  startDate: string;
+  endDate: string;
+}) {
+  const cfg = getReceiptConfig();
+  const fmtAmt = (n: number) =>
+    (n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const now = new Date().toLocaleString('en-KE', {
+    day: '2-digit', month: '2-digit', year: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const dateLabel = params.startDate === params.endDate
+    ? params.startDate
+    : `${params.startDate} to ${params.endDate}`;
+
+  // Column widths for 42-char line: Dept(5) Qty(4) Price(9) Name(rest)
+  const COL = `
+    <div class="row" style="font-size:10px;border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:2px">
+      <span style="width:36px;flex-shrink:0">Dept</span>
+      <span style="width:28px;flex-shrink:0;text-align:right">Qty</span>
+      <span style="width:64px;flex-shrink:0;text-align:right">Ext Price</span>
+      <span style="flex:1;padding-left:6px">Item Name</span>
+    </div>`;
+
+  const rows = params.categories.map(cat => {
+    const abbr = cat.category.substring(0, 5).toUpperCase();
+    const itemRows = cat.items.map(item => `
+      <div class="row" style="font-size:11px">
+        <span style="width:36px;flex-shrink:0;font-size:10px">${abbr}</span>
+        <span style="width:28px;flex-shrink:0;text-align:right">${item.qty}</span>
+        <span style="width:64px;flex-shrink:0;text-align:right">${fmtAmt(item.revenue)}</span>
+        <span style="flex:1;padding-left:6px">${item.name}</span>
+      </div>`).join('');
+
+    return `
+      ${itemRows}
+      <div class="row bold" style="font-size:11px;border-top:1px solid #555;margin-top:1px">
+        <span style="width:36px;flex-shrink:0;font-size:10px">${abbr}</span>
+        <span style="width:28px;flex-shrink:0;text-align:right">${cat.total_qty}</span>
+        <span style="width:64px;flex-shrink:0;text-align:right">${fmtAmt(cat.total_revenue)}</span>
+        <span style="flex:1;padding-left:6px"></span>
+      </div>
+      <div class="divider"></div>`;
+  }).join('');
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Item Summary</title>${receiptStyles()}</head>
+    <body>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+        <div class="small">${now}</div>
+        <div class="bold center" style="font-size:13px;text-align:right">
+          ${cfg.hotel_name}<br/>
+          <span style="font-size:11px">Item Summary</span>
+        </div>
+      </div>
+      <div class="small" style="margin-bottom:4px">${dateLabel}</div>
+      <div class="divider-solid"></div>
+      ${COL}
+      ${rows}
+      <div class="row bold" style="font-size:12px;border-top:2px solid #000;padding-top:3px">
+        <span style="width:36px;flex-shrink:0"></span>
+        <span style="width:28px;flex-shrink:0;text-align:right">${params.grand_total_qty}</span>
+        <span style="width:64px;flex-shrink:0;text-align:right">${fmtAmt(params.grand_total_revenue)}</span>
+        <span style="flex:1;padding-left:6px"></span>
+      </div>
+      <div class="center small mt">Total Items: ${params.grand_total_qty}</div>
+    </body>
+    </html>
+  `;
+
+  openPrintWindow(html, 'Item Summary');
+}
+
+/**
  * Thermal print for the Employee Sales Report.
  * Prints one section per employee: header, sales summary, item breakdown, payment breakdown.
  */
@@ -255,7 +342,12 @@ export function printEmployeeSalesReport(params: {
       cash: number; mpesa: number; card: number;
       room_charge: number; other: number; total_collected: number;
     };
-    items_summary?: Array<{ name: string; qty: number; revenue: number }>;
+    items_summary?: Array<{
+      department: string;
+      items: Array<{ name: string; qty: number; revenue: number }>;
+      total_qty: number;
+      total_revenue: number;
+    }>;
   }>;
   periodLabel: string;
   totalSales: number;
@@ -281,14 +373,25 @@ export function printEmployeeSalesReport(params: {
       .map(([label, val]) => `<div class="row"><span>${label}</span><span>${fmt(val as number)}</span></div>`)
       .join('');
 
-    const itemRows = (e.items_summary || [])
-      .map(item => `
-        <div class="row">
-          <span style="flex:1;padding-right:4px">${item.name}</span>
-          <span style="min-width:28px;text-align:right">${item.qty}</span>
-          <span style="min-width:70px;text-align:right">${fmt(item.revenue)}</span>
-        </div>`)
-      .join('');
+    const itemRows = (e.items_summary || []).map(dept => {
+      const abbr = dept.department.substring(0, 5).toUpperCase();
+      const deptItems = dept.items.map((item: any) => `
+        <div class="row" style="font-size:11px">
+          <span style="width:36px;flex-shrink:0;font-size:10px">${abbr}</span>
+          <span style="width:28px;flex-shrink:0;text-align:right">${item.qty}</span>
+          <span style="min-width:70px;flex-shrink:0;text-align:right">${fmt(item.revenue)}</span>
+          <span style="flex:1;padding-left:6px;font-size:10px">${item.name}</span>
+        </div>`).join('');
+      return `
+        ${deptItems}
+        <div class="row bold" style="font-size:11px;border-top:1px solid #555;margin-top:1px">
+          <span style="width:36px;flex-shrink:0;font-size:10px">${abbr}</span>
+          <span style="width:28px;flex-shrink:0;text-align:right">${dept.total_qty}</span>
+          <span style="min-width:70px;flex-shrink:0;text-align:right">${fmt(dept.total_revenue)}</span>
+          <span style="flex:1;padding-left:6px;font-size:10px">subtotal</span>
+        </div>
+        <div class="divider"></div>`;
+    }).join('');
 
     return `
       <div class="center bold" style="font-size:14px;margin-top:${idx > 0 ? 16 : 0}px">${idx + 1}. ${e.employee_name}</div>
@@ -302,8 +405,11 @@ export function printEmployeeSalesReport(params: {
       ${(e.items_summary || []).length > 0 ? `
       <div class="divider"></div>
       <div class="bold small" style="margin-bottom:3px">ITEMS SOLD</div>
-      <div class="row small" style="border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:2px">
-        <span style="flex:1">Item</span><span style="min-width:28px;text-align:right">Qty</span><span style="min-width:70px;text-align:right">Revenue</span>
+      <div class="row small" style="border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:2px;font-size:10px">
+        <span style="width:36px;flex-shrink:0">Dept</span>
+        <span style="width:28px;flex-shrink:0;text-align:right">Qty</span>
+        <span style="min-width:70px;flex-shrink:0;text-align:right">Revenue</span>
+        <span style="flex:1;padding-left:6px">Item</span>
       </div>
       ${itemRows}` : ''}
       <div class="divider"></div>

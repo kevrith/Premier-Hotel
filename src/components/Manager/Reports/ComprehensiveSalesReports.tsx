@@ -28,6 +28,8 @@ export const ComprehensiveSalesReports: React.FC = () => {
   const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [employeeData, setEmployeeData] = useState<EmployeeSales[]>([]);
+  const [unattributedSales, setUnattributedSales] = useState(0);
+  const [unattributedOrders, setUnattributedOrders] = useState(0);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [selectedEmployeeName, setSelectedEmployeeName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -65,6 +67,8 @@ export const ComprehensiveSalesReports: React.FC = () => {
       }));
 
       setEmployeeData(employeeSales);
+      setUnattributedSales(data.unattributed_sales || 0);
+      setUnattributedOrders(data.unattributed_orders || 0);
     } catch (error) {
       console.error('Failed to load report data:', error);
     } finally {
@@ -96,8 +100,9 @@ export const ComprehensiveSalesReports: React.FC = () => {
 
   // Only sum sales from non-chef roles to avoid double counting
   // (chef orders are the same orders waiters posted)
-  const totalSales = filteredData.filter(e => e.role !== 'chef').reduce((sum, emp) => sum + emp.total_sales, 0);
-  const totalOrders = filteredData.filter(e => e.role !== 'chef').reduce((sum, emp) => sum + emp.total_orders, 0);
+  // Include unattributed sales (orders with no waiter assigned) to match item summary totals
+  const totalSales = filteredData.filter(e => e.role !== 'chef').reduce((sum, emp) => sum + emp.total_sales, 0) + unattributedSales;
+  const totalOrders = filteredData.filter(e => e.role !== 'chef').reduce((sum, emp) => sum + emp.total_orders, 0) + unattributedOrders;
 
   return (
     <div className="space-y-6">

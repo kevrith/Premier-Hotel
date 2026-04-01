@@ -15,6 +15,7 @@ import { Printer, Download, RefreshCw, ChevronDown, ChevronRight } from 'lucide-
 import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/api/client';
+import { printItemSummary } from '@/lib/print';
 
 interface ItemRow {
   name: string;
@@ -77,44 +78,13 @@ export const ItemSummaryReport: React.FC = () => {
 
   const handlePrint = () => {
     if (!data) return;
-    const win = window.open('', '_blank');
-    if (!win) { toast.error('Allow popups to print'); return; }
-
-    const rows = data.categories.map(cat => `
-      <tr style="background:#f0f4ff;font-weight:bold">
-        <td style="padding:6px 8px;border:1px solid #ccc">${cat.category}</td>
-        <td style="padding:6px 8px;border:1px solid #ccc;text-align:right">${cat.total_qty}</td>
-        <td style="padding:6px 8px;border:1px solid #ccc;text-align:right">KES ${cat.total_revenue.toLocaleString()}</td>
-      </tr>
-      ${cat.items.map(item => `
-      <tr>
-        <td style="padding:5px 8px 5px 24px;border:1px solid #ccc">${item.name}</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right">${item.qty}</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right">KES ${item.revenue.toLocaleString()}</td>
-      </tr>`).join('')}
-    `).join('');
-
-    win.document.write(`<!DOCTYPE html><html><head><title>Item Summary</title>
-      <style>body{font-family:Arial,sans-serif;padding:20px}h2{text-align:center}
-      table{width:100%;border-collapse:collapse;font-size:12px}
-      th{background:#333;color:#fff;padding:8px;text-align:left}
-      .total-row{background:#e8f5e9;font-weight:bold}
-      @media print{body{padding:10px}}</style></head><body>
-      <h2>Premier Hotel</h2>
-      <h3 style="text-align:center">Item Summary</h3>
-      <p style="text-align:center;color:#666">Date: ${format(new Date(startDate), 'dd/MM/yyyy')} to ${format(new Date(endDate), 'dd/MM/yyyy')}</p>
-      <table><thead><tr>
-        <th>Department / Item Name</th><th style="text-align:right">Qty</th><th style="text-align:right">Ext Price</th>
-      </tr></thead><tbody>
-      ${rows}
-      <tr class="total-row"><td style="padding:8px;border:1px solid #ccc"><strong>GRAND TOTAL</strong></td>
-        <td style="padding:8px;border:1px solid #ccc;text-align:right"><strong>${data.grand_total_qty}</strong></td>
-        <td style="padding:8px;border:1px solid #ccc;text-align:right"><strong>KES ${data.grand_total_revenue.toLocaleString()}</strong></td>
-      </tr></tbody></table>
-      <p style="text-align:center;font-size:10px;margin-top:20px;color:#888">Generated: ${new Date().toLocaleString()}</p>
-      <script>window.onload=()=>setTimeout(()=>window.print(),400)</script>
-      </body></html>`);
-    win.document.close();
+    printItemSummary({
+      categories: data.categories,
+      grand_total_qty: data.grand_total_qty,
+      grand_total_revenue: data.grand_total_revenue,
+      startDate,
+      endDate,
+    });
   };
 
   const handleExcel = () => {

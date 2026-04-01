@@ -586,6 +586,21 @@ async def get_employee_sales_report(
             ).in_("id", all_bill_ids).execute()
             global_bills_map = {b["id"]: b for b in (bill_res.data or [])}
 
+        # ── Step 3b: Batch-fetch menu item categories for item summary ──────────
+        all_menu_item_ids = list({
+            str(item.get("menu_item_id") or item.get("id") or "")
+            for o in all_orders
+            for item in (o.get("items") or [])
+            if isinstance(item, dict) and (item.get("menu_item_id") or item.get("id"))
+        })
+        menu_category_map: Dict[str, str] = {}
+        if all_menu_item_ids:
+            mi_res = supabase.table("menu_items").select("id, category").in_(
+                "id", all_menu_item_ids
+            ).execute()
+            for mi in (mi_res.data or []):
+                menu_category_map[str(mi["id"])] = mi.get("category") or "Other"
+
         # ── Step 4: Build per-employee stats (pure Python, no more DB calls) ──
         today = datetime.now().date()
         this_week_start = today - timedelta(days=today.weekday())
@@ -616,24 +631,37 @@ async def get_employee_sales_report(
             for order in emp_orders:
                 for item in (order.get("items") or []):
                     if isinstance(item, dict):
+                        mid = str(item.get("menu_item_id") or item.get("id") or "")
                         emp_order_items.append({
-                            "menu_item_id": item.get("menu_item_id"),
+                            "menu_item_id": mid,
                             "quantity": item.get("quantity", 0),
                             "name": item.get("name", "Unknown"),
                             "price": float(item.get("price", 0)),
+                            "category": menu_category_map.get(mid) or item.get("category") or "Other",
                         })
 
             total_items_sold = sum(oi.get("quantity", 0) for oi in emp_order_items)
 
-            # Build per-item summary for thermal printing
-            items_agg: Dict[str, dict] = {}
+            # Build per-department, per-item summary for thermal printing
+            dept_agg: Dict[str, Dict[str, dict]] = {}
             for oi in emp_order_items:
-                key = oi.get("name", "Unknown")
-                if key not in items_agg:
-                    items_agg[key] = {"name": key, "qty": 0, "revenue": 0.0}
-                items_agg[key]["qty"] += oi.get("quantity", 0)
-                items_agg[key]["revenue"] += oi.get("price", 0) * oi.get("quantity", 0)
-            items_summary = sorted(items_agg.values(), key=lambda x: x["revenue"], reverse=True)
+                dept = oi.get("category", "Other")
+                name = oi.get("name", "Unknown")
+                dept_agg.setdefault(dept, {})
+                if name not in dept_agg[dept]:
+                    dept_agg[dept][name] = {"name": name, "qty": 0, "revenue": 0.0}
+                dept_agg[dept][name]["qty"] += oi.get("quantity", 0)
+                dept_agg[dept][name]["revenue"] += oi.get("price", 0) * oi.get("quantity", 0)
+
+            items_summary = [
+                {
+                    "department": dept,
+                    "items": sorted(items.values(), key=lambda x: x["revenue"], reverse=True),
+                    "total_qty": sum(i["qty"] for i in items.values()),
+                    "total_revenue": round(sum(i["revenue"] for i in items.values()), 2),
+                }
+                for dept, items in sorted(dept_agg.items())
+            ]
             avg_order_value = total_sales / total_orders if total_orders > 0 else 0
 
             orders_today = sum(1 for o in emp_orders if safe_date(o.get("created_at", "")) == today)
