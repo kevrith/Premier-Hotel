@@ -1302,14 +1302,14 @@ async def get_employee_details(
             # Payment method breakdown
             payment_method_breakdown[payment_method] = payment_method_breakdown.get(payment_method, 0) + order_revenue
 
-                # Hourly sales
-                order_datetime = datetime.fromisoformat(order_date.replace('Z', '+00:00'))
-                hour = order_datetime.strftime("%I %p")
-                hourly_sales[hour] = hourly_sales.get(hour, 0) + order_revenue
+            # Hourly sales
+            order_datetime = datetime.fromisoformat(order_date.replace('Z', '+00:00'))
+            hour = order_datetime.strftime("%I %p")
+            hourly_sales[hour] = hourly_sales.get(hour, 0) + order_revenue
 
-                # Daily sales
-                day = order_datetime.strftime("%Y-%m-%d")
-                daily_sales[day] = daily_sales.get(day, 0) + order_revenue
+            # Daily sales
+            day = order_datetime.strftime("%Y-%m-%d")
+            daily_sales[day] = daily_sales.get(day, 0) + order_revenue
 
         # Sort transactions by date (newest first)
         transactions.sort(key=lambda x: x["date"], reverse=True)
