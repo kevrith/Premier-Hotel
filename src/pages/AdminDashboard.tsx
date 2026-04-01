@@ -26,7 +26,7 @@ import { LocationManagement } from '@/components/Admin/LocationManagement';
 import { NetworkInfo } from '@/components/Admin/NetworkInfo';
 import { BranchManagement } from '@/components/Admin/BranchManagement';
 import { TableManagement } from '@/components/Admin/TableManagement';
-import { OrderManagement } from '@/components/Manager/OrderManagement';
+import OrderManagement from '@/components/Manager/OrderManagement';
 
 export default function AdminDashboard() {
   const { isLoading } = useAuth();
