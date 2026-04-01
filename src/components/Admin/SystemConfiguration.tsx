@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer, ShieldCheck, KeyRound, MapPin, Navigation } from 'lucide-react';
+import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer, ShieldCheck, KeyRound, MapPin, Navigation, FileText } from 'lucide-react';
 import { GEO_DEFAULTS } from '@/hooks/useGeoGate';
 import { useToast } from '@/hooks/use-toast';
 import { toast as hotToast } from 'react-hot-toast';
@@ -174,6 +174,27 @@ export function SystemConfiguration() {
     hotToast.success('POS settings saved');
   };
 
+  // Receipt settings — stored in localStorage, read by print.ts
+  const [receipt, setReceipt] = useState({
+    hotel_name: localStorage.getItem('receipt:hotel_name') || 'Premier Hotel',
+    address:    localStorage.getItem('receipt:address')    || '',
+    po_box:     localStorage.getItem('receipt:po_box')     || '',
+    phone:      localStorage.getItem('receipt:phone')      || '',
+    email:      localStorage.getItem('receipt:email')      || '',
+    website:    localStorage.getItem('receipt:website')    || '',
+    tax_reg:    localStorage.getItem('receipt:tax_reg')    || '',
+    footer:     localStorage.getItem('receipt:footer')     || 'Thank you for dining with us!',
+    footer2:    localStorage.getItem('receipt:footer2')    || 'Please settle at the counter',
+  });
+
+  const saveReceiptSettings = () => {
+    Object.entries(receipt).forEach(([k, v]) => {
+      if (v) localStorage.setItem(`receipt:${k}`, v);
+      else localStorage.removeItem(`receipt:${k}`);
+    });
+    hotToast.success('Receipt settings saved — will appear on next print');
+  };
+
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState<string | null>(null); // which section is saving
 
@@ -238,13 +259,14 @@ export function SystemConfiguration() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="payment" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="payment"><CreditCard className="h-4 w-4 mr-1" />Payment</TabsTrigger>
               <TabsTrigger value="tax"><Receipt className="h-4 w-4 mr-1" />Tax</TabsTrigger>
               <TabsTrigger value="notifications"><Bell className="h-4 w-4 mr-1" />Alerts</TabsTrigger>
               <TabsTrigger value="system"><Zap className="h-4 w-4 mr-1" />System</TabsTrigger>
               <TabsTrigger value="localization"><Globe className="h-4 w-4 mr-1" />Locale</TabsTrigger>
               <TabsTrigger value="pos"><Monitor className="h-4 w-4 mr-1" />POS</TabsTrigger>
+              <TabsTrigger value="receipt"><FileText className="h-4 w-4 mr-1" />Receipt</TabsTrigger>
             </TabsList>
 
             {/* ── Payment ── */}
@@ -697,6 +719,125 @@ export function SystemConfiguration() {
 
                   <Button onClick={saveGeoSettings}>Save Location Settings</Button>
                 </div>
+              </div>
+            </TabsContent>
+
+            {/* ── Receipt Settings ── */}
+            <TabsContent value="receipt" className="space-y-4">
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Customise what appears on printed order slips and customer bills.
+                  These settings apply to this device. Set them once on your main POS computer.
+                </p>
+
+                <div className="p-4 border rounded-lg space-y-4">
+                  <div className="flex items-start gap-3">
+                    <FileText className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                    <p className="text-sm font-medium">Header Information</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="r-name">Hotel / Business Name</Label>
+                      <Input
+                        id="r-name"
+                        placeholder="Premier Hotel"
+                        value={receipt.hotel_name}
+                        onChange={(e) => setReceipt(r => ({ ...r, hotel_name: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="r-address">Address</Label>
+                      <Input
+                        id="r-address"
+                        placeholder="e.g. Nkubu, Meru County"
+                        value={receipt.address}
+                        onChange={(e) => setReceipt(r => ({ ...r, address: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="r-pobox">P.O. Box</Label>
+                        <Input
+                          id="r-pobox"
+                          placeholder="e.g. 123-60600"
+                          value={receipt.po_box}
+                          onChange={(e) => setReceipt(r => ({ ...r, po_box: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="r-phone">Phone</Label>
+                        <Input
+                          id="r-phone"
+                          placeholder="e.g. +254 712 345 678"
+                          value={receipt.phone}
+                          onChange={(e) => setReceipt(r => ({ ...r, phone: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="r-email">Email</Label>
+                        <Input
+                          id="r-email"
+                          placeholder="info@premierhotel.co.ke"
+                          value={receipt.email}
+                          onChange={(e) => setReceipt(r => ({ ...r, email: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="r-website">Website</Label>
+                        <Input
+                          id="r-website"
+                          placeholder="www.premierhotel.co.ke"
+                          value={receipt.website}
+                          onChange={(e) => setReceipt(r => ({ ...r, website: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="r-taxreg">KRA PIN / Tax Registration No.</Label>
+                      <Input
+                        id="r-taxreg"
+                        placeholder="e.g. P051234567X"
+                        value={receipt.tax_reg}
+                        onChange={(e) => setReceipt(r => ({ ...r, tax_reg: e.target.value }))}
+                      />
+                      <p className="text-xs text-muted-foreground">Leave blank if you don't want this on the receipt.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 border rounded-lg space-y-3">
+                  <p className="text-sm font-medium">Footer Messages (appear at the bottom of customer bills)</p>
+                  <div className="space-y-1">
+                    <Label htmlFor="r-footer">Main footer message</Label>
+                    <Input
+                      id="r-footer"
+                      placeholder="Thank you for dining with us!"
+                      value={receipt.footer}
+                      onChange={(e) => setReceipt(r => ({ ...r, footer: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="r-footer2">Secondary footer message</Label>
+                    <Input
+                      id="r-footer2"
+                      placeholder="Please settle at the counter"
+                      value={receipt.footer2}
+                      onChange={(e) => setReceipt(r => ({ ...r, footer2: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <Button onClick={saveReceiptSettings}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Save Receipt Settings
+                </Button>
               </div>
             </TabsContent>
           </Tabs>

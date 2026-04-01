@@ -4,7 +4,23 @@
  * Opens a new browser window, renders content, triggers print, then closes.
  */
 
-const HOTEL_NAME = 'Premier Hotel';
+/**
+ * Read receipt header/footer settings from localStorage.
+ * Admins configure these in Settings → Receipt.
+ */
+function getReceiptConfig() {
+  return {
+    hotel_name:  localStorage.getItem('receipt:hotel_name')  || 'Premier Hotel',
+    address:     localStorage.getItem('receipt:address')     || '',
+    po_box:      localStorage.getItem('receipt:po_box')      || '',
+    phone:       localStorage.getItem('receipt:phone')       || '',
+    email:       localStorage.getItem('receipt:email')       || '',
+    website:     localStorage.getItem('receipt:website')     || '',
+    tax_reg:     localStorage.getItem('receipt:tax_reg')     || '',
+    footer:      localStorage.getItem('receipt:footer')      || 'Thank you for dining with us!',
+    footer2:     localStorage.getItem('receipt:footer2')     || 'Please settle at the counter',
+  };
+}
 
 function openPrintWindow(html: string, title: string) {
   const w = window.open('', '_blank', 'width=340,height=600,menubar=no,toolbar=no');
@@ -53,6 +69,19 @@ function receiptStyles(): string {
   `;
 }
 
+/** Build the header block shared by both slip types */
+function buildHeader(cfg: ReturnType<typeof getReceiptConfig>): string {
+  const lines: string[] = [];
+  lines.push(`<div class="bold" style="font-size:16px;">${cfg.hotel_name}</div>`);
+  if (cfg.address)  lines.push(`<div class="small">${cfg.address}</div>`);
+  if (cfg.po_box)   lines.push(`<div class="small">P.O. Box ${cfg.po_box}</div>`);
+  if (cfg.phone)    lines.push(`<div class="small">Tel: ${cfg.phone}</div>`);
+  if (cfg.email)    lines.push(`<div class="small">${cfg.email}</div>`);
+  if (cfg.website)  lines.push(`<div class="small">${cfg.website}</div>`);
+  if (cfg.tax_reg)  lines.push(`<div class="small">PIN: ${cfg.tax_reg}</div>`);
+  return lines.join('\n');
+}
+
 /**
  * Print a kitchen/order slip immediately after order creation.
  * Shows items + quantities + special instructions.
@@ -66,6 +95,8 @@ export function printOrderSlip(order: {
   created_at?: string;
   waiter_name?: string;
 }) {
+  const cfg = getReceiptConfig();
+
   const now = new Date().toLocaleString('en-KE', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: true,
@@ -100,7 +131,7 @@ export function printOrderSlip(order: {
     <head><title>Order ${order.order_number}</title>${receiptStyles()}</head>
     <body>
       <div class="center">
-        <div class="bold" style="font-size:16px;">${HOTEL_NAME}</div>
+        ${buildHeader(cfg)}
         <div class="bold" style="font-size:14px; margin-top:4px;">⊞ ORDER SLIP ⊞</div>
       </div>
       <div class="divider-solid"></div>
@@ -138,7 +169,10 @@ export function printBill(order: {
   total_amount: number;
   special_instructions?: string;
   status?: string;
+  waiter_name?: string;
 }) {
+  const cfg = getReceiptConfig();
+
   const now = new Date().toLocaleString('en-KE', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: true,
@@ -169,8 +203,7 @@ export function printBill(order: {
     <head><title>Bill ${order.order_number}</title>${receiptStyles()}</head>
     <body>
       <div class="center">
-        <div class="bold" style="font-size:16px;">${HOTEL_NAME}</div>
-        <div class="small">P.O. Box 0000 | premierhotel.co.ke</div>
+        ${buildHeader(cfg)}
         <div class="bold" style="font-size:14px; margin-top:6px;">CUSTOMER BILL</div>
       </div>
       <div class="divider-solid"></div>
@@ -178,6 +211,7 @@ export function printBill(order: {
       <div class="row"><span class="bold">Bill #</span><span>${order.order_number}</span></div>
       <div class="row"><span class="bold">${order.location_type === 'room' ? 'Room' : 'Table'}</span><span>${order.location}</span></div>
       ${customerName ? `<div class="row"><span class="bold">Customer</span><span>${customerName}</span></div>` : ''}
+      ${order.waiter_name ? `<div class="row"><span class="bold">Waiter</span><span>${order.waiter_name}</span></div>` : ''}
       <div class="row"><span class="bold">Date</span><span class="small">${now}</span></div>
 
       <div class="divider"></div>
@@ -192,8 +226,8 @@ export function printBill(order: {
       <div class="divider"></div>
 
       <div class="center mt">
-        <div>Thank you for dining with us!</div>
-        <div class="small">Please settle at the counter</div>
+        <div>${cfg.footer}</div>
+        ${cfg.footer2 ? `<div class="small">${cfg.footer2}</div>` : ''}
       </div>
     </body>
     </html>

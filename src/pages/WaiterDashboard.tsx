@@ -550,7 +550,7 @@ export default function WaiterDashboard() {
                 variant="outline"
                 size="sm"
                 className="flex-1"
-                onClick={() => printBill(order)}
+                onClick={() => printBill({ ...order, waiter_name: user?.full_name })}
               >
                 <Printer className="h-3 w-3 mr-2" />
                 Print Bill
@@ -612,7 +612,7 @@ export default function WaiterDashboard() {
               <Button variant="outline" size="sm" onClick={() => window.open('/print-station', '_blank')} title="Open KOT Print Station">
                 <Printer className="h-4 w-4" />
               </Button>
-              <Button size="sm" onClick={() => setShowNewOrderDialog(true)}>
+              <Button size="sm" onClick={() => { sessionStorage.removeItem('orderContext'); navigate('/menu'); }}>
                 <Plus className="h-4 w-4 mr-1" />
                 <span className="hidden xs:inline">New Order</span>
                 <span className="xs:hidden">New</span>
