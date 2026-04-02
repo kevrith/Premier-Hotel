@@ -185,6 +185,8 @@ export function SystemConfiguration() {
     tax_reg:    localStorage.getItem('receipt:tax_reg')    || '',
     footer:     localStorage.getItem('receipt:footer')     || 'Thank you for dining with us!',
     footer2:    localStorage.getItem('receipt:footer2')    || 'Please settle at the counter',
+    paybill_no: localStorage.getItem('receipt:paybill_no') || '',
+    account_no: localStorage.getItem('receipt:account_no') || '',
   });
 
   const saveReceiptSettings = () => {
@@ -811,6 +813,30 @@ export function SystemConfiguration() {
                       />
                       <p className="text-xs text-muted-foreground">Leave blank if you don't want this on the receipt.</p>
                     </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="r-paybill">M-Pesa Paybill Number</Label>
+                        <Input
+                          id="r-paybill"
+                          placeholder="e.g. 522522"
+                          value={receipt.paybill_no}
+                          onChange={(e) => setReceipt(r => ({ ...r, paybill_no: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="r-account">Account Number</Label>
+                        <Input
+                          id="r-account"
+                          placeholder="e.g. PremierHotel or bill number"
+                          value={receipt.account_no}
+                          onChange={(e) => setReceipt(r => ({ ...r, account_no: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground -mt-2">
+                      When set, the paybill and account number will appear on every printed customer bill so guests can pay via M-Pesa.
+                    </p>
                   </div>
                 </div>
 

@@ -1,7 +1,6 @@
 """Permission Management Schemas"""
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
 
 
 class UserPermissionsUpdate(BaseModel):
@@ -17,7 +16,7 @@ class UserPermissionsResponse(BaseModel):
     full_name: str
     role: str
     permissions: List[str] = []
-    updated_at: datetime
+    updated_at: Optional[str] = None
 
     class Config:
         from_attributes = True
