@@ -15,6 +15,8 @@ router = APIRouter()
 AVAILABLE_PERMISSIONS = [
     {"key": "can_manage_staff", "label": "Manage Staff", "description": "Create, update, delete staff members", "category": "Staff"},
     {"key": "can_view_reports", "label": "View Reports", "description": "Access financial and operational reports", "category": "Reports"},
+    {"key": "can_view_employee_reports", "label": "View Employee Performance Reports", "description": "Access employee sales and performance reports", "category": "Reports"},
+    {"key": "can_print_item_summary", "label": "Print Item Summary", "description": "Print items sold summary report for their own sales", "category": "Reports"},
     {"key": "can_manage_inventory", "label": "Manage Inventory", "description": "Manage inventory and supplies", "category": "Inventory"},
     {"key": "can_manage_rooms", "label": "Manage Rooms", "description": "Manage room status and details", "category": "Rooms"},
     {"key": "can_manage_bookings", "label": "Manage Bookings", "description": "View and modify bookings", "category": "Bookings"},

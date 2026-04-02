@@ -27,18 +27,20 @@ export const FINANCE_ROLES: Role[] = ['admin', 'owner', 'manager'];
 // ── Permission constants ──────────────────────────────────────────────────────
 
 export const PERMISSIONS = {
-  MANAGE_STAFF:       'can_manage_staff',
-  VIEW_REPORTS:       'can_view_reports',
-  MANAGE_INVENTORY:   'can_manage_inventory',
-  MANAGE_ROOMS:       'can_manage_rooms',
-  MANAGE_BOOKINGS:    'can_manage_bookings',
-  MANAGE_ORDERS:      'can_manage_orders',
-  PROCESS_PAYMENTS:   'can_process_payments',
-  VIEW_ANALYTICS:     'can_view_analytics',
-  MANAGE_MENU:        'can_manage_menu',
-  MANAGE_HOUSEKEEPING:'can_manage_housekeeping',
-  ASSIGN_TASKS:       'can_assign_tasks',
-  MANAGE_PERMISSIONS: 'can_manage_permissions',
+  MANAGE_STAFF:           'can_manage_staff',
+  VIEW_REPORTS:           'can_view_reports',
+  VIEW_EMPLOYEE_REPORTS:  'can_view_employee_reports',
+  PRINT_ITEM_SUMMARY:     'can_print_item_summary',
+  MANAGE_INVENTORY:       'can_manage_inventory',
+  MANAGE_ROOMS:           'can_manage_rooms',
+  MANAGE_BOOKINGS:        'can_manage_bookings',
+  MANAGE_ORDERS:          'can_manage_orders',
+  PROCESS_PAYMENTS:       'can_process_payments',
+  VIEW_ANALYTICS:         'can_view_analytics',
+  MANAGE_MENU:            'can_manage_menu',
+  MANAGE_HOUSEKEEPING:    'can_manage_housekeeping',
+  ASSIGN_TASKS:           'can_assign_tasks',
+  MANAGE_PERMISSIONS:     'can_manage_permissions',
 } as const;
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -51,7 +53,7 @@ export function usePermissions() {
 
   const hasPermission = (permission: string): boolean => {
     if (!user) return false;
-    if (role === ROLES.ADMIN) return true;
+    if (role === ROLES.ADMIN || role === ROLES.MANAGER || role === ROLES.OWNER) return true;
     return (user as any).permissions?.includes(permission) ?? false;
   };
 

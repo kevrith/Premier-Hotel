@@ -30,6 +30,9 @@ import {
 } from 'lucide-react';
 import { BillsManagement } from '@/components/Bills';
 import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
+import { usePermissions, PERMISSIONS } from '@/hooks/usePermissions';
+import { buildItemSummaryHtml } from '@/lib/print';
+import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { toast } from 'react-hot-toast';
 import { ordersApi, Order } from '@/lib/api/orders';
 import { useOrderUpdates } from '@/hooks/useOrderUpdates';
@@ -61,8 +64,136 @@ import { tablesAPI, RestaurantTable } from '@/lib/api/tables';
 import { useAcceptedPaymentMethods } from '@/hooks/useAcceptedPaymentMethods';
 import { paymentService } from '@/lib/api/payments';
 
+// ── Waiter Report Panel (shown when manager grants report permission) ────────
+function WaiterReportPanel({ userId, userName, canPrintOnly }: { userId?: string; userName?: string; canPrintOnly?: boolean }) {
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const load = async () => {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      const res = await (await import('@/lib/api/client')).default.get(`/reports/employee/${userId}/details`, {
+        params: { start_date: startDate, end_date: endDate }
+      });
+      setData(res.data);
+    } catch { toast.error('Failed to load report'); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [startDate, endDate]);
+
+  const handlePrint = () => {
+    if (!data?.items_by_category?.length) return;
+    const html = buildItemSummaryHtml({
+      categories: data.items_by_category,
+      grand_total_qty: data.items_by_category.reduce((s: number, c: any) => s + c.total_qty, 0),
+      grand_total_revenue: data.items_by_category.reduce((s: number, c: any) => s + c.total_revenue, 0),
+      startDate,
+      endDate,
+      employeeName: userName,
+    });
+    setPreviewHtml(html);
+    setPreviewOpen(true);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">My Sales Report</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">{userName}</p>
+            </div>
+            <div className="flex gap-2 items-end flex-wrap">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">From</p>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                  className="border rounded px-2 py-1 text-sm" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">To</p>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                  className="border rounded px-2 py-1 text-sm" />
+              </div>
+              <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />Refresh
+              </Button>
+              <Button size="sm" onClick={handlePrint} disabled={!data?.items_by_category?.length}>
+                <Printer className="h-3.5 w-3.5 mr-1" />Print Items Sold
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading...</div>
+          ) : !data ? (
+            <div className="text-center py-8 text-muted-foreground">No data</div>
+          ) : (
+            <div className="space-y-4">
+              {/* Summary stats */}
+              {!canPrintOnly && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Total Sales', value: `KES ${(data.total_sales || 0).toLocaleString()}` },
+                    { label: 'Total Orders', value: data.total_orders || 0 },
+                    { label: 'Completed', value: data.completed_orders || 0 },
+                    { label: 'Items Sold', value: data.total_items_sold || 0 },
+                  ].map(s => (
+                    <Card key={s.label} className="border-0 bg-muted/50">
+                      <CardContent className="p-3">
+                        <p className="text-xs text-muted-foreground">{s.label}</p>
+                        <p className="text-lg font-bold">{s.value}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+              {/* Items by category */}
+              {data.items_by_category?.length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted">
+                        <th className="text-left px-3 py-2">Item</th>
+                        <th className="text-right px-3 py-2">Qty</th>
+                        <th className="text-right px-3 py-2">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.items_by_category.map((cat: any) =>
+                        cat.items.map((item: any, i: number) => (
+                          <tr key={i} className="border-t">
+                            <td className="px-3 py-1.5">{item.name}</td>
+                            <td className="px-3 py-1.5 text-right">{item.qty}</td>
+                            <td className="px-3 py-1.5 text-right">KES {item.revenue.toLocaleString()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-center py-6 text-muted-foreground">No items sold in this period.</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <PrintPreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} html={previewHtml} title="Items Sold" />
+    </div>
+  );
+}
+
 export default function WaiterDashboard() {
   const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
   const { user, isAuthenticated, role } = useAuth();
   const [activeTab, setActiveTab] = useState('tables');
   const [loading, setLoading] = useState(true);
@@ -390,7 +521,6 @@ export default function WaiterDashboard() {
   // Apply the waiter filter before deriving table/room lists
   const visibleOrders = showMyOrdersOnly
     ? orders.filter(o =>
-        !o.assigned_waiter_id ||
         o.assigned_waiter_id === user?.id ||
         (o as any).created_by_staff_id === user?.id
       )
@@ -715,6 +845,11 @@ export default function WaiterDashboard() {
             <TabsTrigger value="stock-take" className="text-xs sm:text-sm py-2">
               Stock
             </TabsTrigger>
+            {(hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS) || hasPermission(PERMISSIONS.PRINT_ITEM_SUMMARY)) && (
+              <TabsTrigger value="my-report" className="text-xs sm:text-sm py-2">
+                My Report
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Tables Tab */}
@@ -856,6 +991,13 @@ export default function WaiterDashboard() {
           <TabsContent value="stock-take" className="space-y-6">
             <DailyStockTaking defaultSessionType="bar" />
           </TabsContent>
+
+          {/* My Report Tab — visible only with permission */}
+          {(hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS) || hasPermission(PERMISSIONS.PRINT_ITEM_SUMMARY)) && (
+            <TabsContent value="my-report" className="space-y-4">
+              <WaiterReportPanel userId={user?.id} userName={user?.full_name} canPrintOnly={!hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS)} />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 
