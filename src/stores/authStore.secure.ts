@@ -139,7 +139,7 @@ const useAuthStore = create<AuthState>()(
               email: user.email || '',
               full_name: user.full_name || '',
               role: user.role,
-              token: '', // httpOnly cookies — no JS-accessible token
+              token: response.access_token || '',
             });
 
             // Cache menu in background

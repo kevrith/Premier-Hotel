@@ -24,9 +24,13 @@ export default function Login() {
   const location = useLocation();
   const { isLoading } = useAuth();
   const { login, needsVerification, verificationType, user } = useAuthStore();
-  const { isOnline } = useOffline();
+  const { isOnline: offlineStoreOnline } = useOffline();
+
+  // Use both the store value AND navigator.onLine so we never miss an offline state
+  const isOnline = offlineStoreOnline && navigator.onLine;
 
   const [loginType, setLoginType] = useState<'email' | 'phone' | 'pin'>('email');
+  const [cachedUser, setCachedUser] = useState<any>(null);
   const { status: geoStatus, distance: geoDistance } = useGeoGate();
   // Allow PIN tab when: confirmed in range, geo disabled, OR location simply unavailable
   // (e.g. Google location API rate-limited 429, no GPS on desktop).
@@ -59,14 +63,15 @@ export default function Login() {
 
   const from = location.state?.from?.pathname || '/';
 
-  // Auto-redirect when offline but valid session exists (user should not have to click "Continue Offline")
+  // Recompute cached user whenever online status changes
   useEffect(() => {
-    if (!isOnline) {
-      const cached = getCachedUserDirect();
-      if (cached) {
-        useAuthStore.setState({ user: cached, role: cached.role, isAuthenticated: true, isOfflineSession: true });
-        redirectByRole(cached.role);
-      }
+    const cached = getCachedUserDirect();
+    setCachedUser(!isOnline ? cached : null);
+
+    // Auto-redirect when offline but valid session exists
+    if (!isOnline && cached) {
+      useAuthStore.setState({ user: cached, role: cached.role, isAuthenticated: true, isOfflineSession: true });
+      redirectByRole(cached.role);
     }
   }, [isOnline]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -97,25 +102,9 @@ export default function Login() {
     } catch { return null; }
   };
 
-  // Check for cached session for offline login
-  const getCachedUser = () => {
-    try {
-      const stored = localStorage.getItem('auth-storage');
-      if (!stored) return null;
-      const parsed = JSON.parse(stored);
-      const cachedUser = parsed?.state?.user;
-      const lastAuth = parsed?.state?.lastAuthenticatedAt;
-      if (!cachedUser || !lastAuth) return null;
-      // Allow if last auth was within 7 days
-      const hoursSince = (Date.now() - new Date(lastAuth).getTime()) / (1000 * 60 * 60);
-      if (hoursSince > 168) return null;
-      return cachedUser;
-    } catch {
-      return null;
-    }
-  };
+  // Check for cached session for offline login (alias of getCachedUserDirect)
+  const getCachedUser = getCachedUserDirect;
 
-  const cachedUser = !isOnline ? getCachedUser() : null;
   const canContinueOffline = !isOnline && cachedUser !== null;
 
   const handleContinueOffline = () => {
@@ -180,6 +169,16 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Block network login when offline — show cached session option instead
+    if (!isOnline) {
+      if (cachedUser) {
+        toast('You are offline. Use the "Continue Offline" button below.', { icon: '📶' });
+      } else {
+        toast.error('No internet connection. Please connect to login.');
+      }
+      return;
+    }
 
     // Validate based on login type
     if (loginType === 'email') {

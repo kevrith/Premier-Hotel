@@ -36,9 +36,10 @@ export function useOfflineStatus() {
     };
     const handleOffline = () => setIsOnline(false);
 
-    // Also trigger sync whenever the client queues a new item and we're already online
+    // Trigger sync when a new item is queued and we're already online,
+    // but only if not already syncing (avoids rapid re-trigger loops)
     const handleQueued = () => {
-      if (navigator.onLine) runSync();
+      if (navigator.onLine && !syncingRef.current) runSync();
     };
 
     window.addEventListener('online', handleOnline);

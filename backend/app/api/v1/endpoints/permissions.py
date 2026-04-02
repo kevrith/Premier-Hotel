@@ -65,7 +65,7 @@ async def get_user_permissions(
         email=user_data.get("email"),
         full_name=user_data["full_name"],
         role=user_data["role"],
-        permissions=user_data.get("permissions", []),
+        permissions=user_data.get("permissions") or [],
         updated_at=user_data["updated_at"]
     )
 
@@ -126,7 +126,7 @@ async def get_all_staff_permissions(current_user: dict = Depends(get_current_use
     
     supabase = get_supabase_admin()
     result = supabase.table("users").select("id, email, full_name, role, permissions, updated_at").in_(
-        "role", ["staff", "chef", "waiter", "cleaner", "manager"]
+        "role", ["chef", "waiter", "cleaner", "manager"]
     ).execute()
     
     return [
@@ -135,7 +135,7 @@ async def get_all_staff_permissions(current_user: dict = Depends(get_current_use
             email=user.get("email"),
             full_name=user["full_name"],
             role=user["role"],
-            permissions=user.get("permissions", []),
+            permissions=user.get("permissions") or [],
             updated_at=user["updated_at"]
         )
         for user in result.data

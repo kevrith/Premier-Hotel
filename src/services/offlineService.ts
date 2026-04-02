@@ -333,6 +333,15 @@ export class OfflineService {
         }
       } catch (error: any) {
         failed++;
+        const httpStatus = error?.response?.status;
+
+        // Drop immediately on client errors (4xx) — retrying won't help
+        if (httpStatus && httpStatus >= 400 && httpStatus < 500) {
+          console.warn(`[Sync] Dropping item ${item.id} — server returned ${httpStatus}`);
+          await db.pendingSync.delete(item.id!);
+          continue;
+        }
+
         const retries = (item.retryCount || 0) + 1;
         await db.pendingSync.update(item.id!, { retryCount: retries, lastError: error.message });
 

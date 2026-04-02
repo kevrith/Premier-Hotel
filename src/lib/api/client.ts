@@ -59,6 +59,27 @@ function isMutation(method?: string): boolean {
   return MUTATION_METHODS.has((method ?? '').toLowerCase());
 }
 
+/**
+ * URLs that must NEVER be queued offline — they require real-time server
+ * processing and replaying them later could cause data corruption.
+ */
+const NO_OFFLINE_QUEUE_PATTERNS = [
+  '/void',
+  '/void-receipt',
+  '/void-item',
+  '/void-request',
+  '/void-approve',
+  '/void-reject',
+  '/payments',
+  '/bulk-cancel',
+  '/reverse',
+  '/auth/',
+];
+
+function shouldQueueOffline(url: string): boolean {
+  return !NO_OFFLINE_QUEUE_PATTERNS.some(p => url.includes(p));
+}
+
 /** Map a URL path to a logical entity type used by the sync processor */
 function urlToEntityType(url: string): string {
   if (url.includes('/orders'))       return 'order';
@@ -191,7 +212,7 @@ apiClient.interceptors.response.use(
       const url    = originalRequest?.url ?? '';
 
       // MUTATIONS offline → queue & return synthetic 202 so the UI doesn't crash
-      if (isMutation(method) && !originalRequest?._offlineQueued) {
+      if (isMutation(method) && !originalRequest?._offlineQueued && shouldQueueOffline(url)) {
         try {
           await queueOfflineMutation(originalRequest);
           originalRequest._offlineQueued = true;

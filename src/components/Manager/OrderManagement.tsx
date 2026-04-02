@@ -91,15 +91,26 @@ function VoidItemDialog({ open, onOpenChange, orderId, orderNumber, items, onVoi
     if (mode === 'item' && selectedIndex === null) return;
     setProcessing(true);
     try {
+      let response;
       if (mode === 'receipt') {
-        await api.post(`/orders/${orderId}/void-receipt`, { void_reason: reason });
-        toast.success(`Receipt #${orderNumber} voided`);
+        response = await api.post(`/orders/${orderId}/void-receipt`, { void_reason: reason });
       } else {
-        await api.post(`/orders/${orderId}/void-item`, {
+        response = await api.post(`/orders/${orderId}/void-item`, {
           item_index: selectedIndex,
           void_reason: reason,
-          quantity: voidQty, // 0 = full void, >0 = partial
+          quantity: voidQty,
         });
+      }
+
+      // Reject synthetic offline responses — void must be confirmed by the server
+      if ((response as any)?.data?.offline) {
+        toast.error('Cannot void while offline. Please check your connection and try again.');
+        return;
+      }
+
+      if (mode === 'receipt') {
+        toast.success(`Receipt #${orderNumber} voided`);
+      } else {
         const isPartial = voidQty > 0 && voidQty < maxQty;
         toast.success(isPartial
           ? `Voided ${voidQty}x ${selectedItem?.name}`

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Shield, BarChart3, Users, Settings, FileText, Database } from 'lucide-react';
+import { Shield, BarChart3, Users, Settings, FileText, Database, KeyRound } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SystemOverview } from './SystemOverview';
 import { UserManagement } from './UserManagement';
@@ -11,6 +11,7 @@ import { SystemConfiguration } from './SystemConfiguration';
 import { ContentManagement } from './ContentManagement';
 import { AdvancedReporting } from './AdvancedReporting';
 import { DebugUserRole } from './DebugUserRole';
+import { PermissionManagement } from '@/components/Permissions/PermissionManagement';
 import { reportsService } from '@/lib/api/reports';
 import api from '@/lib/api/client';
 
@@ -171,7 +172,7 @@ export function AdminDashboard() {
 
       {/* Main Admin Interface */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5 h-14">
+        <TabsList className="grid w-full grid-cols-6 h-14">
           <TabsTrigger value="overview" className="h-12 text-base">
             <BarChart3 className="h-4 w-4 mr-2" />
             Overview
@@ -191,6 +192,10 @@ export function AdminDashboard() {
           <TabsTrigger value="reports" className="h-12 text-base">
             <FileText className="h-4 w-4 mr-2" />
             Reports
+          </TabsTrigger>
+          <TabsTrigger value="permissions" className="h-12 text-base">
+            <KeyRound className="h-4 w-4 mr-2" />
+            Permissions
           </TabsTrigger>
         </TabsList>
 
@@ -219,6 +224,12 @@ export function AdminDashboard() {
         <TabsContent value="reports">
           <LazyTab active={activeTab === 'reports'}>
             <AdvancedReporting />
+          </LazyTab>
+        </TabsContent>
+
+        <TabsContent value="permissions">
+          <LazyTab active={activeTab === 'permissions'}>
+            <PermissionManagement />
           </LazyTab>
         </TabsContent>
       </Tabs>

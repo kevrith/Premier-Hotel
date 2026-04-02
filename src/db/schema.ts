@@ -226,7 +226,20 @@ export class PremierHotelDB extends Dexie {
 export const db = new PremierHotelDB();
 
 // Initialize database
-db.open().catch((err) => {
+db.open().then(async () => {
+  // Clean up any stuck void/payment items that should never have been queued.
+  // These cause the "syncing pending actions" banner to loop indefinitely.
+  const BLOCKED_URL_PATTERNS = ['/void', '/payments', '/bulk-cancel', '/reverse'];
+  try {
+    const stuck = await db.pendingSync
+      .filter(item => !!item.data?._url && BLOCKED_URL_PATTERNS.some(p => item.data._url.includes(p)))
+      .toArray();
+    if (stuck.length > 0) {
+      await db.pendingSync.bulkDelete(stuck.map(i => i.id!));
+      console.log(`[DB] Cleaned ${stuck.length} stuck void/payment item(s) from sync queue`);
+    }
+  } catch { /* non-fatal */ }
+}).catch((err) => {
   console.error('Failed to open database:', err);
 });
 
