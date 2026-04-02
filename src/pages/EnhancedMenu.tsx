@@ -47,6 +47,7 @@ export default function EnhancedMenu() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCustomerDialog, setShowCustomerDialog] = useState(false);
+  const [printOrder, setPrintOrder] = useState<any>(null); // full-screen print prompt
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [orderContextData, setOrderContextData] = useState<{
     customerName?: string;
@@ -318,10 +319,11 @@ export default function EnhancedMenu() {
 
       // Different flow for staff vs customers
       if (isStaff) {
-        // Print order slip if setting is enabled (default: on)
+        // Show full-screen print overlay (blocks menu interaction)
         const shouldPrint = localStorage.getItem('pos:print_on_order') !== 'false';
         if (shouldPrint) {
-          printOrderSlipAndBill({ ...createdOrder, waiter_name: user?.full_name });
+          setPrintOrder({ ...createdOrder, waiter_name: user?.full_name });
+          return;
         }
 
         // Auto-logout on desktop if setting is enabled
@@ -362,6 +364,60 @@ export default function EnhancedMenu() {
 
   return (
     <div className="min-h-screen bg-background">
+
+      {/* ===== FULL-SCREEN PRINT OVERLAY ===== */}
+      {printOrder && (
+        <div className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center gap-6 p-6">
+          <div className="bg-background rounded-2xl shadow-2xl w-full max-w-sm p-8 flex flex-col items-center gap-5 text-center">
+            {/* Order badge */}
+            <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
+              <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">Order {printOrder.order_number} Created!</h2>
+              <p className="text-muted-foreground text-sm mt-1">
+                {printOrder.location_type === 'room' ? 'Room' : 'Table'}: {printOrder.location}
+                {printOrder.customer_name ? ` · ${printOrder.customer_name}` : ''}
+              </p>
+            </div>
+            <div className="w-full bg-muted rounded-lg p-3 text-sm text-left space-y-1">
+              {(printOrder.items || []).map((item: any, i: number) => (
+                <div key={i} className="flex justify-between">
+                  <span>{item.quantity}x {item.name}</span>
+                  <span className="text-muted-foreground">KES {((item.price || 0) * (item.quantity || 1)).toLocaleString()}</span>
+                </div>
+              ))}
+              <div className="border-t pt-1 mt-1 flex justify-between font-bold">
+                <span>Total</span>
+                <span>KES {(printOrder.total_amount || 0).toLocaleString()}</span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Prints kitchen slip + customer bill together</p>
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => {
+                  printOrderSlipAndBill(printOrder);
+                }}
+                className="flex-1 bg-primary text-primary-foreground rounded-lg py-3 font-bold text-base flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-95 transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Print
+              </button>
+              <button
+                onClick={() => setPrintOrder(null)}
+                className="flex-1 bg-muted text-foreground rounded-lg py-3 font-bold text-base hover:bg-muted/80 active:scale-95 transition-all"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Navbar />
 
       {/* Hero Section */}
