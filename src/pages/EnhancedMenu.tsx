@@ -321,14 +321,19 @@ export default function EnhancedMenu() {
       if (isStaff) {
         // Show full-screen print overlay (blocks menu interaction)
         const shouldPrint = localStorage.getItem('pos:print_on_order') !== 'false';
+        const autoLogout = localStorage.getItem('pos:auto_logout_desktop') === 'true';
+        const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+
         if (shouldPrint) {
-          setPrintOrder({ ...createdOrder, waiter_name: user?.full_name });
+          setPrintOrder({
+            ...createdOrder,
+            waiter_name: user?.full_name,
+            _autoLogout: autoLogout && !isMobile, // carry flag into overlay
+          });
           return;
         }
 
-        // Auto-logout on desktop if setting is enabled
-        const autoLogout = localStorage.getItem('pos:auto_logout_desktop') === 'true';
-        const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+        // Auto-logout on desktop if setting is enabled (no print)
         if (autoLogout && !isMobile) {
           toast.success(
             `Order ${createdOrder.order_number} created! Logging out...`,
@@ -397,21 +402,32 @@ export default function EnhancedMenu() {
             <p className="text-xs text-muted-foreground">Prints kitchen slip + customer bill together</p>
             <div className="flex gap-3 w-full">
               <button
-                onClick={() => {
+                onClick={async () => {
                   printOrderSlipAndBill(printOrder);
+                  const shouldLogout = printOrder._autoLogout;
+                  if (shouldLogout) {
+                    toast.success('Logging out...', { duration: 2000, icon: '✅' });
+                    setTimeout(async () => {
+                      setPrintOrder(null);
+                      await useAuthStore.getState().logout();
+                      navigate('/login');
+                    }, 2000);
+                  }
                 }}
                 className="flex-1 bg-primary text-primary-foreground rounded-lg py-3 font-bold text-base flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-95 transition-all"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
-                Print
+                Print & {printOrder._autoLogout ? 'Logout' : 'Done'}
               </button>
               <button
-                onClick={() => setPrintOrder(null)}
+                onClick={async () => {
+                  setPrintOrder(null);
+                }}
                 className="flex-1 bg-muted text-foreground rounded-lg py-3 font-bold text-base hover:bg-muted/80 active:scale-95 transition-all"
               >
-                Done
+                Skip Print
               </button>
             </div>
           </div>
