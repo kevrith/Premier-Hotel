@@ -542,6 +542,7 @@ export default function OrderManagement() {
                       </th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Order #</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Customer</th>
+                      <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Items</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Status</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Amount</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Time</th>
@@ -550,9 +551,9 @@ export default function OrderManagement() {
                   </thead>
                   <tbody>
                     {isLoading ? (
-                      <tr><td colSpan={7} className="p-4 sm:p-8 text-center text-sm">Loading...</td></tr>
+                      <tr><td colSpan={8} className="p-4 sm:p-8 text-center text-sm">Loading...</td></tr>
                     ) : filteredOrders.length === 0 ? (
-                      <tr><td colSpan={7} className="p-4 sm:p-8 text-center text-sm">No orders found</td></tr>
+                      <tr><td colSpan={8} className="p-4 sm:p-8 text-center text-sm">No orders found</td></tr>
                     ) : (
                       filteredOrders.map((order: Order) => {
                         return (
@@ -566,6 +567,18 @@ export default function OrderManagement() {
                             <td className="p-2 sm:p-3">
                               <p className="font-medium text-xs sm:text-sm">{order.customer_name}</p>
                               <p className="text-[10px] sm:text-xs text-muted-foreground">{order.customer_phone}</p>
+                            </td>
+                            <td className="p-2 sm:p-3 max-w-[180px]">
+                              {(order.items || []).filter((i: any) => !i.voided).slice(0, 3).map((i: any, idx: number) => (
+                                <p key={idx} className="text-[10px] sm:text-xs text-foreground truncate">
+                                  {i.quantity}x {i.name}
+                                </p>
+                              ))}
+                              {(order.items || []).filter((i: any) => !i.voided).length > 3 && (
+                                <p className="text-[10px] sm:text-xs text-muted-foreground">
+                                  +{(order.items || []).filter((i: any) => !i.voided).length - 3} more
+                                </p>
+                              )}
                             </td>
                             <td className="p-2 sm:p-3">
                               {(() => {
