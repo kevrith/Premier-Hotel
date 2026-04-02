@@ -16,7 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import menuService from '@/lib/api/services/menuService';
 import { ordersApi } from '@/lib/api/orders';
-import { printOrderSlip } from '@/lib/print';
+import { printOrderSlipAndBill } from '@/lib/print';
 import useAuthStore from '@/stores/authStore.secure';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { MenuItem } from '@/types';
@@ -321,7 +321,7 @@ export default function EnhancedMenu() {
         // Print order slip if setting is enabled (default: on)
         const shouldPrint = localStorage.getItem('pos:print_on_order') !== 'false';
         if (shouldPrint) {
-          printOrderSlip({ ...createdOrder, waiter_name: user?.full_name });
+          printOrderSlipAndBill({ ...createdOrder, waiter_name: user?.full_name });
         }
 
         // Auto-logout on desktop if setting is enabled

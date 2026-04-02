@@ -334,6 +334,122 @@ export function printItemSummary(params: ItemSummaryParams) {
 }
 
 /**
+ * Print both kitchen order slip AND customer bill in one action.
+ * Opens a single print window with both documents separated by a page break.
+ * The first copy goes to the kitchen, the second to the customer.
+ */
+export function printOrderSlipAndBill(order: {
+  order_number: string;
+  location: string;
+  location_type?: string;
+  items: Array<{ name: string; quantity: number; price: number; special_instructions?: string; customizations?: Record<string, any> }>;
+  subtotal: number;
+  tax: number;
+  total_amount: number;
+  special_instructions?: string;
+  status?: string;
+  waiter_name?: string;
+  created_at?: string;
+}) {
+  const cfg = getReceiptConfig();
+  const fmt = (n: number) => `KES ${(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const now = new Date().toLocaleString('en-KE', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+
+  // Kitchen slip items (qty + name + instructions)
+  const kitchenRows = (order.items || []).map(item => {
+    const customNote = item.customizations
+      ? Object.entries(item.customizations).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(', ')
+      : '';
+    return `
+      <div class="row">
+        <span class="bold">${item.quantity}x</span>
+        <span style="flex:1;padding:0 6px">${item.name}${customNote ? `<br><span class="small" style="color:#555">${customNote}</span>` : ''}</span>
+      </div>
+      ${item.special_instructions ? `<div class="small" style="padding-left:20px;color:#333">↳ ${item.special_instructions}</div>` : ''}
+    `;
+  }).join('');
+
+  // Bill items (qty + name + price)
+  const billRows = (order.items || []).map(item => {
+    const lineTotal = (item.price || 0) * (item.quantity || 1);
+    return `<div class="row"><span>${item.quantity}x ${item.name}</span><span>${fmt(lineTotal)}</span></div>`;
+  }).join('');
+
+  const customerName = order.special_instructions
+    ? order.special_instructions.split(',')[0].replace('Customer:', '').trim()
+    : '';
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Order ${order.order_number}</title>
+      ${receiptStyles()}
+      <style>
+        .page-break { page-break-after: always; border-top: 2px dashed #000; margin: 16px 0; padding-top: 8px; }
+        .copy-label { text-align:center; font-size:11px; font-weight:bold; letter-spacing:1px; margin-bottom:6px; }
+      </style>
+    </head>
+    <body>
+
+      <!-- ===== COPY 1: KITCHEN SLIP ===== -->
+      <div class="copy-label">*** KITCHEN COPY ***</div>
+      <div class="center">
+        ${buildHeader(cfg)}
+        <div class="bold" style="font-size:14px;margin-top:4px">⊞ ORDER SLIP ⊞</div>
+      </div>
+      <div class="divider-solid"></div>
+      <div class="row"><span class="bold">Order #</span><span>${order.order_number}</span></div>
+      <div class="row"><span class="bold">${order.location_type === 'room' ? 'Room' : 'Table'}</span><span>${order.location}</span></div>
+      <div class="row"><span class="bold">Time</span><span>${now}</span></div>
+      ${order.waiter_name ? `<div class="row"><span class="bold">Waiter</span><span>${order.waiter_name}</span></div>` : ''}
+      ${customerName ? `<div class="row"><span class="bold">Customer</span><span class="small">${customerName}</span></div>` : ''}
+      <div class="divider"></div>
+      <div class="bold mt" style="margin-bottom:4px">ITEMS</div>
+      ${kitchenRows}
+      <div class="divider-solid"></div>
+      <div class="center small mt">*** Kitchen Copy — Not a Receipt ***</div>
+
+      <!-- ===== PAGE BREAK ===== -->
+      <div class="page-break"></div>
+
+      <!-- ===== COPY 2: CUSTOMER BILL ===== -->
+      <div class="copy-label">*** CUSTOMER COPY ***</div>
+      <div class="center">
+        ${buildHeader(cfg)}
+        <div class="bold" style="font-size:14px;margin-top:6px">CUSTOMER BILL</div>
+      </div>
+      <div class="divider-solid"></div>
+      <div class="row"><span class="bold">Bill #</span><span>${order.order_number}</span></div>
+      <div class="row"><span class="bold">${order.location_type === 'room' ? 'Room' : 'Table'}</span><span>${order.location}</span></div>
+      ${customerName ? `<div class="row"><span class="bold">Customer</span><span>${customerName}</span></div>` : ''}
+      ${order.waiter_name ? `<div class="row"><span class="bold">Waiter</span><span>${order.waiter_name}</span></div>` : ''}
+      <div class="row"><span class="bold">Date</span><span class="small">${now}</span></div>
+      <div class="divider"></div>
+      <div class="bold" style="margin-bottom:4px">ITEMS</div>
+      ${billRows}
+      <div class="divider"></div>
+      <div class="row"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>
+      <div class="row"><span>Tax (VAT)</span><span>${fmt(order.tax)}</span></div>
+      <div class="divider-solid"></div>
+      <div class="row total"><span>TOTAL DUE</span><span>${fmt(order.total_amount)}</span></div>
+      <div class="divider"></div>
+      <div class="center mt">
+        <div>${cfg.footer}</div>
+        ${cfg.footer2 ? `<div class="small">${cfg.footer2}</div>` : ''}
+      </div>
+
+    </body>
+    </html>
+  `;
+
+  openPrintWindow(html, `Order ${order.order_number}`);
+}
+
+/**
  * Thermal print for the Employee Sales Report.
  * Prints one section per employee: header, sales summary, item breakdown, payment breakdown.
  */
