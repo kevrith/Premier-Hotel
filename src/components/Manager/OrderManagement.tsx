@@ -27,6 +27,7 @@ interface Order {
   customer_phone: string;
   order_type: string;
   status: string;
+  is_voided?: boolean;
   priority: string;
   total_amount: number;
   items_count: number;
@@ -51,6 +52,7 @@ const statusConfig = {
   delivering: { label: 'Delivering', color: 'bg-purple-500', icon: Truck },
   completed: { label: 'Completed', color: 'bg-gray-500', icon: CheckCircle },
   cancelled: { label: 'Cancelled', color: 'bg-red-500', icon: XCircle },
+  voided: { label: 'Voided', color: 'bg-red-800', icon: XCircle },
 };
 
 const _priorityConfig = {
@@ -553,9 +555,6 @@ export default function OrderManagement() {
                       <tr><td colSpan={7} className="p-4 sm:p-8 text-center text-sm">No orders found</td></tr>
                     ) : (
                       filteredOrders.map((order: Order) => {
-                        const StatusIcon = statusConfig[order.status as keyof typeof statusConfig]?.icon || AlertCircle;
-                        const statusColor = statusConfig[order.status as keyof typeof statusConfig]?.color || 'bg-gray-500';
-                        
                         return (
                           <tr key={order.id} className="border-t hover:bg-muted/50">
                             <td className="p-2 sm:p-3">
@@ -569,10 +568,19 @@ export default function OrderManagement() {
                               <p className="text-[10px] sm:text-xs text-muted-foreground">{order.customer_phone}</p>
                             </td>
                             <td className="p-2 sm:p-3">
-                              <Badge className={`${statusColor} text-white text-xs`}>
-                                <StatusIcon className="h-3 w-3 mr-1" />
-                                {statusConfig[order.status as keyof typeof statusConfig]?.label}
-                              </Badge>
+                              {(() => {
+                                const isVoided = order.is_voided || (order.status === 'cancelled' && order.is_voided);
+                                const displayStatus = isVoided ? 'voided' : order.status;
+                                const cfg = statusConfig[displayStatus as keyof typeof statusConfig];
+                                const StatusIcon = cfg?.icon || AlertCircle;
+                                const statusColor = cfg?.color || 'bg-gray-500';
+                                return (
+                                  <Badge className={`${statusColor} text-white text-xs`}>
+                                    <StatusIcon className="h-3 w-3 mr-1" />
+                                    {cfg?.label || order.status}
+                                  </Badge>
+                                );
+                              })()}
                             </td>
                             <td className="p-2 sm:p-3 text-xs sm:text-sm font-medium">KSh {order.total_amount.toLocaleString()}</td>
                             <td className="p-2 sm:p-3 text-[10px] sm:text-xs text-muted-foreground">
@@ -604,9 +612,11 @@ export default function OrderManagement() {
                                   size="sm"
                                   className="text-orange-600 border-orange-300 hover:bg-orange-50"
                                   onClick={() => setVoidDialogOrder(order)}
+                                  disabled={!!(order.is_voided)}
+                                  title={order.is_voided ? 'Already voided' : 'Void order'}
                                 >
                                   <AlertTriangle className="h-3 w-3 mr-1" />
-                                  Void
+                                  {order.is_voided ? 'Voided' : 'Void'}
                                 </Button>
                               </div>
                             </td>

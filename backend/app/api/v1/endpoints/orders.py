@@ -1825,7 +1825,7 @@ async def void_entire_receipt(
 
     order = order_res.data[0]
 
-    if order.get("status") == "voided":
+    if order.get("status") == "voided" or order.get("is_voided"):
         raise HTTPException(status_code=400, detail="Order is already voided")
 
     # Mark all items as voided
@@ -1842,7 +1842,8 @@ async def void_entire_receipt(
 
     update_data = {
         "items": items,
-        "status": "voided",
+        "status": "cancelled",   # 'voided' violates DB CHECK constraint — use 'cancelled' + is_voided flag
+        "is_voided": True,
         "subtotal": 0,
         "tax": 0,
         "total_amount": 0,
