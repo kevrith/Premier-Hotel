@@ -1812,8 +1812,12 @@ async def void_entire_receipt(
 ):
     """
     Void an entire order/receipt.
-    Marks all items as voided, sets order status to 'voided', and updates bill totals.
-    Requires manager or admin role.
+    Uses the same logic as void-item:
+      - Marks every item as voided (item["voided"] = True)
+      - Sets order totals to 0 and status to 'cancelled' + is_voided=True
+      - Restores stock if order was already served/delivered/completed
+      - Updates bill totals
+      - Logs to void_log
     """
     user_role = current_user.get("role", "")
     if user_role not in ["admin", "manager"]:
@@ -1825,13 +1829,15 @@ async def void_entire_receipt(
 
     order = order_res.data[0]
 
-    if order.get("status") == "voided" or order.get("is_voided"):
+    if order.get("is_voided") or order.get("status") == "voided":
         raise HTTPException(status_code=400, detail="Order is already voided")
 
-    # Mark all items as voided
+    old_status = order.get("status", "")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # ── Mark every non-voided item as voided (same as void-item logic) ──
     items = list(order.get("items") or [])
     voided_amount = 0.0
-    now_iso = datetime.now(timezone.utc).isoformat()
     for item in items:
         if not item.get("voided"):
             voided_amount += float(item.get("price", 0)) * int(item.get("quantity", 0))
@@ -1840,19 +1846,61 @@ async def void_entire_receipt(
             item["voided_by"] = current_user["id"]
             item["voided_at"] = now_iso
 
-    update_data = {
+    # ── Update order: zero totals, cancelled + is_voided flag ──
+    supabase.table("orders").update({
         "items": items,
-        "status": "cancelled",   # 'voided' violates DB CHECK constraint — use 'cancelled' + is_voided flag
+        "status": "cancelled",
         "is_voided": True,
         "subtotal": 0,
         "tax": 0,
         "total_amount": 0,
         "updated_at": now_iso,
         "notes": f"{order.get('notes', '')} | Receipt voided: {req.void_reason}".strip(" |"),
-    }
-    supabase.table("orders").update(update_data).eq("id", order_id).execute()
+    }).eq("id", order_id).execute()
 
-    # Update bill if linked
+    # ── Restore stock if already deducted (served/delivered/completed) ──
+    if old_status in ("served", "delivered", "completed"):
+        try:
+            bar_location_id = order.get("bar_location_id")
+            item_ids = [
+                oi.get("menu_item_id") or oi.get("id")
+                for oi in items
+                if oi.get("menu_item_id") or oi.get("id")
+            ]
+            if item_ids:
+                if bar_location_id:
+                    loc_res = supabase.table("location_stock").select(
+                        "id, menu_item_id, quantity"
+                    ).eq("location_id", bar_location_id).in_("menu_item_id", item_ids).execute()
+                    loc_map = {i["menu_item_id"]: i for i in (loc_res.data or [])}
+                    for oi in items:
+                        mid = oi.get("menu_item_id") or oi.get("id")
+                        if not mid or mid not in loc_map:
+                            continue
+                        current = float(loc_map[mid].get("quantity") or 0)
+                        supabase.table("location_stock").update({
+                            "quantity": current + float(oi.get("quantity", 1))
+                        }).eq("id", loc_map[mid]["id"]).execute()
+                    logging.info(f"[STOCK] ✅ Per-location stock restored for voided receipt {order_id}")
+                else:
+                    tracked_res = supabase.table("menu_items").select(
+                        "id, stock_quantity, track_inventory"
+                    ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+                    tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
+                    for oi in items:
+                        mid = oi.get("menu_item_id") or oi.get("id")
+                        if not mid or mid not in tracked_map:
+                            continue
+                        current = float(tracked_map[mid].get("stock_quantity") or 0)
+                        supabase.table("menu_items").update({
+                            "stock_quantity": current + float(oi.get("quantity", 1)),
+                            "is_available": True,
+                        }).eq("id", mid).execute()
+                    logging.info(f"[STOCK] ✅ Global stock restored for voided receipt {order_id}")
+        except Exception as stock_err:
+            logging.warning(f"[STOCK] ⚠️ Stock restoration failed for voided receipt {order_id}: {stock_err}")
+
+    # ── Update bill if linked ──
     bill_id = order.get("bill_id")
     if bill_id:
         try:
@@ -1871,7 +1919,7 @@ async def void_entire_receipt(
         except Exception as e:
             logging.warning(f"Failed to update bill after receipt void: {e}")
 
-    # Log the void
+    # ── Log the void ──
     try:
         supabase.table("void_log").insert({
             "order_id": order_id,
