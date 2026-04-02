@@ -178,15 +178,9 @@ export default function EnhancedMenu() {
   }, [selectedCategory, searchQuery, sortBy, menuItems]);
 
   const handleAddToCart = (item: MenuItem, quantity: number, customizations: any) => {
-    console.log('handleAddToCart called with:', { item, quantity, customizations });
-
-    // Transform customizations object to array format expected by cart
     const customizationsArray = customizations && typeof customizations === 'object'
       ? Object.entries(customizations).map(([key, value]) => ({
-          id: key,
-          name: key,
-          value: value,
-          priceModifier: 0 // TODO: Calculate from customization options
+          id: key, name: key, value: value, priceModifier: 0
         }))
       : [];
 
@@ -201,9 +195,17 @@ export default function EnhancedMenu() {
       subtotal: (item.price || 0) * quantity
     };
 
-    console.log('Adding to cart:', cartItem);
     addItem(cartItem);
+
+    // Clear search and scroll to top so waiter can search next item immediately
     setSearchQuery('');
+    setSelectedCategory('all');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Focus search bar after scroll
+    setTimeout(() => {
+      const searchInput = document.getElementById('menu-search');
+      if (searchInput) searchInput.focus();
+    }, 400);
 
     toast.success(`${item.name} added to cart!`);
   };
@@ -412,22 +414,16 @@ export default function EnhancedMenu() {
                       await useAuthStore.getState().logout();
                       navigate('/login');
                     }, 2000);
+                  } else {
+                    setPrintOrder(null);
                   }
                 }}
-                className="flex-1 bg-primary text-primary-foreground rounded-lg py-3 font-bold text-base flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-95 transition-all"
+                className="w-full bg-primary text-primary-foreground rounded-lg py-3 font-bold text-base flex items-center justify-center gap-2 hover:bg-primary/90 active:scale-95 transition-all"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                 </svg>
                 Print & {printOrder._autoLogout ? 'Logout' : 'Done'}
-              </button>
-              <button
-                onClick={async () => {
-                  setPrintOrder(null);
-                }}
-                className="flex-1 bg-muted text-foreground rounded-lg py-3 font-bold text-base hover:bg-muted/80 active:scale-95 transition-all"
-              >
-                Skip Print
               </button>
             </div>
           </div>
@@ -457,11 +453,13 @@ export default function EnhancedMenu() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
+                    id="menu-search"
                     type="search"
                     placeholder="Search menu items..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 text-base"
+                    autoFocus={isStaff}
                   />
                 </div>
 

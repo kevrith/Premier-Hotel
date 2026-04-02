@@ -261,6 +261,7 @@ export default function OrderManagement() {
   const [dateFilter, setDateFilter] = useState('today');
   const [customStart, setCustomStart] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [customEnd, setCustomEnd] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [employeeFilter, setEmployeeFilter] = useState('all');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [showBulkActions, setShowBulkActions] = useState(false);
@@ -366,12 +367,24 @@ export default function OrderManagement() {
     });
   };
 
+  const { data: staffList } = useQuery({
+    queryKey: ['staff-list'],
+    queryFn: async () => {
+      const res = await api.get('/admin/users?role=waiter&role=chef&role=manager&limit=100');
+      const raw = res.data as any;
+      return ((raw?.data ?? raw) || []) as Array<{id: string; full_name: string; role: string}>;
+    },
+  });
+
   const filteredOrders = orders.filter((order: Order) => {
     const matchesSearch =
       order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_phone.includes(searchTerm);
-    return matchesSearch;
+    const matchesEmployee = employeeFilter === 'all' ||
+      order.assigned_waiter_id === employeeFilter ||
+      order.created_by_staff_id === employeeFilter;
+    return matchesSearch && matchesEmployee;
   });
 
   const toggleOrderSelection = (orderId: string) => {
@@ -468,6 +481,18 @@ export default function OrderManagement() {
                   <SelectItem value="week">This Week</SelectItem>
                   <SelectItem value="month">This Month</SelectItem>
                   <SelectItem value="custom">Custom Range</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
+                <SelectTrigger><SelectValue placeholder="Employee" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Staff</SelectItem>
+                  {(staffList || []).map((s: any) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.full_name} ({s.role})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {dateFilter === 'custom' && (

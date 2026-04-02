@@ -19,6 +19,8 @@ function getReceiptConfig() {
     tax_reg:     localStorage.getItem('receipt:tax_reg')     || '',
     footer:      localStorage.getItem('receipt:footer')      || 'Thank you for dining with us!',
     footer2:     localStorage.getItem('receipt:footer2')     || 'Please settle at the counter',
+    paybill_no:  localStorage.getItem('receipt:paybill_no')  || '',
+    account_no:  localStorage.getItem('receipt:account_no')  || '',
   };
 }
 
@@ -228,6 +230,12 @@ export function printBill(order: {
       <div class="center mt">
         <div>${cfg.footer}</div>
         ${cfg.footer2 ? `<div class="small">${cfg.footer2}</div>` : ''}
+        ${cfg.paybill_no ? `
+        <div class="divider"></div>
+        <div class="bold small" style="margin-bottom:3px">PAY VIA M-PESA</div>
+        <div class="row"><span>Paybill No:</span><span class="bold">${cfg.paybill_no}</span></div>
+        ${cfg.account_no ? `<div class="row"><span>Account No:</span><span class="bold">${cfg.account_no}</span></div>` : ''}
+        ` : ''}
       </div>
     </body>
     </html>
@@ -264,17 +272,19 @@ export function buildItemSummaryHtml(params: ItemSummaryParams): string {
     day: '2-digit', month: '2-digit', year: '2-digit',
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const startDay = DAYS[new Date(params.startDate).getDay()];
   const dateLabel = params.startDate === params.endDate
-    ? params.startDate
+    ? `${startDay}, ${params.startDate}`
     : `${params.startDate} to ${params.endDate}`;
 
-  // Column widths for 42-char line: Dept(5) Qty(4) Price(9) Name(rest)
+  // Column widths — wider spacing between Qty and Ext Price
   const COL = `
     <div class="row" style="font-size:10px;border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:2px">
       <span style="width:36px;flex-shrink:0">Dept</span>
-      <span style="width:28px;flex-shrink:0;text-align:right">Qty</span>
-      <span style="width:64px;flex-shrink:0;text-align:right">Ext Price</span>
-      <span style="flex:1;padding-left:6px">Item Name</span>
+      <span style="width:36px;flex-shrink:0;text-align:right">Qty</span>
+      <span style="width:72px;flex-shrink:0;text-align:right">Ext Price</span>
+      <span style="flex:1;padding-left:8px">Item Name</span>
     </div>`;
 
   const rows = params.categories.map(cat => {
@@ -282,18 +292,18 @@ export function buildItemSummaryHtml(params: ItemSummaryParams): string {
     const itemRows = cat.items.map(item => `
       <div class="row" style="font-size:11px">
         <span style="width:36px;flex-shrink:0;font-size:10px">${abbr}</span>
-        <span style="width:28px;flex-shrink:0;text-align:right">${item.qty}</span>
-        <span style="width:64px;flex-shrink:0;text-align:right">${fmtAmt(item.revenue)}</span>
-        <span style="flex:1;padding-left:6px">${item.name}</span>
+        <span style="width:36px;flex-shrink:0;text-align:right">${item.qty}</span>
+        <span style="width:72px;flex-shrink:0;text-align:right">${fmtAmt(item.revenue)}</span>
+        <span style="flex:1;padding-left:8px">${item.name}</span>
       </div>`).join('');
 
     return `
       ${itemRows}
       <div class="row bold" style="font-size:11px;border-top:1px solid #555;margin-top:1px">
         <span style="width:36px;flex-shrink:0;font-size:10px">${abbr}</span>
-        <span style="width:28px;flex-shrink:0;text-align:right">${cat.total_qty}</span>
-        <span style="width:64px;flex-shrink:0;text-align:right">${fmtAmt(cat.total_revenue)}</span>
-        <span style="flex:1;padding-left:6px"></span>
+        <span style="width:36px;flex-shrink:0;text-align:right">${cat.total_qty}</span>
+        <span style="width:72px;flex-shrink:0;text-align:right">${fmtAmt(cat.total_revenue)}</span>
+        <span style="flex:1;padding-left:8px"></span>
       </div>
       <div class="divider"></div>`;
   }).join('');
@@ -317,9 +327,9 @@ export function buildItemSummaryHtml(params: ItemSummaryParams): string {
       ${rows}
       <div class="row bold" style="font-size:12px;border-top:2px solid #000;padding-top:3px">
         <span style="width:36px;flex-shrink:0"></span>
-        <span style="width:28px;flex-shrink:0;text-align:right">${params.grand_total_qty}</span>
-        <span style="width:64px;flex-shrink:0;text-align:right">${fmtAmt(params.grand_total_revenue)}</span>
-        <span style="flex:1;padding-left:6px"></span>
+        <span style="width:36px;flex-shrink:0;text-align:right">${params.grand_total_qty}</span>
+        <span style="width:72px;flex-shrink:0;text-align:right">${fmtAmt(params.grand_total_revenue)}</span>
+        <span style="flex:1;padding-left:8px"></span>
       </div>
       <div class="center small mt">Total Items: ${params.grand_total_qty}</div>
     </body>
@@ -440,6 +450,12 @@ export function printOrderSlipAndBill(order: {
       <div class="center mt">
         <div>${cfg.footer}</div>
         ${cfg.footer2 ? `<div class="small">${cfg.footer2}</div>` : ''}
+        ${cfg.paybill_no ? `
+        <div class="divider"></div>
+        <div class="bold small" style="margin-bottom:3px">PAY VIA M-PESA</div>
+        <div class="row"><span>Paybill No:</span><span class="bold">${cfg.paybill_no}</span></div>
+        ${cfg.account_no ? `<div class="row"><span>Account No:</span><span class="bold">${cfg.account_no}</span></div>` : ''}
+        ` : ''}
       </div>
 
     </body>
@@ -507,17 +523,17 @@ export function buildEmployeeSalesHtml(params: EmployeeSalesParams): string {
       const deptItems = dept.items.map((item: any) => `
         <div class="row" style="font-size:11px">
           <span style="width:36px;flex-shrink:0;font-size:10px">${abbr}</span>
-          <span style="width:28px;flex-shrink:0;text-align:right">${item.qty}</span>
-          <span style="min-width:70px;flex-shrink:0;text-align:right">${fmt(item.revenue)}</span>
-          <span style="flex:1;padding-left:6px;font-size:10px">${item.name}</span>
+          <span style="width:36px;flex-shrink:0;text-align:right">${item.qty}</span>
+          <span style="min-width:76px;flex-shrink:0;text-align:right">${fmt(item.revenue)}</span>
+          <span style="flex:1;padding-left:8px;font-size:10px">${item.name}</span>
         </div>`).join('');
       return `
         ${deptItems}
         <div class="row bold" style="font-size:11px;border-top:1px solid #555;margin-top:1px">
           <span style="width:36px;flex-shrink:0;font-size:10px">${abbr}</span>
-          <span style="width:28px;flex-shrink:0;text-align:right">${dept.total_qty}</span>
-          <span style="min-width:70px;flex-shrink:0;text-align:right">${fmt(dept.total_revenue)}</span>
-          <span style="flex:1;padding-left:6px;font-size:10px">subtotal</span>
+          <span style="width:36px;flex-shrink:0;text-align:right">${dept.total_qty}</span>
+          <span style="min-width:76px;flex-shrink:0;text-align:right">${fmt(dept.total_revenue)}</span>
+          <span style="flex:1;padding-left:8px;font-size:10px">subtotal</span>
         </div>
         <div class="divider"></div>`;
     }).join('');
@@ -536,8 +552,8 @@ export function buildEmployeeSalesHtml(params: EmployeeSalesParams): string {
       <div class="bold small" style="margin-bottom:3px">ITEMS SOLD</div>
       <div class="row small" style="border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:2px;font-size:10px">
         <span style="width:36px;flex-shrink:0">Dept</span>
-        <span style="width:28px;flex-shrink:0;text-align:right">Qty</span>
-        <span style="min-width:70px;flex-shrink:0;text-align:right">Revenue</span>
+        <span style="width:36px;flex-shrink:0;text-align:right">Qty</span>
+        <span style="min-width:76px;flex-shrink:0;text-align:right">Revenue</span>
         <span style="flex:1;padding-left:6px">Item</span>
       </div>
       ${itemRows}` : ''}
