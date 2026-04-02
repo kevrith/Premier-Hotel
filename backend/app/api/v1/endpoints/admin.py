@@ -136,6 +136,7 @@ async def create_user(
 @router.get("/users")
 async def list_users(
     role: Optional[str] = None,
+    roles: Optional[str] = None,  # comma-separated e.g. waiter,chef,manager
     user_status: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
@@ -149,8 +150,17 @@ async def list_users(
     try:
         query = supabase.table("users").select("*")
 
-        if role:
-            query = query.eq("role", role)
+        # Support single role or comma-separated roles list
+        role_list = []
+        if roles:
+            role_list = [r.strip() for r in roles.split(',') if r.strip()]
+        elif role:
+            role_list = [role]
+
+        if len(role_list) == 1:
+            query = query.eq("role", role_list[0])
+        elif len(role_list) > 1:
+            query = query.in_("role", role_list)
 
         if user_status:
             query = query.eq("status", user_status)

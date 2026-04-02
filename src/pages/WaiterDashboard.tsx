@@ -68,49 +68,84 @@ import { paymentService } from '@/lib/api/payments';
 function WaiterReportPanel({ userId, userName, canPrintOnly }: { userId?: string; userName?: string; canPrintOnly?: boolean }) {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [selectedEmpId, setSelectedEmpId] = useState<string>('all');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Load staff list on mount
+  useEffect(() => {
+    import('@/lib/api/client').then(({ default: apiClient }) => {
+      apiClient.get('/admin/users?roles=waiter,chef,manager&limit=100').then(res => {
+        const raw = res.data as any;
+        setEmployees((raw?.data ?? raw) || []);
+      }).catch(() => {});
+    });
+  }, []);
+
   const load = async () => {
-    if (!userId) return;
     setLoading(true);
     try {
-      const res = await (await import('@/lib/api/client')).default.get(`/reports/employee/${userId}/details`, {
-        params: { start_date: startDate, end_date: endDate }
-      });
-      setData(res.data);
+      const apiClient = (await import('@/lib/api/client')).default;
+      if (selectedEmpId === 'all') {
+        // Fetch item summary for all employees
+        const res = await apiClient.get('/reports/item-summary', {
+          params: { start_date: startDate, end_date: endDate }
+        });
+        setData({ items_by_category: res.data?.categories || [], all_employees: true, ...res.data });
+      } else {
+        // Fetch specific employee details
+        const res = await apiClient.get(`/reports/employee/${selectedEmpId}/details`, {
+          params: { start_date: startDate, end_date: endDate }
+        });
+        setData({ ...res.data, all_employees: false });
+      }
     } catch { toast.error('Failed to load report'); }
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [startDate, endDate]);
+  useEffect(() => { load(); }, [startDate, endDate, selectedEmpId]);
 
   const handlePrint = () => {
-    if (!data?.items_by_category?.length) return;
+    const cats = data?.items_by_category || data?.categories || [];
+    if (!cats.length) return;
+    const empName = selectedEmpId === 'all'
+      ? 'All Staff'
+      : employees.find(e => e.id === selectedEmpId)?.full_name || userName;
     const html = buildItemSummaryHtml({
-      categories: data.items_by_category,
-      grand_total_qty: data.items_by_category.reduce((s: number, c: any) => s + c.total_qty, 0),
-      grand_total_revenue: data.items_by_category.reduce((s: number, c: any) => s + c.total_revenue, 0),
+      categories: cats,
+      grand_total_qty: cats.reduce((s: number, c: any) => s + c.total_qty, 0),
+      grand_total_revenue: cats.reduce((s: number, c: any) => s + c.total_revenue, 0),
       startDate,
       endDate,
-      employeeName: userName,
+      employeeName: empName,
     });
     setPreviewHtml(html);
     setPreviewOpen(true);
   };
+
+  const cats = data?.items_by_category || data?.categories || [];
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="text-base">My Sales Report</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">{userName}</p>
-            </div>
+            <CardTitle className="text-base">Items Sold Report</CardTitle>
             <div className="flex gap-2 items-end flex-wrap">
+              {/* Employee selector */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Employee</p>
+                <select value={selectedEmpId} onChange={e => setSelectedEmpId(e.target.value)}
+                  className="border rounded px-2 py-1 text-sm bg-background">
+                  <option value="all">All Staff</option>
+                  {employees.map((e: any) => (
+                    <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">From</p>
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
@@ -124,7 +159,7 @@ function WaiterReportPanel({ userId, userName, canPrintOnly }: { userId?: string
               <Button size="sm" variant="outline" onClick={load} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />Refresh
               </Button>
-              <Button size="sm" onClick={handlePrint} disabled={!data?.items_by_category?.length}>
+              <Button size="sm" onClick={handlePrint} disabled={!cats.length}>
                 <Printer className="h-3.5 w-3.5 mr-1" />Print Items Sold
               </Button>
             </div>
@@ -137,8 +172,8 @@ function WaiterReportPanel({ userId, userName, canPrintOnly }: { userId?: string
             <div className="text-center py-8 text-muted-foreground">No data</div>
           ) : (
             <div className="space-y-4">
-              {/* Summary stats */}
-              {!canPrintOnly && (
+              {/* Summary stats for specific employee */}
+              {!canPrintOnly && !data.all_employees && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     { label: 'Total Sales', value: `KES ${(data.total_sales || 0).toLocaleString()}` },
@@ -155,8 +190,8 @@ function WaiterReportPanel({ userId, userName, canPrintOnly }: { userId?: string
                   ))}
                 </div>
               )}
-              {/* Items by category */}
-              {data.items_by_category?.length > 0 ? (
+              {/* Items table */}
+              {cats.length > 0 ? (
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
@@ -167,12 +202,12 @@ function WaiterReportPanel({ userId, userName, canPrintOnly }: { userId?: string
                       </tr>
                     </thead>
                     <tbody>
-                      {data.items_by_category.map((cat: any) =>
-                        cat.items.map((item: any, i: number) => (
+                      {cats.map((cat: any) =>
+                        (cat.items || []).map((item: any, i: number) => (
                           <tr key={i} className="border-t">
                             <td className="px-3 py-1.5">{item.name}</td>
                             <td className="px-3 py-1.5 text-right">{item.qty}</td>
-                            <td className="px-3 py-1.5 text-right">KES {item.revenue.toLocaleString()}</td>
+                            <td className="px-3 py-1.5 text-right">KES {(item.revenue || 0).toLocaleString()}</td>
                           </tr>
                         ))
                       )}
@@ -702,7 +737,7 @@ export default function WaiterDashboard() {
                 variant="outline"
                 size="sm"
                 className="flex-1"
-                onClick={() => printBill({ ...order, waiter_name: user?.full_name })}
+                onClick={() => printBill({ ...order, waiter_name: user?.full_name, created_at: order.created_at })}
               >
                 <Printer className="h-3 w-3 mr-2" />
                 Print Bill

@@ -99,7 +99,8 @@ export function printOrderSlip(order: {
 }) {
   const cfg = getReceiptConfig();
 
-  const now = new Date().toLocaleString('en-KE', {
+  const dateToUse = order.created_at ? new Date(order.created_at) : new Date();
+  const now = dateToUse.toLocaleString('en-KE', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
@@ -172,10 +173,12 @@ export function printBill(order: {
   special_instructions?: string;
   status?: string;
   waiter_name?: string;
+  created_at?: string;
 }) {
   const cfg = getReceiptConfig();
 
-  const now = new Date().toLocaleString('en-KE', {
+  const dateToUse = order.created_at ? new Date(order.created_at) : new Date();
+  const now = dateToUse.toLocaleString('en-KE', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: true,
   });
@@ -363,7 +366,8 @@ export function printOrderSlipAndBill(order: {
 }) {
   const cfg = getReceiptConfig();
   const fmt = (n: number) => `KES ${(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const now = new Date().toLocaleString('en-KE', {
+  const dateToUse = order.created_at ? new Date(order.created_at) : new Date();
+  const now = dateToUse.toLocaleString('en-KE', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: true,
   });

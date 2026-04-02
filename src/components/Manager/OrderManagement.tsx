@@ -370,7 +370,7 @@ export default function OrderManagement() {
   const { data: staffList } = useQuery({
     queryKey: ['staff-list'],
     queryFn: async () => {
-      const res = await api.get('/admin/users?role=waiter&role=chef&role=manager&limit=100');
+      const res = await api.get('/admin/users?roles=waiter,chef,manager&limit=100');
       const raw = res.data as any;
       return ((raw?.data ?? raw) || []) as Array<{id: string; full_name: string; role: string}>;
     },
