@@ -30,16 +30,29 @@ async def get_manager_dashboard_summary(
     today_end = f"{today}T23:59:59"
 
     # ── Define all queries as callables ──────────────────────────────────
+    VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
+
+    def _line_revenue(orders: list) -> float:
+        """price × qty from line items, excluding voided items and cancelled orders."""
+        total = 0.0
+        for o in orders:
+            if o.get("status") in VOID_STATUSES:
+                continue
+            for i in (o.get("items") or []):
+                if isinstance(i, dict) and not i.get("voided"):
+                    total += float(i.get("price", 0)) * int(i.get("quantity", 0))
+        return total
+
     def q_orders_today():
-        return supabase.table("orders").select("total_amount, status, payment_status") \
+        return supabase.table("orders").select("items, status, payment_status") \
             .gte("created_at", today_start).lte("created_at", today_end).execute()
 
     def q_orders_week():
-        return supabase.table("orders").select("total_amount") \
+        return supabase.table("orders").select("items, status") \
             .gte("created_at", f"{week_ago}T00:00:00").lte("created_at", today_end).execute()
 
     def q_orders_month():
-        return supabase.table("orders").select("total_amount") \
+        return supabase.table("orders").select("items, status") \
             .gte("created_at", f"{month_ago}T00:00:00").lte("created_at", today_end).execute()
 
     def q_room_revenue():
@@ -108,7 +121,7 @@ async def get_manager_dashboard_summary(
     try:
         orders_today = (r_orders_today.data or []) if not isinstance(r_orders_today, Exception) else []
         result["orders"]["today_count"] = len(orders_today)
-        result["orders"]["today_revenue"] = sum(float(o.get("total_amount", 0)) for o in orders_today if o.get("payment_status") != "cancelled")
+        result["orders"]["today_revenue"] = _line_revenue(orders_today)
         result["orders"]["pending"] = sum(1 for o in orders_today if o.get("status") in ["pending", "confirmed"])
         result["orders"]["in_progress"] = sum(1 for o in orders_today if o.get("status") in ["preparing", "in_progress"])
         result["orders"]["completed_today"] = sum(1 for o in orders_today if o.get("status") in ["served", "completed"])
@@ -118,9 +131,9 @@ async def get_manager_dashboard_summary(
 
     try:
         if not isinstance(r_orders_week, Exception):
-            result["revenue"]["week"] = sum(float(o.get("total_amount", 0)) for o in (r_orders_week.data or []))
+            result["revenue"]["week"] = _line_revenue(r_orders_week.data or [])
         if not isinstance(r_orders_month, Exception):
-            result["revenue"]["month"] = sum(float(o.get("total_amount", 0)) for o in (r_orders_month.data or []))
+            result["revenue"]["month"] = _line_revenue(r_orders_month.data or [])
     except Exception as e:
         logging.warning(f"Revenue stats error: {e}")
 

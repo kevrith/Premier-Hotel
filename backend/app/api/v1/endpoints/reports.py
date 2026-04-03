@@ -53,18 +53,20 @@ async def get_reports_overview(
 
         def _orders():
             return supabase.table("orders").select(
-                "status, total_amount, customer_id, payment_status"
+                "status, items, total_amount, customer_id, payment_status"
             ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
 
         bookings_res, orders_res = await _par(_bookings, _orders)
         bookings_data = bookings_res.data or []
         orders_data   = orders_res.data or []
 
+        VOID_STATUSES_RPT = {"voided", "void", "cancelled", "canceled", "void_requested"}
         booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings_data)
         order_revenue   = sum(
-            float(o.get("total_amount") or 0) for o in orders_data
-            if o.get("payment_status") in ["paid", "completed"]
-            or o.get("status") in ["completed", "delivered", "served"]
+            sum(float(i.get("price", 0)) * int(i.get("quantity", 0))
+                for i in (o.get("items") or []) if isinstance(i, dict) and not i.get("voided"))
+            for o in orders_data
+            if o.get("status") not in VOID_STATUSES_RPT
         )
         total_revenue = booking_revenue + order_revenue
 

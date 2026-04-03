@@ -87,10 +87,11 @@ def _stats_for_branch(supabase: Client, branch_id: Optional[str], start: str, en
     staff = staff_q.execute().data or []
     active_staff = sum(1 for s in staff if s.get("status") == "active")
 
-    # Orders — all non-voided (matches item-summary exclusion list)
+    # Orders — served/completed only, non-voided (matches item-summary exclusion list)
+    COMPLETED_STATUSES = ["served", "completed", "delivered", "paid"]
     orders_q = supabase.table("orders").select("id, items, status, created_at, customer_id") \
         .gte("created_at", start).lte("created_at", end) \
-        .not_.in_("status", list(_VOID_STATUSES))
+        .in_("status", COMPLETED_STATUSES)
     if branch_id:
         orders_q = orders_q.eq("branch_id", branch_id)
     completed = orders_q.execute().data or []
