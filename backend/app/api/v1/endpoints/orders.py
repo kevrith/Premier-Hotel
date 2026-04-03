@@ -963,22 +963,41 @@ async def update_order_status(
                             logging.info(f"[STOCK] ✅ Per-location stock deducted for order {order_id} at location {bar_location_id}")
                         else:
                             # Fallback: global menu_items.stock_quantity deduction
+                            # Fetch ALL items by ID — don't filter by track_inventory here
                             tracked_res = supabase_admin.table("menu_items").select(
-                                "id, stock_quantity, track_inventory, reorder_level"
-                            ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+                                "id, name, stock_quantity, track_inventory, reorder_level"
+                            ).in_("id", item_ids).execute()
                             tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
 
+                            now_iso = datetime.now(timezone.utc).isoformat()
                             for oi in order_items:
                                 mid = oi.get("menu_item_id") or oi.get("id")
                                 if not mid or mid not in tracked_map:
                                     continue
+                                item_data = tracked_map[mid]
+                                current = float(item_data.get("stock_quantity") or 0)
+                                # Skip items with no stock AND tracking disabled
+                                if current <= 0 and not item_data.get("track_inventory"):
+                                    continue
                                 qty_sold = float(oi.get("quantity", 1))
-                                current = float(tracked_map[mid].get("stock_quantity") or 0)
                                 new_qty = max(0, current - qty_sold)
                                 supabase_admin.table("menu_items").update({
                                     "stock_quantity": new_qty,
                                     "is_available": new_qty > 0,
                                 }).eq("id", mid).execute()
+                                # Log sale to stock_adjustments for history
+                                try:
+                                    supabase_admin.table("stock_adjustments").insert({
+                                        "menu_item_id": mid,
+                                        "item_name": item_data.get("name", oi.get("name", "")),
+                                        "adjustment_type": "sale",
+                                        "quantity_before": current,
+                                        "quantity_after": new_qty,
+                                        "reason": f"Order {order.get('order_number', order_id)} served",
+                                        "adjusted_by": current_user["id"],
+                                    }).execute()
+                                except Exception:
+                                    pass
                             logging.info(f"[STOCK] ✅ Global stock deducted for order {order_id}")
             except Exception as stock_err:
                 logging.warning(f"[STOCK] ⚠️ Stock deduction failed for order {order_id}: {stock_err}")
@@ -1074,20 +1093,36 @@ async def update_order_status(
                                 logging.info(f"[STOCK] ✅ Per-location stock deducted on completed for order {order_id}")
                             else:
                                 tracked_res = supabase_admin.table("menu_items").select(
-                                    "id, stock_quantity, track_inventory"
-                                ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+                                    "id, name, stock_quantity, track_inventory"
+                                ).in_("id", item_ids).execute()
                                 tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
+                                now_iso = datetime.now(timezone.utc).isoformat()
                                 for oi in order_items:
                                     mid = oi.get("menu_item_id") or oi.get("id")
                                     if not mid or mid not in tracked_map:
                                         continue
+                                    item_data = tracked_map[mid]
+                                    current = float(item_data.get("stock_quantity") or 0)
+                                    if current <= 0 and not item_data.get("track_inventory"):
+                                        continue
                                     qty_sold = float(oi.get("quantity", 1))
-                                    current = float(tracked_map[mid].get("stock_quantity") or 0)
                                     new_qty = max(0, current - qty_sold)
                                     supabase_admin.table("menu_items").update({
                                         "stock_quantity": new_qty,
                                         "is_available": new_qty > 0,
                                     }).eq("id", mid).execute()
+                                    try:
+                                        supabase_admin.table("stock_adjustments").insert({
+                                            "menu_item_id": mid,
+                                            "item_name": item_data.get("name", oi.get("name", "")),
+                                            "adjustment_type": "sale",
+                                            "quantity_before": current,
+                                            "quantity_after": new_qty,
+                                            "reason": f"Order {order.get('order_number', order_id)} completed",
+                                            "adjusted_by": current_user["id"],
+                                        }).execute()
+                                    except Exception:
+                                        pass
                                 logging.info(f"[STOCK] ✅ Global stock deducted on completed for order {order_id}")
                 except Exception as stock_err:
                     logging.warning(f"[STOCK] ⚠️ Stock deduction on completed failed for order {order_id}: {stock_err}")

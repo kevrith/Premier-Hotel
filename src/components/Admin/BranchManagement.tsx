@@ -21,6 +21,7 @@ interface Branch {
   status: string;
   opened_at?: string;
   notes?: string;
+  payment_instructions?: string;
   manager?: { id: string; full_name: string; email: string } | null;
 }
 
@@ -36,7 +37,7 @@ const StatusBadge = ({ status }: { status: string }) => {
   return <Badge variant="outline" className={`text-xs ${cfg.className}`}>{cfg.label}</Badge>;
 };
 
-const EMPTY_FORM = { name: '', location: '', address: '', phone: '', email: '', notes: '', opened_at: '', status: 'active' };
+const EMPTY_FORM = { name: '', location: '', address: '', phone: '', email: '', notes: '', opened_at: '', status: 'active', payment_instructions: '' };
 
 export function BranchManagement() {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -71,6 +72,7 @@ export function BranchManagement() {
       notes: b.notes ?? '',
       opened_at: b.opened_at ? b.opened_at.split('T')[0] : '',
       status: b.status ?? 'active',
+      payment_instructions: b.payment_instructions ?? '',
     });
   };
 
@@ -88,6 +90,7 @@ export function BranchManagement() {
         notes: form.notes || undefined,
         opened_at: form.opened_at || undefined,
         status: form.status,
+        payment_instructions: form.payment_instructions || undefined,
       };
       await api.patch(`/owner/branches/${editBranch.id}`, payload);
       toast.success('Branch updated');
@@ -211,6 +214,12 @@ export function BranchManagement() {
                     <span className="text-xs">{b.manager.full_name}</span>
                   </div>
                 )}
+                {b.payment_instructions && (
+                  <div className="pt-1 border-t border-dashed mt-1">
+                    <span className="text-xs font-medium text-foreground">Payment: </span>
+                    <span className="text-xs text-muted-foreground">{b.payment_instructions.split('\n')[0]}{b.payment_instructions.includes('\n') ? '…' : ''}</span>
+                  </div>
+                )}
                 {!b.location && !b.phone && !b.email && !b.manager && (
                   <p className="text-xs italic">No contact details on file</p>
                 )}
@@ -266,6 +275,16 @@ export function BranchManagement() {
             <div className="space-y-1.5">
               <Label>Opened On</Label>
               <Input type="date" value={form.opened_at} onChange={e => setForm(f => ({ ...f, opened_at: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Payment Instructions (printed on bills)</Label>
+              <Textarea
+                value={form.payment_instructions}
+                onChange={e => setForm(f => ({ ...f, payment_instructions: e.target.value }))}
+                placeholder={`e.g.\nPaybill: 522522, Account: NkubuBranch\n— or —\nTill No: 123456\n— or —\nBank: Equity, Acc: 1234567890`}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">Type exactly what you want on the bill. Overrides the global setting for this branch.</p>
             </div>
             <div className="space-y-1.5">
               <Label>Notes</Label>

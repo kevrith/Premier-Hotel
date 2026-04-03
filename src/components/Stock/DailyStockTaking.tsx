@@ -125,6 +125,36 @@ interface HistorySession {
 
 type FilterType = 'all' | 'kitchen' | 'bar' | 'low_stock';
 
+interface RollupLocationData {
+  location_name: string;
+  opening_stock: number;
+  purchases: number;
+  system_sales: number;
+  physical_closing: number | null;
+  lost: number;
+}
+
+interface RollupItem {
+  menu_item_id: string;
+  item_name: string;
+  category: string;
+  unit: string;
+  cost_price: number;
+  reorder_level: number;
+  locations: Record<string, RollupLocationData>;
+  combined_physical: number | null;
+  combined_opening: number;
+  combined_purchases: number;
+  combined_sales: number;
+}
+
+interface RollupResponse {
+  date: string;
+  locations: Location[];
+  items: RollupItem[];
+  summary: { total_items: number; locations_count: number; total_combined_physical: number };
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function todayISO(): string {
@@ -156,13 +186,16 @@ function statusBadge(status: StockSheetItem['stock_status']) {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessionType?: 'all' | 'kitchen' | 'bar' }) {
+export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessionType?: 'all' | 'kitchen' | 'bar' | 'combined' }) {
   const { role } = useAuth();
   const canConfigure = role === 'admin' || role === 'manager';
   const isManager = role === 'admin' || role === 'manager';
 
   const [selectedDate, setSelectedDate] = useState<string>(todayISO());
-  const [sessionType, setSessionType] = useState<'all' | 'kitchen' | 'bar'>(defaultSessionType);
+  const [sessionType, setSessionType] = useState<'all' | 'kitchen' | 'bar' | 'combined'>(defaultSessionType === 'combined' ? 'all' : defaultSessionType);
+  const [viewMode, setViewMode] = useState<'single' | 'combined'>(defaultSessionType === 'combined' ? 'combined' : 'single');
+  const [rollupData, setRollupData] = useState<RollupResponse | null>(null);
+  const [rollupLoading, setRollupLoading] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
 
   // ── Location state ──────────────────────────────────────────────────────
@@ -181,6 +214,22 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
   const [reasonCodes, setReasonCodes] = useState<Record<string, string>>({});
   const [sessionNotes, setSessionNotes] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
+
+  const fetchRollup = useCallback(async () => {
+    setRollupLoading(true);
+    try {
+      const res = await apiClient.get<RollupResponse>(`/daily-stock/rollup?stock_date=${selectedDate}`);
+      setRollupData(res.data as any);
+    } catch {
+      toast.error('Failed to load combined bar view');
+    } finally {
+      setRollupLoading(false);
+    }
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (viewMode === 'combined') fetchRollup();
+  }, [viewMode, fetchRollup]);
 
   const [reloadTick, setReloadTick] = useState(0);
   const [alertsOpen, setAlertsOpen] = useState(true);
@@ -562,24 +611,41 @@ ${mode === 'variance' ? `<div class="summary">
             className="border rounded-md px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
           />
 
-          {/* Session type */}
+          {/* View mode toggle */}
           <div className="flex rounded-md overflow-hidden border text-sm">
-            {(['all', 'kitchen', 'bar'] as const).map((t) => (
+            {(['single', 'combined'] as const).map((m) => (
               <button
-                key={t}
-                onClick={() => setSessionType(t)}
+                key={m}
+                onClick={() => setViewMode(m)}
                 className={`px-3 py-1.5 capitalize transition-colors ${
-                  sessionType === t
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-background hover:bg-muted'
+                  viewMode === m ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'
                 }`}
               >
-                {t}
+                {m === 'combined' ? 'Combined Bars' : 'Single'}
               </button>
             ))}
           </div>
 
-          <Button variant="outline" size="sm" onClick={fetchSheet} disabled={loading}>
+          {/* Session type — single mode only */}
+          {viewMode === 'single' && (
+            <div className="flex rounded-md overflow-hidden border text-sm">
+              {(['all', 'kitchen', 'bar'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setSessionType(t)}
+                  className={`px-3 py-1.5 capitalize transition-colors ${
+                    sessionType === t
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-background hover:bg-muted'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <Button variant="outline" size="sm" onClick={() => viewMode === 'combined' ? fetchRollup() : fetchSheet()} disabled={loading || rollupLoading}>
             <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
@@ -816,8 +882,132 @@ ${mode === 'variance' ? `<div class="summary">
         )}
       </div>
 
+      {/* ── Combined Bars View ── */}
+      {viewMode === 'combined' && (
+        <>
+          {rollupLoading ? (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-primary opacity-70" />
+                <p className="text-muted-foreground">Loading combined bar view…</p>
+              </CardContent>
+            </Card>
+          ) : !rollupData || rollupData.items.length === 0 ? (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-muted-foreground">No bar stock data found for this date.</p>
+                <p className="text-xs text-muted-foreground mt-1">Submit stock takes for Bar A and Bar B first.</p>
+              </CardContent>
+            </Card>
+          ) : (() => {
+            const locs = rollupData.locations;
+            const grouped: Record<string, RollupItem[]> = {};
+            for (const item of rollupData.items) {
+              const cat = item.category || 'Uncategorized';
+              if (!grouped[cat]) grouped[cat] = [];
+              grouped[cat].push(item);
+            }
+            return (
+              <div className="space-y-4">
+                {/* Summary */}
+                <div className="grid grid-cols-3 gap-3">
+                  {locs.map(loc => (
+                    <Card key={loc.id}>
+                      <CardContent className="pt-4 pb-3">
+                        <p className="text-xs text-muted-foreground">{loc.name}</p>
+                        <p className="text-xl font-bold">
+                          {rollupData.items.filter(i => i.locations[loc.id]?.physical_closing !== null).length} items counted
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  <Card>
+                    <CardContent className="pt-4 pb-3">
+                      <p className="text-xs text-muted-foreground">Combined Total (physical)</p>
+                      <p className="text-xl font-bold text-primary">
+                        {fmt(rollupData.summary.total_combined_physical, 2)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {Object.entries(grouped).map(([cat, items]) => (
+                  <Card key={cat} className="overflow-hidden">
+                    <CardHeader className="py-2 px-4 bg-muted/40 border-b">
+                      <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        {cat} ({items.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs sm:text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/20 text-muted-foreground">
+                              <th className="text-left px-3 py-2 font-medium">#</th>
+                              <th className="text-left px-3 py-2 font-medium min-w-[140px]">Item</th>
+                              {locs.map(loc => (
+                                <th key={loc.id} className="text-right px-3 py-2 font-medium" colSpan={2}>
+                                  {loc.name}
+                                </th>
+                              ))}
+                              <th className="text-right px-3 py-2 font-medium bg-primary/5">Combined</th>
+                            </tr>
+                            <tr className="border-b bg-muted/10 text-muted-foreground text-xs">
+                              <th /><th />
+                              {locs.map(loc => (
+                                <>
+                                  <th key={`${loc.id}-calc`} className="text-right px-3 py-1 font-normal">Calc.</th>
+                                  <th key={`${loc.id}-phys`} className="text-right px-3 py-1 font-normal">Physical</th>
+                                </>
+                              ))}
+                              <th className="text-right px-3 py-1 font-medium bg-primary/5">Physical</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {items.map((item, idx) => {
+                              return (
+                                <tr key={item.menu_item_id} className={`border-b last:border-0 hover:bg-muted/30 ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                                  <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
+                                  <td className="px-3 py-2">
+                                    <div className="font-medium">{item.item_name}</div>
+                                    <div className="text-muted-foreground text-xs">{item.unit}</div>
+                                  </td>
+                                  {locs.map(loc => {
+                                    const ld = item.locations[loc.id];
+                                    const calc = ld ? Math.max(0, ld.opening_stock + ld.purchases - ld.system_sales) : null;
+                                    const phys = ld?.physical_closing ?? null;
+                                    return (
+                                      <>
+                                        <td key={`${loc.id}-calc`} className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                                          {calc !== null ? fmt(calc, 2) : '—'}
+                                        </td>
+                                        <td key={`${loc.id}-phys`} className="px-3 py-2 text-right tabular-nums font-medium">
+                                          {phys !== null ? fmt(phys, 2) : <span className="text-muted-foreground">—</span>}
+                                        </td>
+                                      </>
+                                    );
+                                  })}
+                                  <td className="px-3 py-2 text-right tabular-nums font-bold text-primary bg-primary/5">
+                                    {item.combined_physical !== null ? fmt(item.combined_physical, 2) : <span className="text-muted-foreground">—</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            );
+          })()}
+        </>
+      )}
+
       {/* ── Main Table ── */}
-      {loading ? (
+      {viewMode === 'single' && (loading ? (
         <Card>
           <CardContent className="py-16 text-center">
             <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-primary opacity-70" />
@@ -1013,10 +1203,10 @@ ${mode === 'variance' ? `<div class="summary">
             </Card>
           ))}
         </div>
-      )}
+      ))}
 
       {/* ── Notes + Submit ── */}
-      {sheetData && sheetData.items.length > 0 && (
+      {viewMode === 'single' && sheetData && sheetData.items.length > 0 && (
         <Card>
           <CardContent className="pt-4 pb-4 space-y-3">
             <div>

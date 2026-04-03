@@ -5,23 +5,61 @@
  */
 
 /**
- * Read receipt header/footer settings from localStorage.
- * Admins configure these in Settings → Receipt.
+ * Read receipt header/footer settings.
+ * If branch_id is provided, branch-specific paybill overrides the global one.
  */
-function getReceiptConfig() {
-  return {
-    hotel_name:  localStorage.getItem('receipt:hotel_name')  || 'Premier Hotel',
-    address:     localStorage.getItem('receipt:address')     || '',
-    po_box:      localStorage.getItem('receipt:po_box')      || '',
-    phone:       localStorage.getItem('receipt:phone')       || '',
-    email:       localStorage.getItem('receipt:email')       || '',
-    website:     localStorage.getItem('receipt:website')     || '',
-    tax_reg:     localStorage.getItem('receipt:tax_reg')     || '',
-    footer:      localStorage.getItem('receipt:footer')      || 'Thank you for dining with us!',
-    footer2:     localStorage.getItem('receipt:footer2')     || 'Please settle at the counter',
-    paybill_no:  localStorage.getItem('receipt:paybill_no')  || '',
-    account_no:  localStorage.getItem('receipt:account_no')  || '',
+function getReceiptConfig(branch_id?: string) {
+  const cfg = {
+    hotel_name:           localStorage.getItem('receipt:hotel_name')           || 'Premier Hotel',
+    address:              localStorage.getItem('receipt:address')              || '',
+    po_box:               localStorage.getItem('receipt:po_box')               || '',
+    phone:                localStorage.getItem('receipt:phone')                || '',
+    email:                localStorage.getItem('receipt:email')                || '',
+    website:              localStorage.getItem('receipt:website')              || '',
+    tax_reg:              localStorage.getItem('receipt:tax_reg')              || '',
+    footer:               localStorage.getItem('receipt:footer')               || 'Thank you for dining with us!',
+    footer2:              localStorage.getItem('receipt:footer2')              || 'Please settle at the counter',
+    payment_instructions: localStorage.getItem('receipt:payment_instructions') || '',
   };
+  // Branch-specific payment instructions override global
+  if (branch_id) {
+    const bp = localStorage.getItem(`branch:${branch_id}:payment_instructions`);
+    if (bp) cfg.payment_instructions = bp;
+  }
+  return cfg;
+}
+
+/**
+ * Fetch receipt config from DB and cache in localStorage.
+ * Called once per session so print functions always have fresh data.
+ */
+export async function syncReceiptConfig(): Promise<void> {
+  try {
+    const base = (window as any).__API_BASE__ ||
+      import.meta?.env?.VITE_API_BASE_URL ||
+      '/api/v1';
+    // Sync global receipt config
+    const res = await fetch(`${base}/settings/receipt-config`, { credentials: 'include' });
+    if (res.ok) {
+      const data = await res.json();
+      Object.entries(data).forEach(([k, v]) => {
+        if (v) localStorage.setItem(`receipt:${k}`, v as string);
+        else localStorage.removeItem(`receipt:${k}`);
+      });
+    }
+    // Sync branch-specific payment instructions
+    const branchRes = await fetch(`${base}/owner/branches`, { credentials: 'include' });
+    if (branchRes.ok) {
+      const branchData = await branchRes.json();
+      const branches = branchData.branches || [];
+      for (const b of branches) {
+        if (b.payment_instructions) localStorage.setItem(`branch:${b.id}:payment_instructions`, b.payment_instructions);
+        else localStorage.removeItem(`branch:${b.id}:payment_instructions`);
+      }
+    }
+  } catch {
+    // silently ignore — localStorage fallback will be used
+  }
 }
 
 function openPrintWindow(html: string, title: string) {
@@ -174,8 +212,9 @@ export function printBill(order: {
   status?: string;
   waiter_name?: string;
   created_at?: string;
+  branch_id?: string;
 }) {
-  const cfg = getReceiptConfig();
+  const cfg = getReceiptConfig(order.branch_id);
 
   const dateToUse = order.created_at ? new Date(order.created_at) : new Date();
   const now = dateToUse.toLocaleString('en-KE', {
@@ -233,11 +272,10 @@ export function printBill(order: {
       <div class="center mt">
         <div>${cfg.footer}</div>
         ${cfg.footer2 ? `<div class="small">${cfg.footer2}</div>` : ''}
-        ${cfg.paybill_no ? `
+        ${cfg.payment_instructions ? `
         <div class="divider"></div>
-        <div class="bold small" style="margin-bottom:3px">PAY VIA M-PESA</div>
-        <div class="row"><span>Paybill No:</span><span class="bold">${cfg.paybill_no}</span></div>
-        ${cfg.account_no ? `<div class="row"><span>Account No:</span><span class="bold">${cfg.account_no}</span></div>` : ''}
+        <div class="bold small" style="margin-bottom:3px">PAYMENT</div>
+        ${cfg.payment_instructions.split('\n').map((line: string) => `<div class="small">${line}</div>`).join('')}
         ` : ''}
       </div>
     </body>
@@ -363,8 +401,9 @@ export function printOrderSlipAndBill(order: {
   status?: string;
   waiter_name?: string;
   created_at?: string;
+  branch_id?: string;
 }) {
-  const cfg = getReceiptConfig();
+  const cfg = getReceiptConfig(order.branch_id);
   const fmt = (n: number) => `KES ${(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const dateToUse = order.created_at ? new Date(order.created_at) : new Date();
   const now = dateToUse.toLocaleString('en-KE', {
@@ -454,11 +493,10 @@ export function printOrderSlipAndBill(order: {
       <div class="center mt">
         <div>${cfg.footer}</div>
         ${cfg.footer2 ? `<div class="small">${cfg.footer2}</div>` : ''}
-        ${cfg.paybill_no ? `
+        ${cfg.payment_instructions ? `
         <div class="divider"></div>
-        <div class="bold small" style="margin-bottom:3px">PAY VIA M-PESA</div>
-        <div class="row"><span>Paybill No:</span><span class="bold">${cfg.paybill_no}</span></div>
-        ${cfg.account_no ? `<div class="row"><span>Account No:</span><span class="bold">${cfg.account_no}</span></div>` : ''}
+        <div class="bold small" style="margin-bottom:3px">PAYMENT</div>
+        ${cfg.payment_instructions.split('\n').map((line: string) => `<div class="small">${line}</div>`).join('')}
         ` : ''}
       </div>
 

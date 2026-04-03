@@ -1,4 +1,5 @@
 import { useEffect, Component, ReactNode } from "react";
+import { syncReceiptConfig } from '@/lib/print';
 
 // Catches errors from context providers during Vite HMR without crashing the whole app
 class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -91,6 +92,8 @@ const App = () => {
 
   // Request notification permission on app load
   useEffect(() => {
+    // Sync receipt config from DB to localStorage so all devices print correctly
+    syncReceiptConfig();
     // Request browser notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().then(permission => {

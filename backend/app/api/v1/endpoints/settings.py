@@ -338,3 +338,56 @@ async def update_localization_config(
         return {"success": True, "message": "Localization configuration updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Receipt config ────────────────────────────────────────────────────────────
+
+_RECEIPT_DEFAULTS = {
+    "hotel_name": "Premier Hotel",
+    "address": "",
+    "po_box": "",
+    "phone": "",
+    "email": "",
+    "website": "",
+    "tax_reg": "",
+    "footer": "Thank you for dining with us!",
+    "footer2": "Please settle at the counter",
+    "payment_instructions": "",
+}
+
+
+class ReceiptConfig(BaseModel):
+    hotel_name: Optional[str] = "Premier Hotel"
+    address: Optional[str] = ""
+    po_box: Optional[str] = ""
+    phone: Optional[str] = ""
+    email: Optional[str] = ""
+    website: Optional[str] = ""
+    tax_reg: Optional[str] = ""
+    footer: Optional[str] = "Thank you for dining with us!"
+    footer2: Optional[str] = "Please settle at the counter"
+    payment_instructions: Optional[str] = ""
+
+
+@router.get("/receipt-config")
+async def get_receipt_config(
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Public endpoint — receipt config is needed at print time by all roles."""
+    try:
+        return _get_setting(supabase_admin, "receipt_config", _RECEIPT_DEFAULTS.copy())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/receipt-config")
+async def update_receipt_config(
+    config: ReceiptConfig,
+    current_user: dict = Depends(require_admin_or_manager),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    try:
+        _put_setting(supabase_admin, "receipt_config", config.model_dump(), current_user["id"])
+        return {"success": True, "message": "Receipt configuration updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

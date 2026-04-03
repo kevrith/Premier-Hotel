@@ -183,18 +183,24 @@ export function SystemConfiguration() {
     email:      localStorage.getItem('receipt:email')      || '',
     website:    localStorage.getItem('receipt:website')    || '',
     tax_reg:    localStorage.getItem('receipt:tax_reg')    || '',
-    footer:     localStorage.getItem('receipt:footer')     || 'Thank you for dining with us!',
-    footer2:    localStorage.getItem('receipt:footer2')    || 'Please settle at the counter',
-    paybill_no: localStorage.getItem('receipt:paybill_no') || '',
-    account_no: localStorage.getItem('receipt:account_no') || '',
+    footer:               localStorage.getItem('receipt:footer')               || 'Thank you for dining with us!',
+    footer2:              localStorage.getItem('receipt:footer2')              || 'Please settle at the counter',
+    payment_instructions: localStorage.getItem('receipt:payment_instructions') || '',
   });
 
-  const saveReceiptSettings = () => {
+  const saveReceiptSettings = async () => {
+    // Always mirror to localStorage for instant offline access
     Object.entries(receipt).forEach(([k, v]) => {
       if (v) localStorage.setItem(`receipt:${k}`, v);
       else localStorage.removeItem(`receipt:${k}`);
     });
-    hotToast.success('Receipt settings saved — will appear on next print');
+    // Also persist to DB so every device gets the settings automatically
+    try {
+      await apiClient.put('/settings/receipt-config', receipt);
+      hotToast.success('Receipt settings saved');
+    } catch {
+      hotToast.success('Receipt settings saved locally (DB sync failed)');
+    }
   };
 
   const [loading,  setLoading]  = useState(true);
@@ -205,17 +211,26 @@ export function SystemConfiguration() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [p, n, s, l] = await Promise.allSettled([
+        const [p, n, s, l, r] = await Promise.allSettled([
           apiClient.get('/settings/payment-config'),
           apiClient.get('/settings/notification-config'),
           apiClient.get('/settings/system-config'),
           apiClient.get('/settings/localization-config'),
+          apiClient.get('/settings/receipt-config'),
         ]);
 
         if (p.status === 'fulfilled') setPayment({ ...DEFAULT_PAYMENT, ...p.value.data });
         if (n.status === 'fulfilled') setNotification({ ...DEFAULT_NOTIFICATION, ...n.value.data });
         if (s.status === 'fulfilled') setSystem({ ...DEFAULT_SYSTEM, ...s.value.data });
         if (l.status === 'fulfilled') setLocalization({ ...DEFAULT_LOCALIZATION, ...l.value.data });
+        if (r.status === 'fulfilled') {
+          const dbReceipt = r.value.data;
+          // Merge DB values into state and also sync to localStorage
+          setReceipt(prev => ({ ...prev, ...dbReceipt }));
+          Object.entries(dbReceipt).forEach(([k, v]) => {
+            if (v) localStorage.setItem(`receipt:${k}`, v as string);
+          });
+        }
       } catch {
         // silently fall back to defaults
       } finally {
@@ -814,29 +829,20 @@ export function SystemConfiguration() {
                       <p className="text-xs text-muted-foreground">Leave blank if you don't want this on the receipt.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label htmlFor="r-paybill">M-Pesa Paybill Number</Label>
-                        <Input
-                          id="r-paybill"
-                          placeholder="e.g. 522522"
-                          value={receipt.paybill_no}
-                          onChange={(e) => setReceipt(r => ({ ...r, paybill_no: e.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="r-account">Account Number</Label>
-                        <Input
-                          id="r-account"
-                          placeholder="e.g. PremierHotel or bill number"
-                          value={receipt.account_no}
-                          onChange={(e) => setReceipt(r => ({ ...r, account_no: e.target.value }))}
-                        />
-                      </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="r-payment">Payment Instructions</Label>
+                      <textarea
+                        id="r-payment"
+                        rows={3}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        placeholder={`e.g.\nPaybill: 522522, Account: PremierHotel\n— or —\nTill No: 123456\n— or —\nBank: Equity, Acc: 1234567890`}
+                        value={receipt.payment_instructions}
+                        onChange={(e) => setReceipt(r => ({ ...r, payment_instructions: e.target.value }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Type exactly what you want printed on the bill — Paybill, Till No, Bank details, or anything else. Each line prints separately. Leave blank to hide this section.
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground -mt-2">
-                      When set, the paybill and account number will appear on every printed customer bill so guests can pay via M-Pesa.
-                    </p>
                   </div>
                 </div>
 

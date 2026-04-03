@@ -390,3 +390,133 @@ async def delete_stock_item(
 
     supabase.table("menu_items").delete().eq("id", item_id).execute()
     return {"success": True, "deleted": item["name"]}
+
+
+@router.post("/backfill-sales")
+async def backfill_historical_sales(
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    One-time backfill: deduct stock for all historical completed/served orders
+    that have not yet been logged in stock_adjustments.
+    Safe to run multiple times — skips orders already processed.
+    """
+    user_role = current_user.get("role", "")
+    if user_role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only managers and admins can run backfill")
+
+    # Get all already-logged order reasons so we don’t double-deduct
+    logged_res = supabase.table("stock_adjustments").select("reason").eq("adjustment_type", "sale").execute()
+    already_logged = {r["reason"] for r in (logged_res.data or []) if r.get("reason")}
+
+    # Fetch all completed orders
+    orders_res = supabase.table("orders").select(
+        "id, order_number, items, status, bar_location_id"
+    ).in_("status", ["served", "completed", "delivered", "paid"]).execute()
+    orders = orders_res.data or []
+
+    # Get all tracked menu items in one query
+    items_res = supabase.table("menu_items").select(
+        "id, name, stock_quantity, track_inventory"
+    ).execute()
+    stock_map = {i["id"]: i for i in (items_res.data or [])}
+
+    processed = 0
+    skipped = 0
+    deductions: dict = {}  # mid -> total qty to deduct
+    sale_logs = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for order in orders:
+        order_number = order.get("order_number", order["id"])
+        reason_key = f"Order {order_number} served"
+        # Also check the 'completed' variant
+        reason_key2 = f"Order {order_number} completed"
+
+        if reason_key in already_logged or reason_key2 in already_logged:
+            skipped += 1
+            continue
+
+        order_items = order.get("items") or []
+        if not isinstance(order_items, list) or not order_items:
+            skipped += 1
+            continue
+
+        for oi in order_items:
+            if oi.get("voided"):
+                continue
+            mid = oi.get("menu_item_id") or oi.get("id")
+            if not mid or mid not in stock_map:
+                continue
+            item_data = stock_map[mid]
+            current_stock = float(item_data.get("stock_quantity") or 0)
+            # Only deduct items that have stock or have tracking enabled
+            if current_stock <= 0 and not item_data.get("track_inventory"):
+                continue
+            qty_sold = float(oi.get("quantity", 1))
+            deductions[mid] = deductions.get(mid, 0) + qty_sold
+            sale_logs.append({
+                "menu_item_id": mid,
+                "item_name": item_data.get("name", oi.get("name", "")),
+                "adjustment_type": "sale",
+                "quantity_before": None,  # will fill after computing final qty
+                "quantity_after": None,
+                "reason": reason_key,
+                "adjusted_by": current_user["id"],
+            })
+        processed += 1
+
+    # Apply deductions to menu_items and build final log entries
+    final_logs = []
+    for mid, total_deducted in deductions.items():
+        item_data = stock_map[mid]
+        current = float(item_data.get("stock_quantity") or 0)
+        new_qty = max(0, current - total_deducted)
+        supabase.table("menu_items").update({
+            "stock_quantity": new_qty,
+            "is_available": new_qty > 0,
+        }).eq("id", mid).execute()
+        # Update local map so subsequent items see updated qty
+        stock_map[mid]["stock_quantity"] = new_qty
+
+    # Insert sale logs (one per order-item, with before/after)
+    # Re-compute before/after per log entry using running totals
+    running: dict = {i["id"]: float(i.get("stock_quantity") or 0) for i in items_res.data or []}
+    # Reset running to original values (before any deductions)
+    for mid, total_deducted in deductions.items():
+        running[mid] = float(stock_map[mid].get("stock_quantity") or 0) + total_deducted
+
+    for log in sale_logs:
+        mid = log["menu_item_id"]
+        qty_sold = float(next(
+            (oi.get("quantity", 1) for o in orders
+             for oi in (o.get("items") or [])
+             if (oi.get("menu_item_id") or oi.get("id")) == mid
+             and f"Order {o.get('order_number', o['id'])} served" == log["reason"]
+             and not oi.get("voided")),
+            1
+        ))
+        before = running.get(mid, 0)
+        after = max(0, before - qty_sold)
+        running[mid] = after
+        log["quantity_before"] = before
+        log["quantity_after"] = after
+        final_logs.append(log)
+
+    # Batch insert logs in chunks of 100
+    for i in range(0, len(final_logs), 100):
+        chunk = final_logs[i:i + 100]
+        try:
+            supabase.table("stock_adjustments").insert(chunk).execute()
+        except Exception as e:
+            logging.warning(f"[BACKFILL] Log insert failed: {e}")
+
+    return {
+        "success": True,
+        "orders_processed": processed,
+        "orders_skipped_already_done": skipped,
+        "items_deducted": len(deductions),
+        "log_entries_created": len(final_logs),
+        "message": f"Backfill complete. {processed} orders processed, {len(deductions)} items deducted."
+    }

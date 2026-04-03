@@ -42,7 +42,7 @@ interface StockItem {
 
 interface Movement {
   id: string;
-  type: 'receipt' | 'adjustment';
+  type: 'receipt' | 'adjustment' | 'sale';
   item_name: string;
   date: string;
   performed_by?: string;
@@ -54,6 +54,7 @@ interface Movement {
   notes?: string;
   quantity_before?: number;
   quantity_after?: number;
+  quantity_sold?: number;
   reason?: string;
 }
 
@@ -256,9 +257,10 @@ function QuickAdjustDialog({
 // ─── Movement History ─────────────────────────────────────────────────────────
 function MovementHistory({ apiBase }: { apiBase: string }) {
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [meta, setMeta] = useState<{ total_receipts: number; total_adjustments: number; total_sales: number; total_received_cost: number; total_units_sold: number }>({ total_receipts: 0, total_adjustments: 0, total_sales: 0, total_received_cost: 0, total_units_sold: 0 });
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'receipt' | 'adjustment'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'receipt' | 'sale' | 'adjustment'>('all');
   const [dateRange, setDateRange] = useState({
     start: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
@@ -271,6 +273,13 @@ function MovementHistory({ apiBase }: { apiBase: string }) {
         params: { start_date: dateRange.start, end_date: dateRange.end },
       });
       setMovements(res.data.movements || []);
+      setMeta({
+        total_receipts: res.data.total_receipts || 0,
+        total_adjustments: res.data.total_adjustments || 0,
+        total_sales: res.data.total_sales || 0,
+        total_received_cost: res.data.total_received_cost || 0,
+        total_units_sold: res.data.total_units_sold || 0,
+      });
     } catch {
       toast.error('Failed to load movement history');
     }
@@ -285,7 +294,11 @@ function MovementHistory({ apiBase }: { apiBase: string }) {
     return true;
   });
 
-  const totalCost = movements.filter(m => m.type === 'receipt').reduce((s, m) => s + (m.total_cost || 0), 0);
+  const TYPE_CFG = {
+    receipt:    { label: 'Receipt',    cls: 'bg-emerald-500/10 text-emerald-700 border-emerald-200', icon: ArrowDownToLine },
+    sale:       { label: 'Sale',       cls: 'bg-rose-500/10 text-rose-700 border-rose-200',           icon: TrendingDown },
+    adjustment: { label: 'Adjust',     cls: 'bg-indigo-500/10 text-indigo-700 border-indigo-200',     icon: SlidersHorizontal },
+  } as const;
 
   return (
     <div className="space-y-4">
@@ -301,11 +314,11 @@ function MovementHistory({ apiBase }: { apiBase: string }) {
           <Input type="date" className="h-9 text-sm w-36" value={dateRange.end}
             onChange={e => setDateRange(d => ({ ...d, end: e.target.value }))} />
         </div>
-        {(['all', 'receipt', 'adjustment'] as const).map(t => (
+        {(['all', 'receipt', 'sale', 'adjustment'] as const).map(t => (
           <button key={t} onClick={() => setTypeFilter(t)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
               ${typeFilter === t ? 'bg-foreground text-background border-foreground' : 'bg-background hover:bg-muted border-border'}`}>
-            {t === 'all' ? 'All' : capitalize(t) + 's'}
+            {t === 'all' ? 'All' : t === 'sale' ? 'Sales' : t === 'receipt' ? 'Receipts' : 'Adjustments'}
           </button>
         ))}
         <div className="relative">
@@ -319,11 +332,12 @@ function MovementHistory({ apiBase }: { apiBase: string }) {
       </div>
 
       {/* Totals */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total Receipts', value: movements.filter(m => m.type === 'receipt').length, cls: 'text-emerald-600' },
-          { label: 'Adjustments', value: movements.filter(m => m.type === 'adjustment').length, cls: 'text-indigo-600' },
-          { label: 'Total Cost Received', value: fmt(totalCost), cls: 'text-foreground' },
+          { label: 'Receipts',         value: meta.total_receipts,                  cls: 'text-emerald-600' },
+          { label: 'Sales (deducted)', value: meta.total_sales,                     cls: 'text-rose-600' },
+          { label: 'Adjustments',      value: meta.total_adjustments,               cls: 'text-indigo-600' },
+          { label: 'Cost Received',    value: fmt(meta.total_received_cost),        cls: 'text-foreground' },
         ].map(({ label, value, cls }) => (
           <Card key={label} className="border-0 shadow-sm">
             <CardContent className="p-3 text-center">
@@ -346,46 +360,51 @@ function MovementHistory({ apiBase }: { apiBase: string }) {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-background z-10">
                 <tr className="border-y bg-muted/40">
-                  {['Date', 'Item', 'Dept', 'Type', 'Change', 'Details'].map(h => (
+                  {['Date', 'Item', 'Type', 'Before', 'Change', 'After', 'Details'].map(h => (
                     <th key={h} className={`p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide
-                      ${h === 'Date' || h === 'Item' ? 'text-left pl-4' : h === 'Type' ? 'text-center' : 'text-left'}`}>{h}</th>
+                      ${h === 'Date' || h === 'Item' ? 'text-left pl-4' : h === 'Type' ? 'text-center' : 'text-right'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(m => (
-                  <tr key={m.id} className="border-b last:border-0 hover:bg-muted/20">
-                    <td className="p-3 pl-4 text-muted-foreground whitespace-nowrap text-xs">{m.date}</td>
-                    <td className="p-3 font-semibold">{m.item_name}</td>
-                    <td className="p-3 text-xs text-muted-foreground capitalize">—</td>
-                    <td className="p-3 text-center">
-                      {m.type === 'receipt' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-200">
-                          <ArrowDownToLine className="h-3 w-3" />Receipt
+                {filtered.map(m => {
+                  const cfg = TYPE_CFG[m.type as keyof typeof TYPE_CFG] || TYPE_CFG.adjustment;
+                  const Icon = cfg.icon;
+                  const isSale = m.type === 'sale';
+                  const isReceipt = m.type === 'receipt';
+                  return (
+                    <tr key={m.id} className={`border-b last:border-0 hover:bg-muted/20 ${isSale ? 'bg-rose-500/3' : ''}`}>
+                      <td className="p-3 pl-4 text-muted-foreground whitespace-nowrap text-xs">{m.date}</td>
+                      <td className="p-3 font-semibold">{m.item_name}</td>
+                      <td className="p-3 text-center">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${cfg.cls}`}>
+                          <Icon className="h-3 w-3" />{cfg.label}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-700 border border-indigo-200">
-                          <SlidersHorizontal className="h-3 w-3" />Adjust
-                        </span>
-                      )}
-                    </td>
-                    <td className={`p-3 font-bold font-mono ${m.change?.startsWith('+') ? 'text-emerald-600' : 'text-amber-600'}`}>
-                      {m.change}
-                    </td>
-                    <td className="p-3 text-muted-foreground text-xs max-w-xs truncate">
-                      {m.type === 'receipt' ? (
-                        <>
-                          {m.supplier && <span className="font-medium text-foreground">{m.supplier} · </span>}
-                          {fmt(m.unit_cost || 0)}/unit · Total {fmt(m.total_cost || 0)}
-                          {m.invoice_number && ` · Inv: ${m.invoice_number}`}
-                          {m.notes && ` · ${m.notes}`}
-                        </>
-                      ) : (
-                        <>{m.quantity_before} → {m.quantity_after} · {(m.reason || '').toLowerCase()}</>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="p-3 text-right font-mono text-xs text-muted-foreground">
+                        {isReceipt ? '—' : (m.quantity_before ?? '—')}
+                      </td>
+                      <td className={`p-3 text-right font-bold font-mono ${m.change?.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {m.change}
+                      </td>
+                      <td className="p-3 text-right font-mono text-xs text-muted-foreground">
+                        {isReceipt ? '—' : (m.quantity_after ?? '—')}
+                      </td>
+                      <td className="p-3 text-muted-foreground text-xs max-w-xs truncate">
+                        {isReceipt ? (
+                          <>
+                            {m.supplier && <span className="font-medium text-foreground">{m.supplier} · </span>}
+                            {fmt(m.unit_cost || 0)}/unit · Total {fmt(m.total_cost || 0)}
+                            {m.invoice_number && ` · Inv: ${m.invoice_number}`}
+                            {m.notes && ` · ${m.notes}`}
+                          </>
+                        ) : (
+                          <span>{(m.reason || '').toLowerCase()}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -849,6 +868,22 @@ export function UnifiedStockDashboard({ mode = 'owner', department }: { mode?: S
     sellingValue: groupItems.reduce((s, i) => s + (i.selling_value || 0), 0),
   });
 
+  const [backfilling, setBackfilling] = useState(false);
+
+  const runBackfill = async () => {
+    if (!confirm('This will deduct stock for all historical completed orders that have not been processed yet. Run backfill?')) return;
+    setBackfilling(true);
+    try {
+      const res = await api.post('/stock/backfill-sales');
+      const d = res.data;
+      toast.success(`Backfill done: ${d.orders_processed} orders processed, ${d.items_deducted} items deducted. ${d.orders_skipped_already_done} already done.`);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Backfill failed');
+    }
+    setBackfilling(false);
+  };
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -862,7 +897,13 @@ export function UnifiedStockDashboard({ mode = 'owner', department }: { mode?: S
             All departments · {items.length} tracked items
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {canEdit && (
+            <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50" onClick={runBackfill} disabled={backfilling}>
+              {backfilling ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <TrendingDown className="h-3.5 w-3.5" />}
+              {backfilling ? 'Running...' : 'Backfill Historical Sales'}
+            </Button>
+          )}
           <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={exportCSV}>
             <Download className="h-3.5 w-3.5" /> CSV
           </Button>

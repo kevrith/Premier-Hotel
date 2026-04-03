@@ -466,6 +466,147 @@ async def get_low_stock_alerts(
     }
 
 
+@router.get("/rollup")
+async def get_bar_rollup(
+    stock_date: str = Query(default=None),
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Returns Bar A + Bar B physical counts side-by-side, with a combined total per item.
+    Used for the combined stock view.
+    """
+    if not stock_date:
+        stock_date = date.today().isoformat()
+
+    # Fetch all bar locations
+    locs_res = supabase.table("locations").select("*").eq("type", "bar").eq("is_active", True).order("name").execute()
+    bar_locations = locs_res.data or []
+
+    if not bar_locations:
+        return {"date": stock_date, "locations": [], "items": [], "summary": {}}
+
+    # For each bar location, get the latest submitted session items
+    location_data: dict[str, dict] = {}  # location_id -> {name, items_map}
+    all_item_ids: set = set()
+
+    for loc in bar_locations:
+        lid = loc["id"]
+        session_res = supabase.table("daily_stock_sessions").select("id, status").eq(
+            "session_date", stock_date
+        ).eq("location_id", lid).execute()
+
+        items_map: dict = {}
+        if session_res.data:
+            sid = session_res.data[0]["id"]
+            items_res = supabase.table("daily_stock_items").select(
+                "menu_item_id, item_name, category, unit, opening_stock, purchases, system_sales, physical_closing, lost"
+            ).eq("session_id", sid).execute()
+            for it in (items_res.data or []):
+                mid = it["menu_item_id"]
+                if mid:
+                    items_map[mid] = it
+                    all_item_ids.add(mid)
+        else:
+            # No session yet — pull from location_stock for current quantities
+            ls_res = supabase.table("location_stock").select(
+                "menu_item_id, item_name, category, unit, quantity"
+            ).eq("location_id", lid).execute()
+            for ls in (ls_res.data or []):
+                mid = ls["menu_item_id"]
+                if mid:
+                    items_map[mid] = {
+                        "menu_item_id": mid,
+                        "item_name": ls.get("item_name", ""),
+                        "category": ls.get("category", ""),
+                        "unit": ls.get("unit", "piece"),
+                        "opening_stock": float(ls.get("quantity") or 0),
+                        "purchases": 0,
+                        "system_sales": 0,
+                        "physical_closing": None,
+                        "lost": 0,
+                    }
+                    all_item_ids.add(mid)
+
+        location_data[lid] = {"location": loc, "items_map": items_map}
+
+    # Get item metadata for all referenced items
+    item_meta: dict = {}
+    if all_item_ids:
+        meta_res = supabase.table("menu_items").select(
+            "id, name, category, unit, cost_price, reorder_level"
+        ).in_("id", list(all_item_ids)).execute()
+        for m in (meta_res.data or []):
+            item_meta[m["id"]] = m
+
+    # Build combined rows
+    combined_rows = []
+    for mid in sorted(all_item_ids):
+        meta = item_meta.get(mid, {})
+        row: dict = {
+            "menu_item_id": mid,
+            "item_name": meta.get("name") or next(
+                (location_data[lid]["items_map"][mid]["item_name"]
+                 for lid in location_data if mid in location_data[lid]["items_map"]), ""
+            ),
+            "category": meta.get("category") or "",
+            "unit": meta.get("unit") or "piece",
+            "cost_price": float(meta.get("cost_price") or 0),
+            "reorder_level": float(meta.get("reorder_level") or 0),
+            "locations": {},
+            "combined_physical": 0.0,
+            "combined_opening": 0.0,
+            "combined_purchases": 0.0,
+            "combined_sales": 0.0,
+        }
+
+        has_any_physical = False
+        for lid, ld in location_data.items():
+            it = ld["items_map"].get(mid)
+            phys = float(it["physical_closing"]) if it and it.get("physical_closing") is not None else None
+            opening = float(it["opening_stock"]) if it else 0.0
+            purchases = float(it["purchases"]) if it else 0.0
+            sales = float(it["system_sales"]) if it else 0.0
+            lost = float(it["lost"]) if it else 0.0
+
+            row["locations"][lid] = {
+                "location_name": ld["location"]["name"],
+                "opening_stock": round(opening, 3),
+                "purchases": round(purchases, 3),
+                "system_sales": round(sales, 3),
+                "physical_closing": phys,
+                "lost": round(lost, 3),
+            }
+
+            if phys is not None:
+                row["combined_physical"] += phys
+                has_any_physical = True
+            row["combined_opening"] += opening
+            row["combined_purchases"] += purchases
+            row["combined_sales"] += sales
+
+        if not has_any_physical:
+            row["combined_physical"] = None
+
+        combined_rows.append(row)
+
+    # Sort by category then name
+    combined_rows.sort(key=lambda r: (r["category"], r["item_name"]))
+
+    return {
+        "date": stock_date,
+        "locations": [ld["location"] for ld in location_data.values()],
+        "items": combined_rows,
+        "summary": {
+            "total_items": len(combined_rows),
+            "locations_count": len(bar_locations),
+            "total_combined_physical": round(
+                sum(r["combined_physical"] for r in combined_rows if r["combined_physical"] is not None), 2
+            ),
+        },
+    }
+
+
 @router.get("/history")
 async def get_stock_take_history(
     days: int = Query(default=7),

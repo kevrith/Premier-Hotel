@@ -38,6 +38,9 @@ class BranchCreate(BaseModel):
     manager_id: Optional[str] = None
     opened_at: Optional[str] = None
     notes: Optional[str] = None
+    paybill_no: Optional[str] = None
+    account_no: Optional[str] = None
+    payment_instructions: Optional[str] = None
 
 
 class BranchUpdate(BaseModel):
@@ -50,6 +53,9 @@ class BranchUpdate(BaseModel):
     status: Optional[str] = None
     opened_at: Optional[str] = None
     notes: Optional[str] = None
+    paybill_no: Optional[str] = None
+    account_no: Optional[str] = None
+    payment_instructions: Optional[str] = None
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1539,15 +1545,19 @@ async def owner_stock_movements(
 
     def _adjustments():
         q = inv.table("stock_adjustments").select(
-            "id, item_name, adjustment_type, quantity_before, quantity_after, reason, adjusted_by, adjusted_at"
-        ).gte("adjusted_at", f"{start_date}T00:00:00").lte("adjusted_at", f"{end_date}T23:59:59")
+            "id, menu_item_id, item_name, adjustment_type, quantity_before, quantity_after, reason, adjusted_by, created_at"
+        ).gte("created_at", f"{start_date}T00:00:00").lte("created_at", f"{end_date}T23:59:59")
         if item_id:
             q = q.eq("menu_item_id", item_id)
-        return q.order("adjusted_at", desc=True).limit(500).execute().data or []
+        return q.order("created_at", desc=True).limit(1000).execute().data or []
 
     receipts, adjustments = await _par(_receipts, _adjustments)
 
-    # Enrich receipts with receiver name
+    # Split adjustments into sales vs manual adjustments
+    sales = [a for a in adjustments if a.get("adjustment_type") == "sale"]
+    manual_adjustments = [a for a in adjustments if a.get("adjustment_type") != "sale"]
+
+    # Enrich with user names
     receiver_ids = list({r.get("received_by") for r in receipts if r.get("received_by")})
     adj_by_ids = list({a.get("adjusted_by") for a in adjustments if a.get("adjusted_by")})
     all_ids = list(set(receiver_ids + adj_by_ids))
@@ -1563,19 +1573,23 @@ async def owner_stock_movements(
         r["change"] = f"+{r['quantity']} {r.get('unit','')}"
 
     for a in adjustments:
-        a["type"] = "adjustment"
-        a["date"] = a.get("adjusted_at", "")[:10]
+        a["type"] = "sale" if a.get("adjustment_type") == "sale" else "adjustment"
+        a["date"] = (a.get("created_at") or "")[:10]
         a["performed_by"] = user_map.get(a.get("adjusted_by"), "—")
         diff = float(a.get("quantity_after") or 0) - float(a.get("quantity_before") or 0)
         a["change"] = f"{'+' if diff >= 0 else ''}{diff:.1f}"
+        a["quantity_sold"] = float(a.get("quantity_before") or 0) - float(a.get("quantity_after") or 0) if a["type"] == "sale" else None
 
     all_movements = sorted(receipts + adjustments, key=lambda x: x.get("date", ""), reverse=True)
     total_received = sum(float(r.get("total_cost") or 0) for r in receipts)
+    total_sold = sum(a.get("quantity_sold") or 0 for a in sales)
     return {
         "movements": all_movements,
         "total_movements": len(all_movements),
         "total_receipts": len(receipts),
-        "total_adjustments": len(adjustments),
+        "total_adjustments": len(manual_adjustments),
+        "total_sales": len(sales),
         "total_received_cost": round(total_received, 2),
+        "total_units_sold": round(total_sold, 2),
         "date_range": {"start": start_date, "end": end_date},
     }
