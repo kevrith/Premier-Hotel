@@ -391,23 +391,20 @@ async def owner_overview(
             },
         })
 
-    # ── Consolidated totals from pre-fetched data ─────────────────────────
-    total_fb       = sum(_item_revenue(o) for o in all_orders)
-    total_room_rev = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in all_bookings)
-    total_rooms_all   = len(all_rooms)
-    occupied_all      = sum(1 for r in all_rooms if r.get("status") == "occupied")
-    avg_occupancy_all = round(occupied_all / total_rooms_all * 100, 1) if total_rooms_all else 0
+    # ── Consolidated totals — sum branch stats so numbers always match ────
     consolidated = {
-        "total_revenue":      round(total_fb + total_room_rev, 2),
-        "fb_revenue":         round(total_fb, 2),
-        "room_revenue":       round(total_room_rev, 2),
-        "total_orders":       len(all_orders),
-        "completed_orders":   len(all_completed),
-        "total_bookings":     len(all_bookings),
-        "unique_customers":   len({o.get("customer_id") for o in all_orders if o.get("customer_id")}),
+        "total_revenue":      round(sum(b["stats"]["total_revenue"]    for b in branch_stats), 2),
+        "fb_revenue":         round(sum(b["stats"]["fb_revenue"]        for b in branch_stats), 2),
+        "room_revenue":       round(sum(b["stats"]["room_revenue"]      for b in branch_stats), 2),
+        "total_orders":       sum(b["stats"]["total_orders"]            for b in branch_stats),
+        "completed_orders":   sum(b["stats"]["completed_orders"]        for b in branch_stats),
+        "total_bookings":     sum(b["stats"]["total_bookings"]          for b in branch_stats),
+        "unique_customers":   sum(b["stats"]["unique_customers"]        for b in branch_stats),
         "total_staff":        len(all_staff),
         "active_staff":       sum(1 for s in all_staff if s.get("status") == "active"),
-        "avg_occupancy_rate": avg_occupancy_all,
+        "avg_occupancy_rate": round(
+            sum(b["stats"]["occupancy_rate"] for b in branch_stats) / len(branch_stats), 1
+        ) if branch_stats else 0,
     }
 
     # Best / worst performing branch by revenue
