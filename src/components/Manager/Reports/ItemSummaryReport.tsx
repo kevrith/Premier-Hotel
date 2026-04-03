@@ -45,8 +45,8 @@ interface ItemSummaryData {
   grand_total_qty: number;
   grand_total_revenue: number;
   trends?: {
-    hourly: { hour: string; qty: number }[];
-    daily: { date: string; qty: number }[];
+    hourly: { hour: string; qty: number; revenue: number; orders: number }[];
+    daily: { date: string; qty: number; revenue: number; orders: number }[];
   };
 }
 
@@ -291,79 +291,111 @@ export const ItemSummaryReport: React.FC = () => {
 
               <TabsContent value="trends">
                 <div className="grid gap-4">
-                  {/* Hourly pattern */}
-                  <Card className="border shadow-none">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold">Peak Order Hours</CardTitle>
-                      <p className="text-xs text-muted-foreground">Total items ordered per hour of day</p>
-                    </CardHeader>
-                    <CardContent>
-                      {!data.trends?.hourly?.length ? (
-                        <p className="text-sm text-muted-foreground py-4 text-center">No hourly data available.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {[...data.trends.hourly]
-                            .sort((a, b) => b.qty - a.qty)
-                            .map((h, i) => {
-                              const max = Math.max(...data.trends!.hourly.map(x => x.qty));
-                              const pct = max > 0 ? Math.round((h.qty / max) * 100) : 0;
-                              return (
-                                <div key={i} className="flex items-center gap-3">
-                                  <div className="w-16 text-xs font-medium text-right shrink-0">{h.hour}</div>
-                                  <div className="flex-1">
-                                    <div className="w-full bg-muted rounded-full h-6 relative">
-                                      <div
-                                        className="bg-gradient-to-r from-green-500 to-green-600 h-6 rounded-full flex items-center px-2 transition-all"
-                                        style={{ width: `${Math.max(pct, 8)}%` }}
-                                      >
-                                        <span className="text-xs font-medium text-white">{h.qty} items</span>
+                  {/* Metric toggle */}
+                  {(() => {
+                    const [metric, setMetric] = React.useState<'qty'|'revenue'|'orders'>('revenue');
+                    const METRICS = [
+                      { key: 'revenue', label: 'Revenue (KES)' },
+                      { key: 'qty',     label: 'Items Qty' },
+                      { key: 'orders',  label: 'Order Count' },
+                    ] as const;
+                    const fmt = (key: string, val: number) =>
+                      key === 'revenue' ? `KES ${val.toLocaleString()}` : String(val);
+                    const label = (key: string, val: number) =>
+                      key === 'revenue' ? `KES ${(val/1000).toFixed(1)}K` : String(val);
+
+                    return (
+                      <>
+                        <div className="flex gap-2 flex-wrap">
+                          {METRICS.map(m => (
+                            <button key={m.key}
+                              onClick={() => setMetric(m.key)}
+                              className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+                                metric === m.key
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : 'bg-background text-muted-foreground border-border hover:border-indigo-400'
+                              }`}>
+                              {m.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Peak Order Hours */}
+                        <Card className="border shadow-none">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-semibold">Peak Order Hours</CardTitle>
+                            <p className="text-xs text-muted-foreground">Busiest hours of the day</p>
+                          </CardHeader>
+                          <CardContent>
+                            {!data.trends?.hourly?.length ? (
+                              <p className="text-sm text-muted-foreground py-4 text-center">No data.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {[...data.trends.hourly]
+                                  .sort((a, b) => b[metric] - a[metric])
+                                  .map((h, i) => {
+                                    const max = Math.max(...data.trends!.hourly.map(x => x[metric]));
+                                    const pct = max > 0 ? Math.round((h[metric] / max) * 100) : 0;
+                                    return (
+                                      <div key={i} className="flex items-center gap-3">
+                                        <div className="w-16 text-xs font-medium text-right shrink-0">{h.hour}</div>
+                                        <div className="flex-1">
+                                          <div className="w-full bg-muted rounded-full h-6">
+                                            <div
+                                              className="bg-gradient-to-r from-green-500 to-green-600 h-6 rounded-full flex items-center px-2 transition-all"
+                                              style={{ width: `${Math.max(pct, 6)}%` }}
+                                            >
+                                              <span className="text-xs font-medium text-white truncate">{label(metric, h[metric])}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        {/* Daily Demand Trend */}
+                        <Card className="border shadow-none">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-semibold">Daily Demand Trend</CardTitle>
+                            <p className="text-xs text-muted-foreground">Per day over the selected period</p>
+                          </CardHeader>
+                          <CardContent>
+                            {!data.trends?.daily?.length ? (
+                              <p className="text-sm text-muted-foreground py-4 text-center">No data.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {data.trends.daily.map((d, i) => {
+                                  const max = Math.max(...data.trends!.daily.map(x => x[metric]));
+                                  const pct = max > 0 ? Math.round((d[metric] / max) * 100) : 0;
+                                  return (
+                                    <div key={i} className="flex items-center gap-3">
+                                      <div className="w-20 text-xs text-muted-foreground shrink-0">
+                                        {format(new Date(d.date), 'MMM dd')}
+                                      </div>
+                                      <div className="flex-1">
+                                        <div className="w-full bg-muted rounded-full h-6">
+                                          <div
+                                            className="bg-gradient-to-r from-blue-500 to-blue-600 h-6 rounded-full flex items-center px-2 transition-all"
+                                            style={{ width: `${Math.max(pct, 6)}%` }}
+                                          >
+                                            <span className="text-xs font-medium text-white truncate">{label(metric, d[metric])}</span>
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* Daily trend */}
-                  <Card className="border shadow-none">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold">Daily Demand Trend</CardTitle>
-                      <p className="text-xs text-muted-foreground">Total items ordered per day</p>
-                    </CardHeader>
-                    <CardContent>
-                      {!data.trends?.daily?.length ? (
-                        <p className="text-sm text-muted-foreground py-4 text-center">No daily data available.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {data.trends.daily.map((d, i) => {
-                            const max = Math.max(...data.trends!.daily.map(x => x.qty));
-                            const pct = max > 0 ? Math.round((d.qty / max) * 100) : 0;
-                            return (
-                              <div key={i} className="flex items-center gap-3">
-                                <div className="w-20 text-xs text-muted-foreground shrink-0">
-                                  {format(new Date(d.date), 'MMM dd')}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="w-full bg-muted rounded-full h-6 relative">
-                                    <div
-                                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-6 rounded-full flex items-center px-2 transition-all"
-                                      style={{ width: `${Math.max(pct, 8)}%` }}
-                                    >
-                                      <span className="text-xs font-medium text-white">{d.qty} items</span>
-                                    </div>
-                                  </div>
-                                </div>
+                                  );
+                                })}
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </>
+                    );
+                  })()}
                 </div>
               </TabsContent>
             </Tabs>

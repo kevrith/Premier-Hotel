@@ -1597,14 +1597,14 @@ async def get_item_summary_report(
 
         result.sort(key=lambda x: x["total_revenue"], reverse=True)
 
-        # ── Trends: hourly order counts + daily qty across all items ──────────
-        hourly: Dict[str, int] = {}
-        daily: Dict[str, int] = {}
+        # ── Trends: hourly + daily with qty, revenue and order count ──────────
+        hourly: Dict[str, Any] = {}
+        daily: Dict[str, Any] = {}
         for order in orders:
             ts = order.get("created_at") or ""
             try:
                 dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                h = dt.strftime("%I %p")   # e.g. "02 PM"
+                h = dt.strftime("%I %p")
                 d = dt.strftime("%Y-%m-%d")
             except Exception:
                 continue
@@ -1613,16 +1613,29 @@ async def get_item_summary_report(
                 for i in (order.get("items") or [])
                 if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity", 0)) > 0
             )
-            hourly[h] = hourly.get(h, 0) + order_qty
-            daily[d] = daily.get(d, 0) + order_qty
+            order_rev = sum(
+                float(i.get("price", 0)) * int(i.get("quantity", 0))
+                for i in (order.get("items") or [])
+                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity", 0)) > 0
+            )
+            if h not in hourly:
+                hourly[h] = {"qty": 0, "revenue": 0.0, "orders": 0}
+            hourly[h]["qty"] += order_qty
+            hourly[h]["revenue"] += order_rev
+            hourly[h]["orders"] += 1
+            if d not in daily:
+                daily[d] = {"qty": 0, "revenue": 0.0, "orders": 0}
+            daily[d]["qty"] += order_qty
+            daily[d]["revenue"] += order_rev
+            daily[d]["orders"] += 1
 
         hourly_pattern = [
-            {"hour": h, "qty": q}
-            for h, q in sorted(hourly.items(), key=lambda x: datetime.strptime(x[0], "%I %p"))
+            {"hour": h, "qty": v["qty"], "revenue": round(v["revenue"], 2), "orders": v["orders"]}
+            for h, v in sorted(hourly.items(), key=lambda x: datetime.strptime(x[0], "%I %p"))
         ]
         daily_trend = [
-            {"date": d, "qty": q}
-            for d, q in sorted(daily.items())
+            {"date": d, "qty": v["qty"], "revenue": round(v["revenue"], 2), "orders": v["orders"]}
+            for d, v in sorted(daily.items())
         ]
 
         return {
