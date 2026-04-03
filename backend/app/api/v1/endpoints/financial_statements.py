@@ -635,14 +635,16 @@ async def get_inventory_closing_stock(
         # ── 3. Reconstruct quantities for items WITHOUT a physical count ──────
         #    current_qty + sales_after - receipts_after ± adjustments_after
 
-        # Sales after as_of_date (completed orders)
+        # Sales after as_of_date — exclude voided items
         sales_after: dict = {}  # item_id → qty sold after cutoff
         try:
             orders_res = supabase.table("orders").select("items, status").gt(
                 "created_at", after_ts
-            ).in_("status", ["served", "completed", "delivered", "paid"]).execute()
+            ).not_.in_("status", ["voided", "void", "cancelled", "canceled", "void_requested"]).execute()
             for order in (orders_res.data or []):
                 for oi in (order.get("items") or []):
+                    if oi.get("voided"):
+                        continue
                     mid = oi.get("menu_item_id") or oi.get("id")
                     if mid:
                         sales_after[mid] = sales_after.get(mid, 0.0) + float(oi.get("quantity", 0))
@@ -665,12 +667,15 @@ async def get_inventory_closing_stock(
         # Stock adjustments after as_of_date
         #   quantity_after − quantity_before = net change applied AFTER the date
         #   To reverse: subtract that net change from current stock
+        #   Exclude void_return — already handled by not counting voided sales above
         adj_after_net: dict = {}  # item_id → net qty change applied after cutoff
         try:
             adj_res = supabase.table("stock_adjustments").select(
-                "menu_item_id, quantity_before, quantity_after"
-            ).gt("created_at", after_ts).execute()
+                "menu_item_id, quantity_before, quantity_after, adjustment_type"
+            ).gt("adjusted_at", after_ts).execute()
             for a in (adj_res.data or []):
+                if a.get("adjustment_type") == "void_return":
+                    continue
                 mid = a.get("menu_item_id")
                 if mid:
                     net = float(a.get("quantity_after", 0)) - float(a.get("quantity_before", 0))
