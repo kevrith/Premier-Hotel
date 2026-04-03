@@ -676,7 +676,7 @@ async def get_employee_sales_report(
             items_summary = [
                 {
                     "department": dept,
-                    "items": sorted(items.values(), key=lambda x: x["revenue"], reverse=True),
+                    "items": sorted(items.values(), key=lambda x: x["name"].lower()),
                     "total_qty": sum(i["qty"] for i in items.values()),
                     "total_revenue": round(sum(i["revenue"] for i in items.values()), 2),
                 }
@@ -1352,13 +1352,13 @@ async def get_employee_details(
             [
                 {
                     "category": cat,
-                    "items": sorted(items, key=lambda x: x["revenue"], reverse=True),
+                    "items": sorted(items, key=lambda x: x["name"].lower()),
                     "total_qty": sum(i["qty"] for i in items),
                     "total_revenue": round(sum(i["revenue"] for i in items), 2)
                 }
                 for cat, items in cat_buckets.items()
             ],
-            key=lambda x: x["total_revenue"], reverse=True
+            key=lambda x: x["category"].lower()
         )
 
         # Calculate performance metrics

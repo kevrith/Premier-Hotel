@@ -976,8 +976,8 @@ async def update_order_status(
                                     continue
                                 item_data = tracked_map[mid]
                                 current = float(item_data.get("stock_quantity") or 0)
-                                # Skip items with no stock AND tracking disabled
-                                if current <= 0 and not item_data.get("track_inventory"):
+                                # Skip items with tracking disabled
+                                if not item_data.get("track_inventory"):
                                     continue
                                 qty_sold = float(oi.get("quantity", 1))
                                 new_qty = max(0, current - qty_sold)
@@ -1103,7 +1103,7 @@ async def update_order_status(
                                         continue
                                     item_data = tracked_map[mid]
                                     current = float(item_data.get("stock_quantity") or 0)
-                                    if current <= 0 and not item_data.get("track_inventory"):
+                                    if not item_data.get("track_inventory"):
                                         continue
                                     qty_sold = float(oi.get("quantity", 1))
                                     new_qty = max(0, current - qty_sold)
