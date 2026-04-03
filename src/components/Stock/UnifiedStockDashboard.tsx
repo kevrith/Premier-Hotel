@@ -869,14 +869,20 @@ export function UnifiedStockDashboard({ mode = 'owner', department }: { mode?: S
   });
 
   const [backfilling, setBackfilling] = useState(false);
+  const [backfillDone, setBackfillDone] = useState(() => !!localStorage.getItem('stock_backfill_done'));
 
   const runBackfill = async () => {
-    if (!confirm('This will deduct stock for all historical completed orders that have not been processed yet. Run backfill?')) return;
+    const fromDate = prompt('Backfill from date (YYYY-MM-DD), e.g. 2026-04-01. Leave blank for all orders:', '2026-04-01');
+    if (fromDate === null) return;
+    if (!confirm(`This will deduct stock for all completed orders${fromDate ? ` from ${fromDate}` : ''} not yet processed. Continue?`)) return;
     setBackfilling(true);
     try {
-      const res = await api.post('/stock/backfill-sales');
+      const params = fromDate ? `?from_date=${fromDate}` : '';
+      const res = await api.post(`/stock/backfill-sales${params}`);
       const d = res.data;
       toast.success(`Backfill done: ${d.orders_processed} orders processed, ${d.items_deducted} items deducted. ${d.orders_skipped_already_done} already done.`);
+      localStorage.setItem('stock_backfill_done', '1');
+      setBackfillDone(true);
       load();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Backfill failed');
@@ -898,7 +904,7 @@ export function UnifiedStockDashboard({ mode = 'owner', department }: { mode?: S
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {canEdit && (
+          {canEdit && !backfillDone && (
             <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50" onClick={runBackfill} disabled={backfilling}>
               {backfilling ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <TrendingDown className="h-3.5 w-3.5" />}
               {backfilling ? 'Running...' : 'Backfill Historical Sales'}

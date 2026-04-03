@@ -669,7 +669,7 @@ async def get_inventory_closing_stock(
         try:
             adj_res = supabase.table("stock_adjustments").select(
                 "menu_item_id, quantity_before, quantity_after"
-            ).gt("adjusted_at", after_ts).execute()
+            ).gt("created_at", after_ts).execute()
             for a in (adj_res.data or []):
                 mid = a.get("menu_item_id")
                 if mid:
