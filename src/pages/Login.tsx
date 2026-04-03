@@ -26,8 +26,15 @@ export default function Login() {
   const { login, needsVerification, verificationType, user } = useAuthStore();
   const { isOnline: offlineStoreOnline } = useOffline();
 
-  // Use both the store value AND navigator.onLine so we never miss an offline state
-  const isOnline = offlineStoreOnline && navigator.onLine;
+  // navigator.onLine lies on desktop (returns true even when DNS fails).
+  // Use offlineStore as primary signal; also treat ERR_NAME_NOT_RESOLVED as offline.
+  const [reallyOnline, setReallyOnline] = useState(offlineStoreOnline && navigator.onLine);
+
+  useEffect(() => {
+    setReallyOnline(offlineStoreOnline && navigator.onLine);
+  }, [offlineStoreOnline]);
+
+  const isOnline = reallyOnline;
 
   const [loginType, setLoginType] = useState<'email' | 'phone' | 'pin'>('email');
   const [cachedUser, setCachedUser] = useState<any>(null);
@@ -63,7 +70,7 @@ export default function Login() {
 
   const from = location.state?.from?.pathname || '/';
 
-  // Recompute cached user whenever online status changes
+  // Recompute cached user on mount and whenever online status changes
   useEffect(() => {
     const cached = getCachedUserDirect();
     setCachedUser(!isOnline ? cached : null);
@@ -74,6 +81,26 @@ export default function Login() {
       redirectByRole(cached.role);
     }
   }, [isOnline]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Also check on mount regardless of isOnline — handles desktop where
+  // navigator.onLine stays true but network is actually down
+  useEffect(() => {
+    const cached = getCachedUserDirect();
+    if (!cached) return;
+    // Probe real connectivity with a tiny HEAD request
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    fetch(`${(import.meta as any).env.VITE_API_BASE_URL}/health`, {
+      method: 'HEAD', signal: controller.signal, cache: 'no-store'
+    }).catch(() => {
+      // Network is actually down — go offline mode
+      clearTimeout(timer);
+      setReallyOnline(false);
+      setCachedUser(cached);
+      useAuthStore.setState({ user: cached, role: cached.role, isAuthenticated: true, isOfflineSession: true });
+      redirectByRole(cached.role);
+    }).finally(() => clearTimeout(timer));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const redirectByRole = (role: string) => {
     switch (role) {

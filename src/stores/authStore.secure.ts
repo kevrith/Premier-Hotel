@@ -323,11 +323,13 @@ const useAuthStore = create<AuthState>()(
               return false;
             }
           } catch (error: any) {
-            const networkErrorCodes = ['ERR_NETWORK', 'ERR_CONNECTION_REFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT'];
+            const networkErrorCodes = ['ERR_NETWORK', 'ERR_CONNECTION_REFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT', 'ERR_NAME_NOT_RESOLVED', 'ERR_INTERNET_DISCONNECTED', 'ERR_FAILED'];
             const isNetworkError = !error.response && (
               !navigator.onLine ||
               networkErrorCodes.includes(error.code) ||
-              error.message === 'Network Error'
+              error.message === 'Network Error' ||
+              error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+              error.message?.includes('ERR_INTERNET_DISCONNECTED')
             );
 
             if (isNetworkError) {
@@ -399,11 +401,13 @@ const useAuthStore = create<AuthState>()(
           return true;
         } catch (error: any) {
           // Don't logout on network errors (same set of codes as checkAuth)
-          const networkErrorCodes = ['ERR_NETWORK', 'ERR_CONNECTION_REFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT'];
+          const networkErrorCodes = ['ERR_NETWORK', 'ERR_CONNECTION_REFUSED', 'ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT', 'ERR_NAME_NOT_RESOLVED', 'ERR_INTERNET_DISCONNECTED', 'ERR_FAILED'];
           const isNetworkError = !error.response && (
             !navigator.onLine ||
             networkErrorCodes.includes(error.code) ||
-            error.message === 'Network Error'
+            error.message === 'Network Error' ||
+            error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+            error.message?.includes('ERR_INTERNET_DISCONNECTED')
           );
 
           if (isNetworkError) {

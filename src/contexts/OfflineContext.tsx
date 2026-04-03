@@ -55,6 +55,18 @@ export function OfflineProvider({ children }: { children: any }) {
     // Initial online status
     setOnlineStatus(navigator.onLine);
 
+    // Desktop fix: navigator.onLine lies. Probe real connectivity on mount.
+    if (navigator.onLine) {
+      const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
+      if (apiBase) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 4000);
+        fetch(`${apiBase}/health`, { method: 'HEAD', signal: ctrl.signal, cache: 'no-store' })
+          .catch(() => { setOnlineStatus(false); })
+          .finally(() => clearTimeout(t));
+      }
+    }
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);

@@ -39,11 +39,23 @@ const bgSyncPlugin = new BackgroundSyncPlugin('premier-hotel-mutations', {
 // Matches /api/v1/ on any host/port (localhost dev, LAN IPs, and production domains)
 const API_PATTERN = /\/api\/v1\//;
 
+// ── Auth endpoints — always NetworkOnly, NO background sync (never queue logins) ─
+const AUTH_PATTERN = /\/api\/v1\/auth\//;
+registerRoute(
+  ({ url, request }) =>
+    AUTH_PATTERN.test(url.href) &&
+    ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method),
+  new NetworkOnly(),
+  'POST'
+);
+
 // ── POST / PUT / PATCH / DELETE → NetworkOnly + Background Sync ───────────────
 // When offline, Workbox queues the request and replays it when back online.
+// Excludes auth endpoints (handled above).
 registerRoute(
   ({ url, request }) =>
     API_PATTERN.test(url.href) &&
+    !AUTH_PATTERN.test(url.href) &&
     ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method),
   new NetworkOnly({ plugins: [bgSyncPlugin] }),
   'POST'
@@ -65,6 +77,19 @@ registerRoute(
     API_PATTERN.test(url.href) && request.method === 'DELETE',
   new NetworkOnly({ plugins: [bgSyncPlugin] }),
   'DELETE'
+);
+
+// ── Auth /me — NetworkFirst with cache so offline checkAuth works ────────────
+registerRoute(
+  ({ url }) => API_PATTERN.test(url.href) && url.pathname.includes('/auth/me'),
+  new NetworkFirst({
+    cacheName: 'api-auth',
+    networkTimeoutSeconds: 4,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 1, maxAgeSeconds: 7 * 24 * 60 * 60 }),
+    ],
+  })
 );
 
 // ── Menu items — StaleWhileRevalidate (great for static-ish data) ─────────────
