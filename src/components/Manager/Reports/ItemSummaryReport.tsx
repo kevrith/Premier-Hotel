@@ -18,10 +18,17 @@ import api from '@/lib/api/client';
 import { buildItemSummaryHtml } from '@/lib/print';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 
+interface WaiterRow {
+  name: string;
+  qty: number;
+  revenue: number;
+}
+
 interface ItemRow {
   name: string;
   qty: number;
   revenue: number;
+  waiters: WaiterRow[];
 }
 
 interface CategoryRow {
@@ -44,8 +51,17 @@ export const ItemSummaryReport: React.FC = () => {
   const [data, setData] = useState<ItemSummaryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
+
+  const toggleItem = (key: string) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   useEffect(() => {
     loadData();
@@ -208,18 +224,41 @@ export const ItemSummaryReport: React.FC = () => {
 
                         {/* Item rows */}
                         {expandedCategories.has(cat.category) &&
-                          cat.items.map((item, ii) => (
-                            <tr
-                              key={`${ci}-${ii}`}
-                              className={`border-t border-border ${ii % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}
-                            >
-                              <td className="px-3 py-1.5 pl-8 text-foreground">{item.name}</td>
-                              <td className="px-3 py-1.5 text-right text-foreground">{item.qty}</td>
-                              <td className="px-3 py-1.5 text-right text-foreground">
-                                {fmtCurrency(item.revenue)}
-                              </td>
-                            </tr>
-                          ))}
+                          cat.items.map((item, ii) => {
+                            const itemKey = `${cat.category}::${item.name}`;
+                            const isExpanded = expandedItems.has(itemKey);
+                            return (
+                              <React.Fragment key={`${ci}-${ii}`}>
+                                <tr
+                                  className={`border-t border-border cursor-pointer hover:bg-blue-50/50 transition-colors ${ii % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}
+                                  onClick={() => item.waiters?.length > 0 && toggleItem(itemKey)}
+                                  title={item.waiters?.length > 0 ? 'Click to see waiter breakdown' : ''}
+                                >
+                                  <td className="px-3 py-1.5 pl-8 text-foreground flex items-center gap-1">
+                                    {item.waiters?.length > 0 && (
+                                      isExpanded
+                                        ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                                        : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                                    )}
+                                    {item.name}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-right text-foreground">{item.qty}</td>
+                                  <td className="px-3 py-1.5 text-right text-foreground">{fmtCurrency(item.revenue)}</td>
+                                </tr>
+                                {/* Waiter breakdown rows */}
+                                {isExpanded && item.waiters?.map((w, wi) => (
+                                  <tr key={`w-${wi}`} className="bg-amber-50/60 border-t border-amber-100">
+                                    <td className="px-3 py-1 pl-14 text-xs text-amber-800 flex items-center gap-1">
+                                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                                      {w.name}
+                                    </td>
+                                    <td className="px-3 py-1 text-right text-xs text-amber-800 font-medium">{w.qty}</td>
+                                    <td className="px-3 py-1 text-right text-xs text-amber-800">{fmtCurrency(w.revenue)}</td>
+                                  </tr>
+                                ))}
+                              </React.Fragment>
+                            );
+                          })}
                       </React.Fragment>
                     ))}
 
@@ -236,7 +275,7 @@ export const ItemSummaryReport: React.FC = () => {
               </div>
 
               <p className="text-xs text-muted-foreground mt-3">
-                Click a department row to expand/collapse its items.
+                Click a department row to expand/collapse its items. Click an item row to see per-waiter breakdown.
                 Cancelled orders are excluded.
               </p>
             </>

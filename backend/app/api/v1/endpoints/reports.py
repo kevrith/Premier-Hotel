@@ -1489,12 +1489,13 @@ async def get_item_summary_report(
         # (matches employee-sales exclusion list so figures stay consistent)
         VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
         orders_result = supabase.table("orders").select(
-            "id, items, total_amount, status, created_at"
+            "id, items, total_amount, status, created_at, created_by_staff_id, assigned_waiter_id"
         ).gte("created_at", start_date).lte("created_at", end_date).execute()
         orders = [o for o in (orders_result.data or []) if o.get("status") not in VOID_STATUSES]
 
         # Collect menu_item_ids to fetch categories
         all_item_ids = set()
+        all_staff_ids = set()
         for order in orders:
             items = order.get("items") or []
             if isinstance(items, list):
@@ -1502,6 +1503,9 @@ async def get_item_summary_report(
                     mid = item.get("menu_item_id") or item.get("id")
                     if mid:
                         all_item_ids.add(str(mid))
+            staff_id = order.get("assigned_waiter_id") or order.get("created_by_staff_id")
+            if staff_id:
+                all_staff_ids.add(str(staff_id))
 
         # Fetch menu items with categories
         menu_map = {}
@@ -1515,14 +1519,22 @@ async def get_item_summary_report(
                     "category": mi.get("category") or "Other"
                 }
 
-        # Aggregate: category -> item_name -> {qty, revenue}
+        # Fetch staff names
+        staff_map = {}
+        if all_staff_ids:
+            staff_result = supabase.table("users").select("id, full_name").in_("id", list(all_staff_ids)).execute()
+            for s in (staff_result.data or []):
+                staff_map[str(s["id"])] = s.get("full_name") or "Unknown"
+
+        # Aggregate: category -> item_name -> {qty, revenue, waiters: {name: {qty, revenue}}}
         category_data: Dict[str, Dict[str, Any]] = {}
         for order in orders:
             items = order.get("items") or []
             if not isinstance(items, list):
                 continue
+            staff_id = str(order.get("assigned_waiter_id") or order.get("created_by_staff_id") or "")
+            waiter_name = staff_map.get(staff_id, "Unknown") if staff_id else "Unknown"
             for item in items:
-                # Skip fully-voided items (item["voided"] = True set by void-item endpoint)
                 if item.get("voided"):
                     continue
                 mid = str(item.get("menu_item_id") or item.get("id") or "")
@@ -1542,9 +1554,15 @@ async def get_item_summary_report(
                 if category not in category_data:
                     category_data[category] = {}
                 if item_name not in category_data[category]:
-                    category_data[category][item_name] = {"qty": 0, "revenue": 0.0}
+                    category_data[category][item_name] = {"qty": 0, "revenue": 0.0, "waiters": {}}
                 category_data[category][item_name]["qty"] += qty
                 category_data[category][item_name]["revenue"] += revenue
+                # Per-waiter breakdown
+                w = category_data[category][item_name]["waiters"]
+                if waiter_name not in w:
+                    w[waiter_name] = {"qty": 0, "revenue": 0.0}
+                w[waiter_name]["qty"] += qty
+                w[waiter_name]["revenue"] += revenue
 
         # Format response
         result = []
@@ -1552,8 +1570,16 @@ async def get_item_summary_report(
         grand_revenue = 0.0
         for category, items_dict in sorted(category_data.items()):
             cat_items = sorted(
-                [{"name": k, "qty": v["qty"], "revenue": round(v["revenue"], 2)}
-                 for k, v in items_dict.items()],
+                [{
+                    "name": k,
+                    "qty": v["qty"],
+                    "revenue": round(v["revenue"], 2),
+                    "waiters": sorted(
+                        [{"name": wn, "qty": wd["qty"], "revenue": round(wd["revenue"], 2)}
+                         for wn, wd in v["waiters"].items()],
+                        key=lambda x: x["name"].lower()
+                    )
+                 } for k, v in items_dict.items()],
                 key=lambda x: x["name"].lower()
             )
             cat_qty = sum(i["qty"] for i in cat_items)
