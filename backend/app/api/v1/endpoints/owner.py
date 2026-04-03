@@ -1223,7 +1223,7 @@ async def staff_performance(
                                  "branch": branch_name, "metric_label": "Tasks Done",
                                  "metric_value": cleaner_stats.get(sid, 0), "revenue": 0, "avg_per_order": 0})
 
-    performance.sort(key=lambda p: p["metric_value"], reverse=True)
+    performance.sort(key=lambda p: p["revenue"], reverse=True)
     return {"performance": performance, "period_days": days}
 
 
