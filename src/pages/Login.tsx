@@ -90,8 +90,13 @@ export default function Login() {
     // Probe real connectivity with a tiny HEAD request
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
-    fetch(`${(import.meta as any).env.VITE_API_BASE_URL}/health`, {
+    const apiBase = (import.meta as any).env.VITE_API_BASE_URL || '';
+    const healthUrl = apiBase.replace('/api/v1', '') + '/health';
+    fetch(healthUrl, {
       method: 'HEAD', signal: controller.signal, cache: 'no-store'
+    }).then(r => {
+      // Any HTTP response means server is reachable — we are online
+      clearTimeout(timer);
     }).catch(() => {
       // Network is actually down — go offline mode
       clearTimeout(timer);
