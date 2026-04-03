@@ -128,11 +128,11 @@ async def get_revenue_analytics(
         # Fetch all sources in parallel
         def _b(): return supabase.table("bookings").select(
             "paid_amount, total_amount, payment_method, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(2000).execute()
+        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
 
         def _o(): return supabase.table("orders").select(
             "total_amount, payment_method, payment_status, status, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").limit(2000).execute()
+        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
 
         bookings_res, orders_res = await _par(_b, _o)
         bookings = bookings_res

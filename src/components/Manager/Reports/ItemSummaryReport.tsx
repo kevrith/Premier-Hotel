@@ -59,6 +59,7 @@ export const ItemSummaryReport: React.FC = () => {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [trendsMetric, setTrendsMetric] = useState<'qty'|'revenue'|'orders'>('revenue');
 
   const toggleItem = (key: string) => {
     setExpandedItems(prev => {
@@ -293,7 +294,8 @@ export const ItemSummaryReport: React.FC = () => {
                 <div className="grid gap-4">
                   {/* Metric toggle */}
                   {(() => {
-                    const [metric, setMetric] = React.useState<'qty'|'revenue'|'orders'>('revenue');
+                    const metric = trendsMetric;
+                    const setMetric = setTrendsMetric;
                     const METRICS = [
                       { key: 'revenue', label: 'Revenue (KES)' },
                       { key: 'qty',     label: 'Items Qty' },
