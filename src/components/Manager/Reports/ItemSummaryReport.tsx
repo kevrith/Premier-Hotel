@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Printer, Download, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Printer, Download, RefreshCw, ChevronDown, ChevronRight, BarChart3 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/api/client';
@@ -43,6 +44,10 @@ interface ItemSummaryData {
   categories: CategoryRow[];
   grand_total_qty: number;
   grand_total_revenue: number;
+  trends?: {
+    hourly: { hour: string; qty: number }[];
+    daily: { date: string; qty: number }[];
+  };
 }
 
 export const ItemSummaryReport: React.FC = () => {
@@ -178,107 +183,190 @@ export const ItemSummaryReport: React.FC = () => {
               No sales data found for the selected period.
             </div>
           ) : (
-            <>
-              {/* Summary badges */}
-              <div className="flex gap-3 mb-4 flex-wrap">
-                <Badge variant="outline" className="text-sm px-3 py-1">
-                  Total Qty: <strong className="ml-1">{data.grand_total_qty}</strong>
-                </Badge>
-                <Badge variant="outline" className="text-sm px-3 py-1">
-                  Total Revenue: <strong className="ml-1">{fmtCurrency(data.grand_total_revenue)}</strong>
-                </Badge>
-                <Badge variant="outline" className="text-sm px-3 py-1">
-                  Departments: <strong className="ml-1">{data.categories.length}</strong>
-                </Badge>
-              </div>
+            <Tabs defaultValue="summary">
+              <TabsList className="mb-4">
+                <TabsTrigger value="summary">Item Summary</TabsTrigger>
+                <TabsTrigger value="trends" className="flex items-center gap-1">
+                  <BarChart3 className="h-3.5 w-3.5" />Trends
+                </TabsTrigger>
+              </TabsList>
 
-              {/* Table */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-800 text-white">
-                      <th className="text-left px-3 py-2 w-1/2">Department / Item Name</th>
-                      <th className="text-right px-3 py-2 w-24">Qty</th>
-                      <th className="text-right px-3 py-2">Ext Price</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.categories.map((cat, ci) => (
-                      <React.Fragment key={cat.category}>
-                        {/* Category / Department row */}
-                        <tr
-                          className="bg-blue-50 hover:bg-blue-100 cursor-pointer select-none"
-                          onClick={() => toggleCategory(cat.category)}
-                        >
-                          <td className="px-3 py-2 font-bold flex items-center gap-1">
-                            {expandedCategories.has(cat.category)
-                              ? <ChevronDown className="h-4 w-4 text-blue-600 shrink-0" />
-                              : <ChevronRight className="h-4 w-4 text-blue-600 shrink-0" />}
-                            <span className="text-blue-500">{cat.category.toUpperCase()}</span>
-                          </td>
-                          <td className="px-3 py-2 text-right font-bold text-blue-500">{cat.total_qty}</td>
-                          <td className="px-3 py-2 text-right font-bold text-blue-500">
-                            {fmtCurrency(cat.total_revenue)}
-                          </td>
-                        </tr>
+              <TabsContent value="summary">
+                {/* Summary badges */}
+                <div className="flex gap-3 mb-4 flex-wrap">
+                  <Badge variant="outline" className="text-sm px-3 py-1">
+                    Total Qty: <strong className="ml-1">{data.grand_total_qty}</strong>
+                  </Badge>
+                  <Badge variant="outline" className="text-sm px-3 py-1">
+                    Total Revenue: <strong className="ml-1">{fmtCurrency(data.grand_total_revenue)}</strong>
+                  </Badge>
+                  <Badge variant="outline" className="text-sm px-3 py-1">
+                    Departments: <strong className="ml-1">{data.categories.length}</strong>
+                  </Badge>
+                </div>
 
-                        {/* Item rows */}
-                        {expandedCategories.has(cat.category) &&
-                          cat.items.map((item, ii) => {
-                            const itemKey = `${cat.category}::${item.name}`;
-                            const isExpanded = expandedItems.has(itemKey);
-                            return (
-                              <React.Fragment key={`${ci}-${ii}`}>
-                                <tr
-                                  className={`border-t border-border cursor-pointer hover:bg-blue-50/50 transition-colors ${ii % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}
-                                  onClick={() => item.waiters?.length > 0 && toggleItem(itemKey)}
-                                  title={item.waiters?.length > 0 ? 'Click to see waiter breakdown' : ''}
-                                >
-                                  <td className="px-3 py-1.5 pl-8 text-foreground flex items-center gap-1">
-                                    {item.waiters?.length > 0 && (
-                                      isExpanded
-                                        ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
-                                        : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                                    )}
-                                    {item.name}
-                                  </td>
-                                  <td className="px-3 py-1.5 text-right text-foreground">{item.qty}</td>
-                                  <td className="px-3 py-1.5 text-right text-foreground">{fmtCurrency(item.revenue)}</td>
-                                </tr>
-                                {/* Waiter breakdown rows */}
-                                {isExpanded && item.waiters?.map((w, wi) => (
-                                  <tr key={`w-${wi}`} className="bg-amber-50/60 border-t border-amber-100">
-                                    <td className="px-3 py-1 pl-14 text-xs text-amber-800 flex items-center gap-1">
-                                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                                      {w.name}
+                {/* Table */}
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-800 text-white">
+                        <th className="text-left px-3 py-2 w-1/2">Department / Item Name</th>
+                        <th className="text-right px-3 py-2 w-24">Qty</th>
+                        <th className="text-right px-3 py-2">Ext Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.categories.map((cat, ci) => (
+                        <React.Fragment key={cat.category}>
+                          <tr
+                            className="bg-blue-50 hover:bg-blue-100 cursor-pointer select-none"
+                            onClick={() => toggleCategory(cat.category)}
+                          >
+                            <td className="px-3 py-2 font-bold flex items-center gap-1">
+                              {expandedCategories.has(cat.category)
+                                ? <ChevronDown className="h-4 w-4 text-blue-600 shrink-0" />
+                                : <ChevronRight className="h-4 w-4 text-blue-600 shrink-0" />}
+                              <span className="text-blue-500">{cat.category.toUpperCase()}</span>
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-500">{cat.total_qty}</td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-500">
+                              {fmtCurrency(cat.total_revenue)}
+                            </td>
+                          </tr>
+
+                          {expandedCategories.has(cat.category) &&
+                            cat.items.map((item, ii) => {
+                              const itemKey = `${cat.category}::${item.name}`;
+                              const isExpanded = expandedItems.has(itemKey);
+                              return (
+                                <React.Fragment key={`${ci}-${ii}`}>
+                                  <tr
+                                    className={`border-t border-border cursor-pointer hover:bg-blue-50/50 transition-colors ${ii % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}
+                                    onClick={() => item.waiters?.length > 0 && toggleItem(itemKey)}
+                                    title={item.waiters?.length > 0 ? 'Click to see waiter breakdown' : ''}
+                                  >
+                                    <td className="px-3 py-1.5 pl-8 text-foreground flex items-center gap-1">
+                                      {item.waiters?.length > 0 && (
+                                        isExpanded
+                                          ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                                          : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                                      )}
+                                      {item.name}
                                     </td>
-                                    <td className="px-3 py-1 text-right text-xs text-amber-800 font-medium">{w.qty}</td>
-                                    <td className="px-3 py-1 text-right text-xs text-amber-800">{fmtCurrency(w.revenue)}</td>
+                                    <td className="px-3 py-1.5 text-right text-foreground">{item.qty}</td>
+                                    <td className="px-3 py-1.5 text-right text-foreground">{fmtCurrency(item.revenue)}</td>
                                   </tr>
-                                ))}
-                              </React.Fragment>
+                                  {isExpanded && item.waiters?.map((w, wi) => (
+                                    <tr key={`w-${wi}`} className="bg-amber-50/60 border-t border-amber-100">
+                                      <td className="px-3 py-1 pl-14 text-xs text-amber-800 flex items-center gap-1">
+                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                                        {w.name}
+                                      </td>
+                                      <td className="px-3 py-1 text-right text-xs text-amber-800 font-medium">{w.qty}</td>
+                                      <td className="px-3 py-1 text-right text-xs text-amber-800">{fmtCurrency(w.revenue)}</td>
+                                    </tr>
+                                  ))}
+                                </React.Fragment>
+                              );
+                            })}
+                        </React.Fragment>
+                      ))}
+
+                      <tr className="bg-green-500/10 border-t-2 border-green-500/30">
+                        <td className="px-3 py-2 font-bold text-green-500">GRAND TOTAL</td>
+                        <td className="px-3 py-2 text-right font-bold text-green-500">{data.grand_total_qty}</td>
+                        <td className="px-3 py-2 text-right font-bold text-green-500">
+                          {fmtCurrency(data.grand_total_revenue)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="text-xs text-muted-foreground mt-3">
+                  Click a department row to expand/collapse its items. Click an item row to see per-waiter breakdown.
+                  Cancelled orders are excluded.
+                </p>
+              </TabsContent>
+
+              <TabsContent value="trends">
+                <div className="grid gap-4">
+                  {/* Hourly pattern */}
+                  <Card className="border shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold">Peak Order Hours</CardTitle>
+                      <p className="text-xs text-muted-foreground">Total items ordered per hour of day</p>
+                    </CardHeader>
+                    <CardContent>
+                      {!data.trends?.hourly?.length ? (
+                        <p className="text-sm text-muted-foreground py-4 text-center">No hourly data available.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {[...data.trends.hourly]
+                            .sort((a, b) => b.qty - a.qty)
+                            .map((h, i) => {
+                              const max = Math.max(...data.trends!.hourly.map(x => x.qty));
+                              const pct = max > 0 ? Math.round((h.qty / max) * 100) : 0;
+                              return (
+                                <div key={i} className="flex items-center gap-3">
+                                  <div className="w-16 text-xs font-medium text-right shrink-0">{h.hour}</div>
+                                  <div className="flex-1">
+                                    <div className="w-full bg-muted rounded-full h-6 relative">
+                                      <div
+                                        className="bg-gradient-to-r from-green-500 to-green-600 h-6 rounded-full flex items-center px-2 transition-all"
+                                        style={{ width: `${Math.max(pct, 8)}%` }}
+                                      >
+                                        <span className="text-xs font-medium text-white">{h.qty} items</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Daily trend */}
+                  <Card className="border shadow-none">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-semibold">Daily Demand Trend</CardTitle>
+                      <p className="text-xs text-muted-foreground">Total items ordered per day</p>
+                    </CardHeader>
+                    <CardContent>
+                      {!data.trends?.daily?.length ? (
+                        <p className="text-sm text-muted-foreground py-4 text-center">No daily data available.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {data.trends.daily.map((d, i) => {
+                            const max = Math.max(...data.trends!.daily.map(x => x.qty));
+                            const pct = max > 0 ? Math.round((d.qty / max) * 100) : 0;
+                            return (
+                              <div key={i} className="flex items-center gap-3">
+                                <div className="w-20 text-xs text-muted-foreground shrink-0">
+                                  {format(new Date(d.date), 'MMM dd')}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="w-full bg-muted rounded-full h-6 relative">
+                                    <div
+                                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-6 rounded-full flex items-center px-2 transition-all"
+                                      style={{ width: `${Math.max(pct, 8)}%` }}
+                                    >
+                                      <span className="text-xs font-medium text-white">{d.qty} items</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             );
                           })}
-                      </React.Fragment>
-                    ))}
-
-                    {/* Grand total */}
-                    <tr className="bg-green-500/10 border-t-2 border-green-500/30">
-                      <td className="px-3 py-2 font-bold text-green-500">GRAND TOTAL</td>
-                      <td className="px-3 py-2 text-right font-bold text-green-500">{data.grand_total_qty}</td>
-                      <td className="px-3 py-2 text-right font-bold text-green-500">
-                        {fmtCurrency(data.grand_total_revenue)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <p className="text-xs text-muted-foreground mt-3">
-                Click a department row to expand/collapse its items. Click an item row to see per-waiter breakdown.
-                Cancelled orders are excluded.
-              </p>
-            </>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+            </Tabs>
           )}
         </CardContent>
       </Card>

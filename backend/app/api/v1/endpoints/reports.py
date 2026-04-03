@@ -1597,11 +1597,43 @@ async def get_item_summary_report(
 
         result.sort(key=lambda x: x["total_revenue"], reverse=True)
 
+        # ── Trends: hourly order counts + daily qty across all items ──────────
+        hourly: Dict[str, int] = {}
+        daily: Dict[str, int] = {}
+        for order in orders:
+            ts = order.get("created_at") or ""
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                h = dt.strftime("%I %p")   # e.g. "02 PM"
+                d = dt.strftime("%Y-%m-%d")
+            except Exception:
+                continue
+            order_qty = sum(
+                int(i.get("quantity", 0))
+                for i in (order.get("items") or [])
+                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity", 0)) > 0
+            )
+            hourly[h] = hourly.get(h, 0) + order_qty
+            daily[d] = daily.get(d, 0) + order_qty
+
+        hourly_pattern = [
+            {"hour": h, "qty": q}
+            for h, q in sorted(hourly.items(), key=lambda x: datetime.strptime(x[0], "%I %p"))
+        ]
+        daily_trend = [
+            {"date": d, "qty": q}
+            for d, q in sorted(daily.items())
+        ]
+
         return {
             "period": {"start": start_date, "end": end_date},
             "categories": result,
             "grand_total_qty": grand_qty,
-            "grand_total_revenue": round(grand_revenue, 2)
+            "grand_total_revenue": round(grand_revenue, 2),
+            "trends": {
+                "hourly": hourly_pattern,
+                "daily": daily_trend,
+            }
         }
 
     except HTTPException:
