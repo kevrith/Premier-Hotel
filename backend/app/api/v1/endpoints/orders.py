@@ -1689,7 +1689,33 @@ async def void_order_item(
 
     supabase.table("orders").update(update_data).eq("id", order_id).execute()
 
-    # If order has a bill, update bill total
+    # ── Restore stock for the voided item ──
+    try:
+        mid = item.get("menu_item_id") or item.get("id")
+        qty_to_restore = req.quantity if (req.quantity > 0 and req.quantity < original_qty) else original_qty
+        if mid:
+            mi_res = supabase.table("menu_items").select(
+                "id, stock_quantity, track_inventory"
+            ).eq("id", mid).execute()
+            if mi_res.data:
+                mi = mi_res.data[0]
+                current_stock = float(mi.get("stock_quantity") or 0)
+                supabase.table("menu_items").update({
+                    "stock_quantity": current_stock + qty_to_restore,
+                    "is_available": True,
+                }).eq("id", mid).execute()
+                supabase.table("stock_adjustments").insert({
+                    "menu_item_id": mid,
+                    "item_name": item.get("name", ""),
+                    "adjustment_type": "void_return",
+                    "quantity_before": current_stock,
+                    "quantity_after": current_stock + qty_to_restore,
+                    "reason": f"Void: {req.void_reason} (Order {order.get('order_number', order_id)})",
+                    "adjusted_by": current_user["id"],
+                }).execute()
+                logging.info(f"[STOCK] ✅ Restored {qty_to_restore} of {item.get('name')} for voided item in order {order_id}")
+    except Exception as stock_err:
+        logging.warning(f"[STOCK] ⚠️ Stock restore failed on void-item for order {order_id}: {stock_err}")
     bill_id = order.get("bill_id")
     if bill_id:
         try:
