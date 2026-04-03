@@ -70,12 +70,8 @@ def _period(days: int = 30):
 _VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
 
 def _item_revenue(order: dict) -> float:
-    """Calculate revenue as price×qty from line items — matches item-summary method."""
-    return sum(
-        float(i.get("price", 0)) * int(i.get("quantity", 0))
-        for i in (order.get("items") or [])
-        if isinstance(i, dict)
-    )
+    """Revenue from total_amount — consistent with all other owner endpoints."""
+    return float(order.get("total_amount") or 0)
 
 def _stats_for_branch(supabase: Client, branch_id: Optional[str], start: str, end: str) -> dict:
     """Pull KPIs for a single branch (or all branches if branch_id is None)."""
@@ -87,9 +83,9 @@ def _stats_for_branch(supabase: Client, branch_id: Optional[str], start: str, en
     staff = staff_q.execute().data or []
     active_staff = sum(1 for s in staff if s.get("status") == "active")
 
-    # Orders — served/completed only, non-voided (matches item-summary exclusion list)
+    # Orders — served/completed only, non-voided
     COMPLETED_STATUSES = ["served", "completed", "delivered", "paid"]
-    orders_q = supabase.table("orders").select("id, items, status, created_at, customer_id") \
+    orders_q = supabase.table("orders").select("id, total_amount, status, created_at, customer_id") \
         .gte("created_at", start).lte("created_at", end) \
         .in_("status", COMPLETED_STATUSES)
     if branch_id:
@@ -145,7 +141,7 @@ def _revenue_trend(supabase: Client, branch_id: Optional[str], days: int = 30) -
     """Daily revenue for the last N days."""
     end = datetime.now()
     start = end - timedelta(days=days)
-    orders_q = supabase.table("orders").select("items, status, created_at") \
+    orders_q = supabase.table("orders").select("total_amount, status, created_at") \
         .gte("created_at", start.isoformat()).lte("created_at", end.isoformat()) \
         .not_.in_("status", list(_VOID_STATUSES))
     if branch_id:
@@ -329,7 +325,7 @@ async def owner_overview(
     (branches, all_staff, all_orders, all_bookings, all_rooms) = await _par(
         lambda: supabase.table("branches").select("*").eq("status", "active").execute().data or [],
         lambda: supabase.table("users").select("id, role, status, branch_id").neq("role", "customer").execute().data or [],
-        lambda: supabase.table("orders").select("id, items, status, created_at, customer_id, branch_id").gte("created_at", start).lte("created_at", end).not_.in_("status", list(_VOID_STATUSES)).execute().data or [],
+        lambda: supabase.table("orders").select("id, total_amount, status, created_at, customer_id, branch_id").gte("created_at", start).lte("created_at", end).not_.in_("status", list(_VOID_STATUSES)).execute().data or [],
         lambda: supabase.table("bookings").select("id, paid_amount, total_amount, status, created_at, branch_id").gte("created_at", start).lte("created_at", end).execute().data or [],
         lambda: supabase.table("rooms").select("id, status, branch_id").execute().data or [],
     )
