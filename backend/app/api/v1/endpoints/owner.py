@@ -1536,20 +1536,34 @@ async def owner_stock_movements(
     inv = get_supabase_admin()
 
     def _receipts():
-        q = inv.table("stock_receipts").select(
-            "id, receipt_number, item_name, quantity, unit, unit_cost, total_cost, supplier, invoice_number, received_by, received_at, notes"
-        ).gte("received_at", f"{start_date}T00:00:00").lte("received_at", f"{end_date}T23:59:59")
-        if item_id:
-            q = q.eq("menu_item_id", item_id)
-        return q.order("received_at", desc=True).limit(500).execute().data or []
+        try:
+            q = inv.table("stock_receipts").select(
+                "id, receipt_number, item_name, quantity, unit, unit_cost, total_cost, supplier, invoice_number, received_by, received_at, notes"
+            ).gte("received_at", f"{start_date}T00:00:00").lte("received_at", f"{end_date}T23:59:59")
+            if item_id:
+                q = q.eq("menu_item_id", item_id)
+            return q.order("received_at", desc=True).limit(500).execute().data or []
+        except Exception:
+            return []
 
     def _adjustments():
-        q = inv.table("stock_adjustments").select(
-            "id, menu_item_id, item_name, adjustment_type, quantity_before, quantity_after, reason, adjusted_by, created_at"
-        ).gte("created_at", f"{start_date}T00:00:00").lte("created_at", f"{end_date}T23:59:59")
-        if item_id:
-            q = q.eq("menu_item_id", item_id)
-        return q.order("created_at", desc=True).limit(1000).execute().data or []
+        try:
+            q = inv.table("stock_adjustments").select(
+                "id, menu_item_id, item_name, adjustment_type, quantity_before, quantity_after, reason, adjusted_by, created_at"
+            ).gte("created_at", f"{start_date}T00:00:00").lte("created_at", f"{end_date}T23:59:59")
+            if item_id:
+                q = q.eq("menu_item_id", item_id)
+            return q.order("created_at", desc=True).limit(1000).execute().data or []
+        except Exception:
+            return []
+
+    def _users(all_ids):
+        try:
+            if not all_ids:
+                return []
+            return inv.table("users").select("id, full_name").in_("id", all_ids).execute().data or []
+        except Exception:
+            return []
 
     receipts, adjustments = await _par(_receipts, _adjustments)
 
@@ -1561,10 +1575,8 @@ async def owner_stock_movements(
     receiver_ids = list({r.get("received_by") for r in receipts if r.get("received_by")})
     adj_by_ids = list({a.get("adjusted_by") for a in adjustments if a.get("adjusted_by")})
     all_ids = list(set(receiver_ids + adj_by_ids))
-    user_map: dict = {}
-    if all_ids:
-        users = inv.table("users").select("id, full_name").in_("id", all_ids).execute().data or []
-        user_map = {u["id"]: u.get("full_name", "Unknown") for u in users}
+    users = await _par(lambda: _users(all_ids))
+    user_map = {u["id"]: u.get("full_name", "Unknown") for u in (users[0] if users else [])}
 
     for r in receipts:
         r["type"] = "receipt"
