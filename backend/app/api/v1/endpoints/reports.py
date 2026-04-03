@@ -1554,7 +1554,7 @@ async def get_item_summary_report(
             cat_items = sorted(
                 [{"name": k, "qty": v["qty"], "revenue": round(v["revenue"], 2)}
                  for k, v in items_dict.items()],
-                key=lambda x: x["revenue"], reverse=True
+                key=lambda x: x["name"].lower()
             )
             cat_qty = sum(i["qty"] for i in cat_items)
             cat_revenue = sum(i["revenue"] for i in cat_items)
