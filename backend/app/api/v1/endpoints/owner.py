@@ -1533,7 +1533,7 @@ async def owner_stock_movements(
     if not end_date:
         end_date = _date.today().isoformat()
 
-    inv = get_supabase()
+    inv = get_supabase_admin()
 
     def _receipts():
         q = inv.table("stock_receipts").select(
