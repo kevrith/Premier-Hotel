@@ -657,10 +657,21 @@ async def create_order(
 
         # DEDUCT STOCK on order creation
         try:
+            order_item_ids = [oi["menu_item_id"] for oi in order_items if oi.get("menu_item_id")]
             tracked_res = supabase_admin.table("menu_items").select(
                 "id, name, stock_quantity, track_inventory"
-            ).in_("id", [oi["menu_item_id"] for oi in order_items if oi.get("menu_item_id")]).execute()
+            ).in_("id", order_item_ids).execute()
             tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
+
+            # Get bar_location_id from the created order for per-location deduction
+            bar_location_id = created_order.get("bar_location_id")
+            loc_stock_map: dict = {}
+            if bar_location_id and order_item_ids:
+                loc_res = supabase_admin.table("location_stock").select(
+                    "id, menu_item_id, quantity"
+                ).eq("location_id", bar_location_id).in_("menu_item_id", order_item_ids).execute()
+                loc_stock_map = {i["menu_item_id"]: i for i in (loc_res.data or [])}
+
             for oi in order_items:
                 mid = oi.get("menu_item_id")
                 if not mid or mid not in tracked_map:
@@ -668,13 +679,24 @@ async def create_order(
                 item_data = tracked_map[mid]
                 if not item_data.get("track_inventory") and float(item_data.get("stock_quantity") or 0) <= 0:
                     continue
-                current = float(item_data.get("stock_quantity") or 0)
                 qty_sold = float(oi.get("quantity", 1))
+
+                # Deduct from global menu_items
+                current = float(item_data.get("stock_quantity") or 0)
                 new_qty = max(0, current - qty_sold)
                 supabase_admin.table("menu_items").update({
                     "stock_quantity": new_qty,
                     "is_available": new_qty > 0,
                 }).eq("id", mid).execute()
+
+                # Also deduct from bar location_stock when order belongs to a specific bar
+                if bar_location_id and mid in loc_stock_map:
+                    loc_row = loc_stock_map[mid]
+                    loc_current = float(loc_row.get("quantity") or 0)
+                    supabase_admin.table("location_stock").update({
+                        "quantity": max(0, loc_current - qty_sold),
+                    }).eq("id", loc_row["id"]).execute()
+
                 try:
                     supabase_admin.table("stock_adjustments").insert({
                         "menu_item_id": mid,
@@ -1295,13 +1317,30 @@ async def approve_void(
                 "status": "cancelled"
             }).eq("id", order_id).execute()
 
-            # Restore stock — deducted at order creation so always restore on void
+            # Restore stock — always restore to global menu_items; also restore location_stock if bar order
             try:
                 order_items = voided_order.get("items", []) or []
                 bar_location_id = voided_order.get("bar_location_id")
                 if isinstance(order_items, list) and order_items:
                     item_ids = [oi.get("menu_item_id") or oi.get("id") for oi in order_items if oi.get("menu_item_id") or oi.get("id")]
                     if item_ids:
+                        # Always restore global stock
+                        tracked_res = supabase_admin.table("menu_items").select(
+                            "id, stock_quantity, track_inventory"
+                        ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+                        tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
+                        for oi in order_items:
+                            mid = oi.get("menu_item_id") or oi.get("id")
+                            if not mid or mid not in tracked_map:
+                                continue
+                            qty_sold = float(oi.get("quantity", 1))
+                            current = float(tracked_map[mid].get("stock_quantity") or 0)
+                            supabase_admin.table("menu_items").update({
+                                "stock_quantity": current + qty_sold,
+                                "is_available": True,
+                            }).eq("id", mid).execute()
+
+                        # Also restore location_stock if this was a bar order
                         if bar_location_id:
                             loc_stock_res = supabase_admin.table("location_stock").select(
                                 "id, menu_item_id, quantity"
@@ -1317,22 +1356,8 @@ async def approve_void(
                                     "quantity": current + qty_sold,
                                 }).eq("id", loc_stock_map[mid]["id"]).execute()
                             logging.info(f"[STOCK] ✅ Per-location stock restored for voided order {order_id}")
-                        else:
-                            tracked_res = supabase_admin.table("menu_items").select(
-                                "id, stock_quantity, track_inventory"
-                            ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
-                            tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
-                            for oi in order_items:
-                                mid = oi.get("menu_item_id") or oi.get("id")
-                                if not mid or mid not in tracked_map:
-                                    continue
-                                qty_sold = float(oi.get("quantity", 1))
-                                current = float(tracked_map[mid].get("stock_quantity") or 0)
-                                supabase_admin.table("menu_items").update({
-                                    "stock_quantity": current + qty_sold,
-                                    "is_available": True,
-                                }).eq("id", mid).execute()
-                            logging.info(f"[STOCK] ✅ Global stock restored for voided order {order_id}")
+
+                        logging.info(f"[STOCK] ✅ Global stock restored for voided order {order_id}")
             except Exception as stock_err:
                 logging.warning(f"[STOCK] ⚠️ Stock restoration failed for voided order {order_id}: {stock_err}")
 
@@ -1828,7 +1853,7 @@ async def void_entire_receipt(
         "notes": f"{order.get('notes', '')} | Receipt voided: {req.void_reason}".strip(" |"),
     }).eq("id", order_id).execute()
 
-    # ── Restore stock — deducted at order creation so always restore on void ──
+    # ── Restore stock — always restore global + location_stock if bar order ──
     try:
         bar_location_id = order.get("bar_location_id")
         item_ids = [
@@ -1837,6 +1862,23 @@ async def void_entire_receipt(
             if oi.get("menu_item_id") or oi.get("id")
         ]
         if item_ids:
+            # Always restore global menu_items
+            tracked_res = supabase.table("menu_items").select(
+                "id, stock_quantity, track_inventory"
+            ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+            tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
+            for oi in items:
+                mid = oi.get("menu_item_id") or oi.get("id")
+                if not mid or mid not in tracked_map:
+                    continue
+                current = float(tracked_map[mid].get("stock_quantity") or 0)
+                supabase.table("menu_items").update({
+                    "stock_quantity": current + float(oi.get("quantity", 1)),
+                    "is_available": True,
+                }).eq("id", mid).execute()
+            logging.info(f"[STOCK] ✅ Global stock restored for voided receipt {order_id}")
+
+            # Also restore location_stock if this was a bar order
             if bar_location_id:
                 loc_res = supabase.table("location_stock").select(
                     "id, menu_item_id, quantity"
@@ -1851,21 +1893,6 @@ async def void_entire_receipt(
                         "quantity": current + float(oi.get("quantity", 1))
                     }).eq("id", loc_map[mid]["id"]).execute()
                 logging.info(f"[STOCK] ✅ Per-location stock restored for voided receipt {order_id}")
-            else:
-                tracked_res = supabase.table("menu_items").select(
-                    "id, stock_quantity, track_inventory"
-                ).in_("id", item_ids).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
-                tracked_map = {i["id"]: i for i in (tracked_res.data or [])}
-                for oi in items:
-                    mid = oi.get("menu_item_id") or oi.get("id")
-                    if not mid or mid not in tracked_map:
-                        continue
-                    current = float(tracked_map[mid].get("stock_quantity") or 0)
-                    supabase.table("menu_items").update({
-                        "stock_quantity": current + float(oi.get("quantity", 1)),
-                        "is_available": True,
-                    }).eq("id", mid).execute()
-                logging.info(f"[STOCK] ✅ Global stock restored for voided receipt {order_id}")
     except Exception as stock_err:
         logging.warning(f"[STOCK] ⚠️ Stock restoration failed for voided receipt {order_id}: {stock_err}")
 

@@ -441,6 +441,35 @@ async def submit_stock_take(
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to save stock items: {str(e)}")
 
+        # ── Sync global menu_items.stock_quantity after per-location stock take ──
+        # Sum quantities across ALL bar/location stock for each submitted item,
+        # then write that combined total back to menu_items so "Current Stock" tab
+        # always reflects the true physical count across all locations.
+        if req.location_id and item_ids:
+            try:
+                # Fetch all location_stock rows for submitted items across ALL locations
+                combined: dict = {}  # menu_item_id → combined qty
+                for chunk_start in range(0, len(item_ids), 50):
+                    chunk = item_ids[chunk_start:chunk_start + 50]
+                    ls_all = supabase.table("location_stock").select(
+                        "menu_item_id, quantity"
+                    ).in_("menu_item_id", chunk).execute()
+                    for row in (ls_all.data or []):
+                        mid = row["menu_item_id"]
+                        combined[mid] = combined.get(mid, 0.0) + float(row.get("quantity") or 0)
+
+                # Update menu_items.stock_quantity for each item
+                for mid, total_qty in combined.items():
+                    supabase.table("menu_items").update({
+                        "stock_quantity": round(total_qty, 3),
+                        "is_available": total_qty > 0,
+                    }).eq("id", mid).execute()
+
+                logger.info(f"[STOCK] ✅ Synced global stock for {len(combined)} items after per-location stock take")
+            except Exception as sync_err:
+                logger.warning(f"[STOCK] ⚠️ Global stock sync failed: {sync_err}")
+                # Don't fail the submission — sync is a best-effort post-step
+
         return {
             "success": True,
             "session_id": session_id,
