@@ -642,6 +642,8 @@ async def create_order(
             "room_number": order_data.location if order_data.location_type == "room" else None,
             "table_number": order_data.location if order_data.location_type == "table" else None,
             "branch_id": current_user.get("branch_id"),
+            # Auto-tag order with the waiter's assigned bar location
+            "bar_location_id": current_user.get("assigned_location_id"),
         }
 
         # Use admin client to bypass RLS for order insertion

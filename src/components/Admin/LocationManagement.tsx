@@ -464,8 +464,8 @@ export function LocationManagement() {
   const fetchStaff = useCallback(async () => {
     setStaffLoading(true);
     try {
-      const res = await apiClient.get('/staff?limit=200');
-      const list: StaffUser[] = (res.data as any)?.staff || (res.data as any) || [];
+      const res = await apiClient.get('/admin/users?roles=waiter,chef,manager,admin&user_status=active&limit=200');
+      const list: StaffUser[] = (res.data as any) || [];
       setStaff(list);
       const assignments: Record<string, string> = {};
       list.forEach(u => {

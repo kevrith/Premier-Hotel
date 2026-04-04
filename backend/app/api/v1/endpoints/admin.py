@@ -176,6 +176,8 @@ async def list_users(
                 "full_name": user.get("full_name", ""),
                 "phone_number": user.get("phone"),
                 "role": user.get("role", "customer"),
+                "assigned_location_id": user.get("assigned_location_id"),
+                "status": user.get("status", "active"),
                 "created_at": user["created_at"],
             }
             for user in result.data
