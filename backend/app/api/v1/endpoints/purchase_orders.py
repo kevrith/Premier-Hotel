@@ -7,10 +7,12 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from app.middleware.auth_secure import get_current_user, require_role
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase, get_supabase_admin
 from supabase import Client
 from pydantic import BaseModel, Field
 import uuid
+import traceback
+import logging
 
 router = APIRouter()
 
@@ -920,7 +922,7 @@ def _next_receipt_number(supabase: Client) -> str:
 async def direct_receive(
     body: DirectReceiveCreate,
     current_user: dict = Depends(require_role(["admin", "manager", "owner"])),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Directly receive stock from a supplier without a purchase order.
@@ -1036,7 +1038,7 @@ async def list_direct_receipts(
     skip: int = 0,
     limit: int = 50,
     current_user: dict = Depends(require_role(["admin", "manager", "owner"])),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """List all direct stock receipts with optional filters."""
     try:
@@ -1100,4 +1102,5 @@ async def list_direct_receipts(
         return receipts
 
     except Exception as e:
+        logging.error(f"[direct-receive GET] {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch receipts: {str(e)}")
