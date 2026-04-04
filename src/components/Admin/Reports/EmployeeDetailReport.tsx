@@ -38,9 +38,7 @@ import {
   ChevronDown,
   ChevronRight,
   Package,
-  Ban,
 } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 import { reportsService, EmployeeDetailResponse } from '@/lib/api/reports';
@@ -78,13 +76,6 @@ export function EmployeeDetailReport({
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Void state
-  const [voidDialogOpen, setVoidDialogOpen] = useState(false);
-  const [voidingOrderId, setVoidingOrderId] = useState<string>('');
-  const [voidingOrderItems, setVoidingOrderItems] = useState<Array<{ name: string; quantity: number; price: number }>>([]);
-  const [voidItemIndex, setVoidItemIndex] = useState<string>('0');
-  const [voidReason, setVoidReason] = useState('');
-  const [voidLoading, setVoidLoading] = useState(false);
 
   // Single effect: when dialog opens, resolve the correct dates and fetch immediately.
   // Using initialStartDate/End directly avoids a React state race where setStartDate
@@ -216,35 +207,6 @@ export function EmployeeDetailReport({
     });
   };
 
-  const openVoidDialog = (orderId: string, items: Array<{ name: string; quantity: number; price: number }>) => {
-    setVoidingOrderId(orderId);
-    setVoidingOrderItems(items);
-    setVoidItemIndex('0');
-    setVoidReason('');
-    setVoidDialogOpen(true);
-  };
-
-  const handleVoid = async () => {
-    if (!voidReason.trim()) {
-      toast.error('Please enter a void reason');
-      return;
-    }
-    setVoidLoading(true);
-    try {
-      await api.post(`/orders/${voidingOrderId}/void-item`, {
-        item_index: parseInt(voidItemIndex),
-        void_reason: voidReason,
-      });
-      toast.success('Item voided successfully');
-      setVoidDialogOpen(false);
-      fetchEmployeeDetails();
-    } catch (error: any) {
-      const msg = error?.response?.data?.detail || error.message || 'Failed to void item';
-      toast.error(msg);
-    } finally {
-      setVoidLoading(false);
-    }
-  };
 
   if (!open) return null;
 
@@ -526,7 +488,6 @@ export function EmployeeDetailReport({
                             <TableHead>Payment</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-right">Action</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -567,19 +528,6 @@ export function EmployeeDetailReport({
                               </TableCell>
                               <TableCell className="text-right font-semibold">
                                 KES {txn.total.toLocaleString()}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {txn.status !== 'voided' && txn.status !== 'cancelled' && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    onClick={() => openVoidDialog(txn.order_id, txn.items)}
-                                  >
-                                    <Ban className="h-4 w-4 mr-1" />
-                                    Void
-                                  </Button>
-                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -864,57 +812,6 @@ export function EmployeeDetailReport({
       title={`Items Sold — ${data?.employee?.name ?? ''}`}
     />
 
-    {/* Void Dialog */}
-    <Dialog open={voidDialogOpen} onOpenChange={setVoidDialogOpen}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-600">
-            <Ban className="h-5 w-5" />
-            Void Order
-          </DialogTitle>
-          <DialogDescription>
-            Order: <span className="font-mono text-xs">{voidingOrderId.substring(0, 8)}...</span>
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div>
-            <Label className="mb-2 block">Select Item to Void</Label>
-            <Select value={voidItemIndex} onValueChange={setVoidItemIndex}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {voidingOrderItems.map((item, idx) => (
-                  <SelectItem key={idx} value={String(idx)}>
-                    {item.quantity}x {item.name} — KES {item.price.toLocaleString()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label className="mb-2 block">Void Reason <span className="text-red-500">*</span></Label>
-            <Input
-              placeholder="e.g. Wrong order, Customer complaint..."
-              value={voidReason}
-              onChange={(e) => setVoidReason(e.target.value)}
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setVoidDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleVoid}
-              disabled={voidLoading || !voidReason.trim()}
-            >
-              {voidLoading ? 'Voiding...' : 'Confirm Void'}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
     </>
   );
 }
