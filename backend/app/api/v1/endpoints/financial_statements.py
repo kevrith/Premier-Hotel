@@ -614,21 +614,23 @@ async def get_inventory_closing_stock(
         items = items_result.data or []
         item_map = {i["id"]: i for i in items}
 
-        # ── 2. Check for daily stock-take session on that exact date ─────────
-        #    If the chef submitted a physical count on that day, it's the ground truth.
-        physical_map: dict = {}   # item_id → physical closing qty
+        # ── 2. Check for daily stock-take sessions on that exact date ───────
+        #    Multiple sessions may exist (Bar A, Bar B, Kitchen…). Combine them all.
+        #    Physical closing qty per item = sum across all location sessions.
+        physical_map: dict = {}   # item_id → combined physical closing qty
         try:
             session_res = supabase.table("daily_stock_sessions").select("id").eq(
                 "session_date", as_of_date
             ).execute()
-            if session_res.data:
-                session_id = session_res.data[0]["id"]
+            for session in (session_res.data or []):
                 items_res = supabase.table("daily_stock_items").select(
                     "menu_item_id, physical_closing"
-                ).eq("session_id", session_id).execute()
+                ).eq("session_id", session["id"]).execute()
                 for row in (items_res.data or []):
-                    if row.get("menu_item_id") and row.get("physical_closing") is not None:
-                        physical_map[row["menu_item_id"]] = float(row["physical_closing"])
+                    mid = row.get("menu_item_id")
+                    phys = row.get("physical_closing")
+                    if mid and phys is not None:
+                        physical_map[mid] = physical_map.get(mid, 0.0) + float(phys)
         except Exception:
             pass
 
