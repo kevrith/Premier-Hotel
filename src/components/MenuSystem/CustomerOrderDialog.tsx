@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import {
 import { User, Phone, MapPin, Utensils, Sparkles } from 'lucide-react';
 import { CustomerAutocomplete } from '@/components/FoodOrdering/CustomerAutocomplete';
 import customersApi, { CustomerSearchResult } from '@/lib/api/customers';
+import { tablesAPI, RestaurantTable } from '@/lib/api/tables';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import { useTaxSettings } from '@/hooks/useTaxSettings';
@@ -58,6 +60,7 @@ export default function CustomerOrderDialog({
   const [tableNumber, setTableNumber] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lastTableNumber, setLastTableNumber] = useState('');
+  const [availableTables, setAvailableTables] = useState<RestaurantTable[]>([]);
   const [isLoadingCustomer, setIsLoadingCustomer] = useState(false);
   const [hasLoadedInitialData, setHasLoadedInitialData] = useState(false);
 
@@ -73,6 +76,15 @@ export default function CustomerOrderDialog({
       setLastTableNumber(savedTableNumber);
     }
   }, []);
+
+  // Load restaurant tables when dialog opens
+  useEffect(() => {
+    if (open) {
+      tablesAPI.getAll()
+        .then(tables => setAvailableTables(tables))
+        .catch(() => setAvailableTables([]));
+    }
+  }, [open]);
 
   // Pre-populate form with initial data from waiter dashboard
   useEffect(() => {
@@ -435,20 +447,35 @@ export default function CustomerOrderDialog({
           {orderType === 'dine_in' && (
             <div className="space-y-2">
               <Label htmlFor="tableNumber">
-                Table Number *
+                Table *
                 {lastTableNumber && (
                   <span className="text-xs text-muted-foreground ml-2">
                     (Last: {lastTableNumber})
                   </span>
                 )}
               </Label>
-              <Input
-                id="tableNumber"
-                placeholder="e.g., T-12, Table 5"
-                value={tableNumber}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTableNumber(e.target.value)}
-                className={errors.tableNumber ? 'border-red-500' : ''}
-              />
+              {availableTables.length > 0 ? (
+                <Select value={tableNumber} onValueChange={setTableNumber}>
+                  <SelectTrigger className={errors.tableNumber ? 'border-red-500' : ''}>
+                    <SelectValue placeholder="Select a table…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTables.map(t => (
+                      <SelectItem key={t.id} value={t.name}>
+                        {t.name}{t.section ? ` — ${t.section}` : ''}{t.capacity ? ` (${t.capacity} seats)` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="tableNumber"
+                  placeholder="e.g., T-12, Table 5"
+                  value={tableNumber}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTableNumber(e.target.value)}
+                  className={errors.tableNumber ? 'border-red-500' : ''}
+                />
+              )}
               {errors.tableNumber && (
                 <p className="text-sm text-red-500">{errors.tableNumber}</p>
               )}
