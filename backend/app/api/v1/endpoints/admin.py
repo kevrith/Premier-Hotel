@@ -140,7 +140,7 @@ async def list_users(
     user_status: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
-    current_user: dict = Depends(require_role(["admin", "manager"])),
+    current_user: dict = Depends(require_role(["admin", "manager", "waiter"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """
