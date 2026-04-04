@@ -442,30 +442,35 @@ async def submit_stock_take(
                 raise HTTPException(status_code=500, detail=f"Failed to save stock items: {str(e)}")
 
         # ── Sync global menu_items.stock_quantity after per-location stock take ──
-        # Sum quantities across ALL bar/location stock for each submitted item,
+        # Sum quantities across BAR locations only for each submitted item,
         # then write that combined total back to menu_items so "Current Stock" tab
-        # always reflects the true physical count across all locations.
+        # reflects the true physical count across bars.
+        # Central Store and Kitchen are excluded — they have their own stock flow.
         if req.location_id and item_ids:
             try:
-                # Fetch all location_stock rows for submitted items across ALL locations
-                combined: dict = {}  # menu_item_id → combined qty
-                for chunk_start in range(0, len(item_ids), 50):
-                    chunk = item_ids[chunk_start:chunk_start + 50]
-                    ls_all = supabase.table("location_stock").select(
-                        "menu_item_id, quantity"
-                    ).in_("menu_item_id", chunk).execute()
-                    for row in (ls_all.data or []):
-                        mid = row["menu_item_id"]
-                        combined[mid] = combined.get(mid, 0.0) + float(row.get("quantity") or 0)
+                # Get IDs of all bar-type locations only
+                bar_locs_res = supabase.table("locations").select("id").eq("type", "bar").eq("is_active", True).execute()
+                bar_loc_ids = [loc["id"] for loc in (bar_locs_res.data or [])]
 
-                # Update menu_items.stock_quantity for each item
-                for mid, total_qty in combined.items():
-                    supabase.table("menu_items").update({
-                        "stock_quantity": round(total_qty, 3),
-                        "is_available": total_qty > 0,
-                    }).eq("id", mid).execute()
+                if bar_loc_ids:
+                    combined: dict = {}  # menu_item_id → combined qty across bars only
+                    for chunk_start in range(0, len(item_ids), 50):
+                        chunk = item_ids[chunk_start:chunk_start + 50]
+                        ls_all = supabase.table("location_stock").select(
+                            "menu_item_id, quantity, location_id"
+                        ).in_("menu_item_id", chunk).in_("location_id", bar_loc_ids).execute()
+                        for row in (ls_all.data or []):
+                            mid = row["menu_item_id"]
+                            combined[mid] = combined.get(mid, 0.0) + float(row.get("quantity") or 0)
 
-                logger.info(f"[STOCK] ✅ Synced global stock for {len(combined)} items after per-location stock take")
+                    # Update menu_items.stock_quantity for each item
+                    for mid, total_qty in combined.items():
+                        supabase.table("menu_items").update({
+                            "stock_quantity": round(total_qty, 3),
+                            "is_available": total_qty > 0,
+                        }).eq("id", mid).execute()
+
+                    logger.info(f"[STOCK] ✅ Synced global stock for {len(combined)} items from {len(bar_loc_ids)} bar locations")
             except Exception as sync_err:
                 logger.warning(f"[STOCK] ⚠️ Global stock sync failed: {sync_err}")
                 # Don't fail the submission — sync is a best-effort post-step

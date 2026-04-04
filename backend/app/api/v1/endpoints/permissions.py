@@ -6,7 +6,7 @@ from app.schemas.permissions import (
     UserPermissionsResponse,
     AvailablePermission
 )
-from app.middleware.auth import get_current_user
+from app.middleware.auth_secure import get_current_user
 from app.core.supabase import get_supabase_admin
 
 router = APIRouter()
@@ -125,9 +125,11 @@ async def get_all_staff_permissions(current_user: dict = Depends(get_current_use
         )
     
     supabase = get_supabase_admin()
-    result = supabase.table("users").select("id, email, full_name, role, permissions, updated_at").in_(
+    result = supabase.table("users").select(
+        "id, email, full_name, role, permissions, assigned_location_id, updated_at"
+    ).in_(
         "role", ["chef", "waiter", "cleaner", "manager", "admin", "owner"]
-    ).execute()
+    ).eq("status", "active").execute()
     
     if not result.data:
         return []
@@ -139,6 +141,7 @@ async def get_all_staff_permissions(current_user: dict = Depends(get_current_use
             full_name=user.get("full_name") or user.get("email") or "Unknown",
             role=user["role"],
             permissions=user.get("permissions") or [],
+            assigned_location_id=user.get("assigned_location_id"),
             updated_at=user.get("updated_at") or ""
         )
         for user in result.data

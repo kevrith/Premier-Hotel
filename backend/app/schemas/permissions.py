@@ -16,6 +16,7 @@ class UserPermissionsResponse(BaseModel):
     full_name: str
     role: str
     permissions: List[str] = []
+    assigned_location_id: Optional[str] = None
     updated_at: Optional[str] = None
 
     class Config:
