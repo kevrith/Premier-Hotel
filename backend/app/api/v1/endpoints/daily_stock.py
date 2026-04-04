@@ -292,150 +292,168 @@ async def submit_stock_take(
     supabase: Client = Depends(get_supabase_admin),
 ):
     """Submit the physical stock count for a day."""
-    user_role = current_user.get("role", "")
-    if user_role not in ["admin", "manager", "waiter", "chef"]:
-        raise HTTPException(status_code=403, detail="Not authorized to submit stock takes")
-
-    # Get system sales for this date
-    orders_res = supabase.table("orders").select(
-        "items, status"
-    ).gte("created_at", f"{req.session_date}T00:00:00").lte("created_at", f"{req.session_date}T23:59:59").in_(
-        "status", ["served", "completed", "delivered", "paid"]
-    ).execute()
-
-    system_sales_by_item = {}
-    for order in (orders_res.data or []):
-        items_list = order.get("items", []) or []
-        if isinstance(items_list, list):
-            for oi in items_list:
-                mid = oi.get("menu_item_id") or oi.get("id")
-                qty = float(oi.get("quantity", 0))
-                if mid:
-                    system_sales_by_item[mid] = system_sales_by_item.get(mid, 0) + qty
-
-    # Get purchases for this date
-    receipts_res = supabase.table("stock_receipts").select(
-        "menu_item_id, quantity"
-    ).gte("received_at", f"{req.session_date}T00:00:00").lte("received_at", f"{req.session_date}T23:59:59").execute()
-    purchases_by_item = {}
-    for r in (receipts_res.data or []):
-        mid = r["menu_item_id"]
-        purchases_by_item[mid] = purchases_by_item.get(mid, 0) + float(r.get("quantity", 0))
-
-    # Get current stock quantities for opening
-    item_ids = [i.menu_item_id for i in req.items if i.menu_item_id]
-    items_res = supabase.table("menu_items").select("id, stock_quantity").in_("id", item_ids).execute() if item_ids else None
-    opening_map = {}
-    if items_res:
-        for it in (items_res.data or []):
-            opening_map[it["id"]] = float(it.get("stock_quantity") or 0)
-
-    # Upsert session
     try:
+        user_role = current_user.get("role", "")
+        if user_role not in ["admin", "manager", "waiter", "chef", "barman", "staff"]:
+            raise HTTPException(status_code=403, detail="Not authorized to submit stock takes")
+
+        # Get system sales for this date (best-effort — don't fail if orders table is slow)
+        system_sales_by_item: dict = {}
+        try:
+            orders_res = supabase.table("orders").select(
+                "items, status"
+            ).gte("created_at", f"{req.session_date}T00:00:00").lte("created_at", f"{req.session_date}T23:59:59").in_(
+                "status", ["served", "completed", "delivered", "paid"]
+            ).execute()
+            for order in (orders_res.data or []):
+                items_list = order.get("items", []) or []
+                if isinstance(items_list, list):
+                    for oi in items_list:
+                        mid = oi.get("menu_item_id") or oi.get("id")
+                        qty = float(oi.get("quantity", 0))
+                        if mid:
+                            system_sales_by_item[mid] = system_sales_by_item.get(mid, 0) + qty
+        except Exception:
+            pass  # System sales are informational — don't block submission
+
+        # Get purchases for this date (best-effort)
+        purchases_by_item: dict = {}
+        try:
+            receipts_res = supabase.table("stock_receipts").select(
+                "menu_item_id, quantity"
+            ).gte("received_at", f"{req.session_date}T00:00:00").lte("received_at", f"{req.session_date}T23:59:59").execute()
+            for r in (receipts_res.data or []):
+                mid = r["menu_item_id"]
+                purchases_by_item[mid] = purchases_by_item.get(mid, 0) + float(r.get("quantity", 0))
+        except Exception:
+            pass
+
+        # Get current stock quantities for opening (batch by chunks to avoid URL length limits)
+        opening_map: dict = {}
+        item_ids = [i.menu_item_id for i in req.items if i.menu_item_id]
+        try:
+            for chunk_start in range(0, len(item_ids), 50):
+                chunk = item_ids[chunk_start:chunk_start + 50]
+                chunk_res = supabase.table("menu_items").select("id, stock_quantity").in_("id", chunk).execute()
+                for it in (chunk_res.data or []):
+                    opening_map[it["id"]] = float(it.get("stock_quantity") or 0)
+        except Exception:
+            pass
+
+        # Upsert session
+        session_id: str
         session_q = supabase.table("daily_stock_sessions").select("id").eq(
             "session_date", req.session_date
         ).eq("session_type", req.session_type)
         if req.location_id:
             session_q = session_q.eq("location_id", req.location_id)
+        else:
+            session_q = session_q.is_("location_id", "null")
         existing = session_q.execute()
 
         if existing.data:
             session_id = existing.data[0]["id"]
-            upd: dict = {
+            supabase.table("daily_stock_sessions").update({
                 "status": "submitted",
-                "submitted_by": current_user["id"],
+                "submitted_by": current_user.get("id"),
                 "notes": req.notes,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            supabase.table("daily_stock_sessions").update(upd).eq("id", session_id).execute()
+            }).eq("id", session_id).execute()
         else:
             ins: dict = {
                 "session_date": req.session_date,
                 "session_type": req.session_type,
                 "status": "submitted",
-                "submitted_by": current_user["id"],
+                "submitted_by": current_user.get("id"),
                 "notes": req.notes,
             }
             if req.location_id:
                 ins["location_id"] = req.location_id
             res = supabase.table("daily_stock_sessions").insert(ins).execute()
+            if not res.data:
+                raise HTTPException(status_code=500, detail="Session insert returned no data — check DB constraints")
             session_id = res.data[0]["id"]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
 
-    # Delete existing items for this session and re-insert
-    try:
-        supabase.table("daily_stock_items").delete().eq("session_id", session_id).execute()
-    except Exception:
-        pass
+        # Delete existing items for this session and re-insert
+        try:
+            supabase.table("daily_stock_items").delete().eq("session_id", session_id).execute()
+        except Exception:
+            pass
 
-    # Insert items
-    items_to_insert = []
-    for item in req.items:
-        mid = item.menu_item_id
-        opening = opening_map.get(mid, 0) if mid else 0
-        purchases = purchases_by_item.get(mid, 0) if mid else 0
-        total = opening + purchases
-        sys_sales = system_sales_by_item.get(mid, 0) if mid else 0
-        calc_closing = max(0, total - sys_sales)
+        # Build items payload
+        items_to_insert = []
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for item in req.items:
+            mid = item.menu_item_id
+            opening = opening_map.get(mid, 0) if mid else 0
+            purchases = purchases_by_item.get(mid, 0) if mid else 0
+            sys_sales = system_sales_by_item.get(mid, 0) if mid else 0
 
-        items_to_insert.append({
-            "session_id": session_id,
-            "menu_item_id": mid,
-            "item_name": item.item_name,
-            "unit": "piece",
-            "opening_stock": opening,
-            "purchases": purchases,
-            "system_sales": sys_sales,
-            "physical_closing": item.physical_closing,
-            "lost": item.lost or 0,
-            "notes": item.notes,
-            "reason": item.reason,
-        })
+            items_to_insert.append({
+                "session_id": session_id,
+                "menu_item_id": mid,
+                "item_name": item.item_name,
+                "unit": "piece",
+                "opening_stock": opening,
+                "purchases": purchases,
+                "system_sales": sys_sales,
+                "physical_closing": item.physical_closing,
+                "lost": item.lost or 0,
+                "notes": item.notes,
+                "reason": item.reason,
+            })
 
-        # Update stock with physical count
-        if mid:
-            try:
-                if req.location_id:
-                    # Per-location stock: upsert location_stock table
-                    from datetime import datetime, timezone as _tz
-                    now_iso = datetime.now(_tz.utc).isoformat()
-                    ls_existing = supabase.table("location_stock").select("id").eq(
-                        "location_id", req.location_id
-                    ).eq("menu_item_id", mid).execute()
-                    if ls_existing.data:
-                        supabase.table("location_stock").update({
-                            "quantity": item.physical_closing,
-                            "item_name": item.item_name,
-                            "updated_at": now_iso,
-                        }).eq("id", ls_existing.data[0]["id"]).execute()
+            # Update location/global stock with physical count (best-effort per item)
+            if mid:
+                try:
+                    if req.location_id:
+                        ls_existing = supabase.table("location_stock").select("id").eq(
+                            "location_id", req.location_id
+                        ).eq("menu_item_id", mid).execute()
+                        if ls_existing.data:
+                            supabase.table("location_stock").update({
+                                "quantity": item.physical_closing,
+                                "item_name": item.item_name,
+                                "updated_at": now_iso,
+                            }).eq("id", ls_existing.data[0]["id"]).execute()
+                        else:
+                            supabase.table("location_stock").insert({
+                                "location_id": req.location_id,
+                                "menu_item_id": mid,
+                                "item_name": item.item_name,
+                                "quantity": item.physical_closing,
+                                "updated_at": now_iso,
+                            }).execute()
                     else:
-                        supabase.table("location_stock").insert({
-                            "location_id": req.location_id,
-                            "menu_item_id": mid,
-                            "item_name": item.item_name,
-                            "quantity": item.physical_closing,
-                            "updated_at": now_iso,
-                        }).execute()
-                else:
-                    # Global stock: update menu_items
-                    supabase.table("menu_items").update({
-                        "stock_quantity": item.physical_closing,
-                        "is_available": item.physical_closing > 0,
-                    }).eq("id", mid).execute()
-            except Exception:
-                pass
+                        supabase.table("menu_items").update({
+                            "stock_quantity": item.physical_closing,
+                            "is_available": item.physical_closing > 0,
+                        }).eq("id", mid).execute()
+                except Exception:
+                    pass
 
-    if items_to_insert:
-        supabase.table("daily_stock_items").insert(items_to_insert).execute()
+        # Insert items in batches of 100 to avoid payload size limits
+        if items_to_insert:
+            try:
+                for chunk_start in range(0, len(items_to_insert), 100):
+                    chunk = items_to_insert[chunk_start:chunk_start + 100]
+                    supabase.table("daily_stock_items").insert(chunk).execute()
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to save stock items: {str(e)}")
 
-    return {
-        "success": True,
-        "session_id": session_id,
-        "session_date": req.session_date,
-        "items_recorded": len(items_to_insert),
-        "message": f"Stock take submitted for {req.session_date}",
-    }
+        return {
+            "success": True,
+            "session_id": session_id,
+            "session_date": req.session_date,
+            "items_recorded": len(items_to_insert),
+            "message": f"Stock take submitted for {req.session_date}",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"submit_stock_take error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Stock take failed: {str(e)}")
 
 
 @router.get("/alerts")
