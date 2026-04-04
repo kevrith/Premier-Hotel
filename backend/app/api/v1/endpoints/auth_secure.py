@@ -140,6 +140,7 @@ def _build_user_response(user: dict) -> UserResponse:
         is_verified=bool(user.get("is_verified") or False),
         profile_picture=user.get("profile_picture"),
         auth_providers=user.get("auth_providers") or [],
+        permissions=user.get("permissions") or [],
         created_at=user.get("created_at"),
         updated_at=user.get("updated_at"),
         last_login=user.get("last_login"),

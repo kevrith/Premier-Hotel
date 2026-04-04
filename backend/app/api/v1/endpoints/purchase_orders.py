@@ -94,6 +94,22 @@ class PaymentRecord(BaseModel):
     notes: Optional[str] = None
 
 
+class DirectReceiveItem(BaseModel):
+    menu_item_id: Optional[str] = None
+    item_name: str
+    quantity: float = Field(..., gt=0)
+    unit_cost: float = Field(..., ge=0)
+    notes: Optional[str] = None
+
+
+class DirectReceiveCreate(BaseModel):
+    supplier_id: str
+    location_id: Optional[str] = None
+    received_at: date = Field(default_factory=date.today)
+    notes: Optional[str] = None
+    items: List[DirectReceiveItem] = Field(..., min_length=1)
+
+
 # =====================================================
 # HELPER FUNCTIONS
 # =====================================================
@@ -884,3 +900,173 @@ async def get_po_dashboard_stats(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch dashboard stats: {str(e)}"
         )
+
+
+# =====================================================
+# DIRECT STOCK RECEIVING
+# =====================================================
+
+def _next_receipt_number(supabase: Client) -> str:
+    """Generate RCV-YYYY-0001 style receipt number."""
+    year = datetime.now().year
+    result = supabase.table("stock_receipts").select("receipt_number").like(
+        "receipt_number", f"RCV-{year}-%"
+    ).execute()
+    seq = len(result.data or []) + 1
+    return f"RCV-{year}-{seq:04d}"
+
+
+@router.post("/direct-receive")
+async def direct_receive(
+    body: DirectReceiveCreate,
+    current_user: dict = Depends(require_role(["admin", "manager", "owner"])),
+    supabase: Client = Depends(get_supabase),
+):
+    """
+    Directly receive stock from a supplier without a purchase order.
+    Updates location_stock (if location given) and menu_items.stock_quantity.
+    """
+    try:
+        # Validate supplier
+        sup = supabase.table("suppliers").select("id, name").eq("id", body.supplier_id).execute()
+        if not sup.data:
+            raise HTTPException(status_code=404, detail="Supplier not found")
+
+        total_cost = sum(it.quantity * it.unit_cost for it in body.items)
+
+        # Create receipt header
+        receipt_num = _next_receipt_number(supabase)
+        receipt_row = {
+            "receipt_number": receipt_num,
+            "supplier_id": body.supplier_id,
+            "received_by": current_user["id"],
+            "received_at": str(body.received_at),
+            "notes": body.notes,
+            "total_cost": round(total_cost, 2),
+        }
+        if body.location_id:
+            receipt_row["location_id"] = body.location_id
+
+        r = supabase.table("stock_receipts").insert(receipt_row).execute()
+        if not r.data:
+            raise HTTPException(status_code=500, detail="Failed to create receipt")
+        receipt_id = r.data[0]["id"]
+
+        # Insert line items + update stock
+        item_rows = []
+        for it in body.items:
+            row = {
+                "receipt_id": receipt_id,
+                "item_name": it.item_name,
+                "quantity": it.quantity,
+                "unit_cost": it.unit_cost,
+                "notes": it.notes,
+            }
+            if it.menu_item_id:
+                row["menu_item_id"] = it.menu_item_id
+            item_rows.append(row)
+
+        if item_rows:
+            supabase.table("stock_receipt_items").insert(item_rows).execute()
+
+        # Update stock quantities for menu items
+        menu_item_ids = [it.menu_item_id for it in body.items if it.menu_item_id]
+        if menu_item_ids:
+            # Update global menu_items.stock_quantity
+            for it in body.items:
+                if not it.menu_item_id:
+                    continue
+                mi = supabase.table("menu_items").select("stock_quantity").eq("id", it.menu_item_id).execute()
+                if mi.data:
+                    current_qty = float(mi.data[0].get("stock_quantity") or 0)
+                    supabase.table("menu_items").update({
+                        "stock_quantity": current_qty + it.quantity
+                    }).eq("id", it.menu_item_id).execute()
+
+            # Update location_stock if a location was specified
+            if body.location_id:
+                for it in body.items:
+                    if not it.menu_item_id:
+                        continue
+                    ls = supabase.table("location_stock").select(
+                        "id, quantity"
+                    ).eq("location_id", body.location_id).eq("menu_item_id", it.menu_item_id).execute()
+
+                    if ls.data:
+                        current_qty = float(ls.data[0].get("quantity") or 0)
+                        supabase.table("location_stock").update({
+                            "quantity": current_qty + it.quantity,
+                            "cost_price": it.unit_cost,
+                        }).eq("id", ls.data[0]["id"]).execute()
+                    else:
+                        # Get item name for location_stock
+                        mi_name = supabase.table("menu_items").select("name, category").eq(
+                            "id", it.menu_item_id
+                        ).execute()
+                        name = mi_name.data[0]["name"] if mi_name.data else it.item_name
+                        cat = mi_name.data[0].get("category", "") if mi_name.data else ""
+                        supabase.table("location_stock").insert({
+                            "location_id": body.location_id,
+                            "menu_item_id": it.menu_item_id,
+                            "item_name": name,
+                            "category": cat,
+                            "quantity": it.quantity,
+                            "cost_price": it.unit_cost,
+                        }).execute()
+
+        return {
+            "receipt_id": receipt_id,
+            "receipt_number": receipt_num,
+            "supplier": sup.data[0]["name"],
+            "total_cost": round(total_cost, 2),
+            "items_received": len(body.items),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to receive stock: {str(e)}")
+
+
+@router.get("/direct-receive")
+async def list_direct_receipts(
+    supplier_id: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    current_user: dict = Depends(require_role(["admin", "manager", "owner"])),
+    supabase: Client = Depends(get_supabase),
+):
+    """List all direct stock receipts with optional filters."""
+    try:
+        query = supabase.table("stock_receipts").select(
+            "*, suppliers(name, phone), users!received_by(full_name), locations(name)"
+        )
+        if supplier_id:
+            query = query.eq("supplier_id", supplier_id)
+        if from_date:
+            query = query.gte("received_at", from_date)
+        if to_date:
+            query = query.lte("received_at", to_date)
+        query = query.order("created_at", desc=True).range(skip, skip + limit - 1)
+        result = query.execute()
+
+        receipts = []
+        for rec in (result.data or []):
+            # Fetch items
+            items_res = supabase.table("stock_receipt_items").select("*").eq(
+                "receipt_id", rec["id"]
+            ).execute()
+            receipts.append({
+                **rec,
+                "supplier_name": (rec.get("suppliers") or {}).get("name", ""),
+                "supplier_phone": (rec.get("suppliers") or {}).get("phone", ""),
+                "received_by_name": (rec.get("users") or {}).get("full_name", ""),
+                "location_name": (rec.get("locations") or {}).get("name", ""),
+                "items": items_res.data or [],
+            })
+        return receipts
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch receipts: {str(e)}")

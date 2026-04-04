@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { QuickBooksReporting } from './QuickBooksReporting';
 import { SalesReports } from './Reports/SalesReports';
 import { StaffPerformanceReports } from './Reports/StaffPerformanceReports';
 import { CustomerInsightsReports } from './Reports/CustomerInsightsReports';
@@ -9,7 +8,7 @@ import { FinancialReports } from './Reports/FinancialReports';
 import { ItemSummaryReport } from '@/components/Manager/Reports/ItemSummaryReport';
 import { VoidedItemsReport } from '@/components/Manager/Reports/VoidedItemsReport';
 import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClosingStock';
-import { BarChart, DollarSign, Archive, Users, MessageSquare, FileBarChart, TrendingUp, ShoppingBag, XCircle } from 'lucide-react';
+import { BarChart, DollarSign, Archive, Users, MessageSquare, TrendingUp, ShoppingBag, XCircle } from 'lucide-react';
 
 export function AdvancedReporting() {
   const [activeTab, setActiveTab] = useState('financial');
@@ -29,7 +28,7 @@ export function AdvancedReporting() {
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <div className="overflow-x-auto">
-              <TabsList className="grid w-full grid-cols-8 min-w-max">
+              <TabsList className="grid w-full grid-cols-7 min-w-max">
                 <TabsTrigger value="financial">
                   <TrendingUp className="h-4 w-4 mr-2" />
                   Financial
@@ -57,10 +56,6 @@ export function AdvancedReporting() {
                 <TabsTrigger value="customers">
                   <MessageSquare className="h-4 w-4 mr-2" />
                   Customers
-                </TabsTrigger>
-                <TabsTrigger value="quickbooks">
-                  <FileBarChart className="h-4 w-4 mr-2" />
-                  QuickBooks
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -95,9 +90,6 @@ export function AdvancedReporting() {
               {activeTab === 'customers' && <CustomerInsightsReports />}
             </TabsContent>
 
-            <TabsContent value="quickbooks" className="space-y-4">
-              {activeTab === 'quickbooks' && <QuickBooksReporting />}
-            </TabsContent>
           </Tabs>
         </CardContent>
       </Card>

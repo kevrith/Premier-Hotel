@@ -87,7 +87,7 @@ export const PermissionManagement: React.FC = () => {
     if (!selectedUser) return;
     setSavingLocation(true);
     try {
-      await api.post('/locations/assign-staff', {
+      await api.post('/location-stock/assign-staff', {
         user_id: selectedUser.id,
         location_id: assignedLocation || null,
       });
@@ -146,9 +146,14 @@ export const PermissionManagement: React.FC = () => {
               <User className="h-5 w-5" />
               Staff Members
             </CardTitle>
-            <Button variant="ghost" size="sm" onClick={loadData}>
+            <button
+              type="button"
+              onClick={loadData}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="Refresh"
+            >
               <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
+            </button>
           </div>
           <CardDescription>Select a staff member to manage permissions</CardDescription>
         </CardHeader>
@@ -161,7 +166,7 @@ export const PermissionManagement: React.FC = () => {
               return (
                 <div
                   key={user.id}
-                  onClick={() => handleSelectUser(user)}
+                  onClick={(e) => { e.stopPropagation(); handleSelectUser(user); }}
                   className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                     selectedUser?.id === user.id
                       ? 'bg-primary/10 border-primary'

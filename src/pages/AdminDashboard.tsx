@@ -28,6 +28,7 @@ import { BranchManagement } from '@/components/Admin/BranchManagement';
 import { TableManagement } from '@/components/Admin/TableManagement';
 import OrderManagement from '@/components/Manager/OrderManagement';
 import { PermissionManagement } from '@/components/Permissions/PermissionManagement';
+import { StockReceiving } from '@/components/Admin/StockReceiving';
 
 export default function AdminDashboard() {
   const { isLoading } = useAuth();
@@ -77,8 +78,8 @@ export default function AdminDashboard() {
 
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <div className="overflow-x-auto">
-            <TabsList className="flex flex-wrap gap-1 h-auto w-full">
+          <div className="overflow-x-auto pb-1">
+            <TabsList className="flex gap-1 w-max min-w-full">
               <TabsTrigger value="overview" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Overview</TabsTrigger>
               <TabsTrigger value="users" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Users</TabsTrigger>
               <TabsTrigger value="branches" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Branches</TabsTrigger>
@@ -124,11 +125,15 @@ export default function AdminDashboard() {
             <Tabs defaultValue="stock-management" className="w-full">
               <TabsList className="flex flex-wrap w-full h-auto gap-1 mb-4">
                 <TabsTrigger value="stock-management" className="text-xs sm:text-sm flex-1">Stock Management</TabsTrigger>
-                <TabsTrigger value="purchases" className="text-xs sm:text-sm flex-1">Purchases & Receiving</TabsTrigger>
+                <TabsTrigger value="receiving" className="text-xs sm:text-sm flex-1">Receive Stock</TabsTrigger>
+                <TabsTrigger value="purchases" className="text-xs sm:text-sm flex-1">Purchase Orders</TabsTrigger>
                 <TabsTrigger value="stock-take" className="text-xs sm:text-sm flex-1">Stock Taking</TabsTrigger>
               </TabsList>
               <TabsContent value="stock-management">
                 <StockManagement />
+              </TabsContent>
+              <TabsContent value="receiving">
+                <StockReceiving />
               </TabsContent>
               <TabsContent value="purchases">
                 <InventoryManagement />

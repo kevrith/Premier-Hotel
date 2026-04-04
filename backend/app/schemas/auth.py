@@ -93,6 +93,9 @@ class UserResponse(BaseModel):
     # Auth providers
     auth_providers: list[str] = []  # ['local', 'google', 'facebook', 'whatsapp']
 
+    # Permissions
+    permissions: list[str] = []
+
     # Timestamps
     created_at: datetime
     updated_at: datetime
