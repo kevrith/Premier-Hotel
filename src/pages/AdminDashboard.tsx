@@ -184,9 +184,9 @@ export default function AdminDashboard() {
             <OrderManagement />
           </TabsContent>
 
-          {/* Permissions Tab */}
+          {/* Permissions Tab — only mount when active to avoid pre-auth 401 */}
           <TabsContent value="permissions" className="space-y-4 sm:space-y-6">
-            <PermissionManagement />
+            {activeTab === 'permissions' && <PermissionManagement />}
           </TabsContent>
 
           {/* Settings Tab - System configuration */}
