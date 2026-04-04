@@ -1,7 +1,10 @@
 -- Stock Receipts: direct receive of goods from a supplier into a location
--- No purchase order needed — just supplier + items + quantities + cost prices
+-- Drop and recreate cleanly in case of partial previous run
 
-CREATE TABLE IF NOT EXISTS stock_receipts (
+DROP TABLE IF EXISTS stock_receipt_items CASCADE;
+DROP TABLE IF EXISTS stock_receipts CASCADE;
+
+CREATE TABLE stock_receipts (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   receipt_number  TEXT NOT NULL UNIQUE,
   supplier_id     UUID NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
@@ -14,7 +17,7 @@ CREATE TABLE IF NOT EXISTS stock_receipts (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS stock_receipt_items (
+CREATE TABLE stock_receipt_items (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   receipt_id      UUID NOT NULL REFERENCES stock_receipts(id) ON DELETE CASCADE,
   menu_item_id    UUID REFERENCES menu_items(id) ON DELETE SET NULL,
@@ -26,11 +29,7 @@ CREATE TABLE IF NOT EXISTS stock_receipt_items (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Sequence for receipt number
-CREATE SEQUENCE IF NOT EXISTS stock_receipt_seq START 1;
-
--- Index for lookups
-CREATE INDEX IF NOT EXISTS idx_stock_receipts_supplier ON stock_receipts(supplier_id);
-CREATE INDEX IF NOT EXISTS idx_stock_receipts_received_at ON stock_receipts(received_at DESC);
-CREATE INDEX IF NOT EXISTS idx_stock_receipt_items_receipt ON stock_receipt_items(receipt_id);
-CREATE INDEX IF NOT EXISTS idx_stock_receipt_items_menu_item ON stock_receipt_items(menu_item_id);
+CREATE INDEX idx_stock_receipts_supplier   ON stock_receipts(supplier_id);
+CREATE INDEX idx_stock_receipts_received_at ON stock_receipts(received_at DESC);
+CREATE INDEX idx_stock_receipt_items_receipt   ON stock_receipt_items(receipt_id);
+CREATE INDEX idx_stock_receipt_items_menu_item ON stock_receipt_items(menu_item_id);
