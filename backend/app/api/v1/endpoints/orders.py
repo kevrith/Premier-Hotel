@@ -16,6 +16,7 @@ import asyncio
 import asyncpg
 from app.core.database import get_db_pool
 from app.services.quickbooks_sync import QuickBooksSyncService
+from app.core.cache import cache_invalidate
 from app.services.websocket_manager import manager as ws_manager, EventType, send_order_event
 
 router = APIRouter()
@@ -711,6 +712,11 @@ async def create_order(
                     }).execute()
                 except Exception:
                     pass
+            # Bust the stock-levels cache so the management screen shows live values
+            try:
+                cache_invalidate("stock_levels")
+            except Exception:
+                pass
         except Exception as stock_err:
             logging.warning(f"[STOCK] ⚠️ Stock deduction on create failed for order {order_number}: {stock_err}")
 
@@ -1360,6 +1366,10 @@ async def approve_void(
                             logging.info(f"[STOCK] ✅ Per-location stock restored for voided order {order_id}")
 
                         logging.info(f"[STOCK] ✅ Global stock restored for voided order {order_id}")
+                        try:
+                            cache_invalidate("stock_levels")
+                        except Exception:
+                            pass
             except Exception as stock_err:
                 logging.warning(f"[STOCK] ⚠️ Stock restoration failed for voided order {order_id}: {stock_err}")
 

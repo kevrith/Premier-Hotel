@@ -303,12 +303,12 @@ export function StockReceiving() {
 
             <div className="space-y-1.5">
               <Label>Receive Into (Location)</Label>
-              <Select value={locationId} onValueChange={setLocationId}>
+              <Select value={locationId || '__none__'} onValueChange={v => setLocationId(v === '__none__' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="All locations / unspecified" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific location</SelectItem>
+                  <SelectItem value="__none__">No specific location</SelectItem>
                   {locations.map(l => (
                     <SelectItem key={l.id} value={l.id}>
                       {l.name} <span className="text-muted-foreground text-xs">({l.type})</span>
@@ -339,14 +339,14 @@ export function StockReceiving() {
                     <TableRow key={idx}>
                       <TableCell>
                         <Select
-                          value={it.menu_item_id}
-                          onValueChange={v => updateItem(idx, 'menu_item_id', v)}
+                          value={it.menu_item_id || '__none__'}
+                          onValueChange={v => updateItem(idx, 'menu_item_id', v === '__none__' ? '' : v)}
                         >
                           <SelectTrigger className="h-8 text-xs">
                             <SelectValue placeholder="Link to menu item…" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">— no link —</SelectItem>
+                            <SelectItem value="__none__">— no link —</SelectItem>
                             {menuItems.map(m => (
                               <SelectItem key={m.id} value={m.id}>
                                 {m.name} {m.category ? `(${m.category})` : ''}

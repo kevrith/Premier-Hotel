@@ -1040,9 +1040,8 @@ async def list_direct_receipts(
 ):
     """List all direct stock receipts with optional filters."""
     try:
-        query = supabase.table("stock_receipts").select(
-            "*, suppliers(name, phone), users!received_by(full_name), locations(name)"
-        )
+        # Simple select — no joins to avoid FK schema-cache issues
+        query = supabase.table("stock_receipts").select("*")
         if supplier_id:
             query = query.eq("supplier_id", supplier_id)
         if from_date:
@@ -1051,20 +1050,52 @@ async def list_direct_receipts(
             query = query.lte("received_at", to_date)
         query = query.order("created_at", desc=True).range(skip, skip + limit - 1)
         result = query.execute()
+        rows = result.data or []
+
+        if not rows:
+            return []
+
+        # Batch-load related data to avoid N+1 queries
+        supplier_ids = list({r["supplier_id"] for r in rows if r.get("supplier_id")})
+        location_ids  = list({r["location_id"]  for r in rows if r.get("location_id")})
+        user_ids      = list({r["received_by"]   for r in rows if r.get("received_by")})
+        receipt_ids   = [r["id"] for r in rows]
+
+        sup_map = {}
+        if supplier_ids:
+            sr = supabase.table("suppliers").select("id, name, phone").in_("id", supplier_ids).execute()
+            sup_map = {s["id"]: s for s in (sr.data or [])}
+
+        loc_map = {}
+        if location_ids:
+            lr = supabase.table("locations").select("id, name").in_("id", location_ids).execute()
+            loc_map = {l["id"]: l for l in (lr.data or [])}
+
+        usr_map = {}
+        if user_ids:
+            ur = supabase.table("users").select("id, full_name").in_("id", user_ids).execute()
+            usr_map = {u["id"]: u for u in (ur.data or [])}
+
+        # Fetch all items for these receipts in one call
+        items_res = supabase.table("stock_receipt_items").select("*").in_(
+            "receipt_id", receipt_ids
+        ).execute()
+        items_by_receipt: dict = {}
+        for item in (items_res.data or []):
+            items_by_receipt.setdefault(item["receipt_id"], []).append(item)
 
         receipts = []
-        for rec in (result.data or []):
-            # Fetch items
-            items_res = supabase.table("stock_receipt_items").select("*").eq(
-                "receipt_id", rec["id"]
-            ).execute()
+        for rec in rows:
+            sup  = sup_map.get(rec.get("supplier_id") or "", {})
+            loc  = loc_map.get(rec.get("location_id") or "", {})
+            usr  = usr_map.get(rec.get("received_by") or "", {})
             receipts.append({
                 **rec,
-                "supplier_name": (rec.get("suppliers") or {}).get("name", ""),
-                "supplier_phone": (rec.get("suppliers") or {}).get("phone", ""),
-                "received_by_name": (rec.get("users") or {}).get("full_name", ""),
-                "location_name": (rec.get("locations") or {}).get("name", ""),
-                "items": items_res.data or [],
+                "supplier_name":   sup.get("name", ""),
+                "supplier_phone":  sup.get("phone", ""),
+                "received_by_name": usr.get("full_name", ""),
+                "location_name":   loc.get("name", ""),
+                "items": items_by_receipt.get(rec["id"], []),
             })
         return receipts
 
