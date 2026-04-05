@@ -263,6 +263,11 @@ apiClient.interceptors.response.use(
         return Promise.reject(error); // OfflineBanner already tells the user
       }
 
+      // Auth endpoint failures are handled by the login page — don't double-toast
+      if (url.includes('/auth/')) {
+        return Promise.reject(error);
+      }
+
       toast.error('Network error. Please check your connection.');
       return Promise.reject(error);
     }

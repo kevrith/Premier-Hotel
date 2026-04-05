@@ -22,8 +22,11 @@ const MIN_PASSWORD_LENGTH = 6;
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoading } = useAuth();
-  const { login, needsVerification, verificationType, user } = useAuthStore();
+  const { isLoading: contextLoading } = useAuth();
+  const { login, needsVerification, verificationType, user, isLoading: storeLoading } = useAuthStore();
+  // Use store's isLoading so the button disables as soon as the login API call starts
+  const isLoading = storeLoading || contextLoading;
+  const [submitting, setSubmitting] = useState(false);
   const { isOnline: offlineStoreOnline } = useOffline();
 
   // navigator.onLine lies on desktop (returns true even when DNS fails).
@@ -201,87 +204,66 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting || isLoading) return; // prevent double-submit
+    setSubmitting(true);
 
-    // Block network login when offline — show cached session option instead
-    if (!isOnline) {
-      if (cachedUser) {
-        toast('You are offline. Use the "Continue Offline" button below.', { icon: '📶' });
-      } else {
-        toast.error('No internet connection. Please connect to login.');
-      }
-      return;
-    }
-
-    // Validate based on login type
-    if (loginType === 'email') {
-      if (!validateEmailForm()) return;
-    } else {
-      if (!validatePhoneForm()) return;
-    }
-
-    // Get credentials based on type
-    const identifier = loginType === 'email'
-      ? emailForm.email
-      : formatPhoneNumber(phoneForm.phone);
-
-    const password = loginType === 'email'
-      ? emailForm.password
-      : phoneForm.password;
-
-    const result = await login(identifier, password, loginType as 'email' | 'phone');
-
-    if (result.success) {
-      // Check if needs verification
-      if (result.needsVerification) {
-        setShowOTPVerification(true);
-        toast.success('Please verify your account to continue');
+    try {
+      // Block network login when offline — show cached session option instead
+      if (!isOnline) {
+        if (cachedUser) {
+          toast('You are offline. Use the "Continue Offline" button below.', { icon: '📶' });
+        } else {
+          toast.error('No internet connection. Please connect to login.');
+        }
         return;
       }
 
-      toast.success('Login successful!');
-
-      // Redirect based on role
-      const userRole = result.user?.role;
-
-      if (from !== '/') {
-        navigate(from, { replace: true });
+      // Validate based on login type
+      if (loginType === 'email') {
+        if (!validateEmailForm()) return;
       } else {
-        switch (userRole) {
-          case 'admin':
-            navigate('/admin');
-            break;
-          case 'manager':
-            navigate('/manager');
-            break;
-          case 'chef':
-            navigate('/chef');
-            break;
-          case 'waiter':
-            navigate('/waiter');
-            break;
-          case 'cleaner':
-          case 'housekeeping':
-            navigate('/cleaner');
-            break;
-          case 'customer':
-          default:
-            navigate('/menu');
-            break;
+        if (!validatePhoneForm()) return;
+      }
+
+      // Get credentials based on type
+      const identifier = loginType === 'email'
+        ? emailForm.email
+        : formatPhoneNumber(phoneForm.phone);
+
+      const password = loginType === 'email'
+        ? emailForm.password
+        : phoneForm.password;
+
+      const result = await login(identifier, password, loginType as 'email' | 'phone');
+
+      if (result.success) {
+        if (result.needsVerification) {
+          setShowOTPVerification(true);
+          toast.success('Please verify your account to continue');
+          return;
         }
-      }
-    } else if ((result as any).isNetworkError) {
-      // Network is down — try cached session with the password they just typed
-      const cached = getCachedUserDirect();
-      if (cached) {
-        // Accept offline — no password re-check here (password is in httpOnly cookie, not stored)
-        useAuthStore.setState({ user: cached, role: cached.role, isAuthenticated: true, isOfflineSession: true });
-        toast('No internet connection. Continuing with your last session offline.', { icon: '📶', duration: 5000 });
-        redirectByRole(cached.role);
+        toast.success('Login successful!');
+        const userRole = result.user?.role;
+        if (from !== '/') {
+          navigate(from, { replace: true });
+        } else {
+          redirectByRole(userRole);
+        }
+      } else if ((result as any).isNetworkError) {
+        // Network failed — fall back to cached session
+        const cached = getCachedUserDirect();
+        if (cached) {
+          useAuthStore.setState({ user: cached, role: cached.role, isAuthenticated: true, isOfflineSession: true });
+          toast('No internet connection. Continuing with your last session offline.', { icon: '📶', duration: 5000 });
+          redirectByRole(cached.role);
+        } else {
+          toast.error('No internet connection and no cached session found. Please connect to log in.');
+        }
       } else {
-        toast.error('No internet connection and no cached session found. Please connect to log in.');
+        toast.error(result.error || 'Login failed. Please try again.');
       }
-    } else {
-      toast.error(result.error || 'Login failed. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
