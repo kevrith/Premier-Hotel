@@ -61,6 +61,21 @@ class AssignStaffRequest(BaseModel):
     location_id: Optional[str] = None   # None = unassign
 
 
+class BatchTransferItem(BaseModel):
+    menu_item_id: str
+    item_name: Optional[str] = None
+    quantity: float
+    unit: str = "piece"
+    notes: Optional[str] = None
+
+
+class BatchTransferRequest(BaseModel):
+    from_location_id: str
+    to_location_id: str
+    items: List[BatchTransferItem]
+    notes: Optional[str] = None
+
+
 # ── Helper ───────────────────────────────────────────────────────────────────
 
 def _require_manager(current_user: dict) -> None:
@@ -330,6 +345,132 @@ async def transfer_stock(
         "success": True,
         "transfer_number": transfer_number,
         "transfer": trn_res.data[0] if trn_res.data else transfer_rec,
+    }
+
+
+@stock_router.post("/transfer-batch")
+async def transfer_stock_batch(
+    body: BatchTransferRequest,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Transfer multiple items from one location to another in a single operation.
+    Each item gets its own transfer record; a shared batch prefix is used.
+    Source stock must have sufficient quantity for each item.
+    """
+    _require_manager(current_user)
+
+    if not body.items:
+        raise HTTPException(status_code=422, detail="At least one item is required")
+
+    if body.from_location_id == body.to_location_id:
+        raise HTTPException(status_code=422, detail="Source and destination must be different")
+
+    # Validate locations exist
+    locs_res = supabase.table("locations").select("id, name").in_(
+        "id", [body.from_location_id, body.to_location_id]
+    ).execute()
+    loc_map = {l["id"]: l["name"] for l in (locs_res.data or [])}
+    if body.from_location_id not in loc_map:
+        raise HTTPException(status_code=404, detail="Source location not found")
+    if body.to_location_id not in loc_map:
+        raise HTTPException(status_code=404, detail="Destination location not found")
+
+    today = date.today().isoformat()
+    transfer_number = await _next_transfer_number(supabase, today)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    transferred_by = current_user.get("id")
+
+    # Batch-load item names from menu_items
+    item_ids = [it.menu_item_id for it in body.items]
+    mi_res = supabase.table("menu_items").select("id, name").in_("id", item_ids).execute()
+    mi_name_map = {m["id"]: m["name"] for m in (mi_res.data or [])}
+
+    # Batch-load source stocks
+    src_res = supabase.table("location_stock").select("id, menu_item_id, quantity").eq(
+        "location_id", body.from_location_id
+    ).in_("menu_item_id", item_ids).execute()
+    src_map = {s["menu_item_id"]: s for s in (src_res.data or [])}
+
+    # Validate quantities upfront so we don't partially apply
+    for it in body.items:
+        if it.quantity <= 0:
+            raise HTTPException(status_code=422, detail=f"Quantity must be positive for item {it.menu_item_id}")
+        src = src_map.get(it.menu_item_id)
+        if not src:
+            name = mi_name_map.get(it.menu_item_id, it.menu_item_id)
+            raise HTTPException(status_code=422, detail=f"'{name}' not found in source location")
+        available = float(src.get("quantity") or 0)
+        if available < it.quantity:
+            name = mi_name_map.get(it.menu_item_id, it.menu_item_id)
+            raise HTTPException(
+                status_code=422,
+                detail=f"Insufficient stock for '{name}'. Available: {available}, requested: {it.quantity}"
+            )
+
+    # Batch-load destination stocks
+    dst_res = supabase.table("location_stock").select("id, menu_item_id, quantity").eq(
+        "location_id", body.to_location_id
+    ).in_("menu_item_id", item_ids).execute()
+    dst_map = {s["menu_item_id"]: s for s in (dst_res.data or [])}
+
+    transfer_records = []
+
+    for it in body.items:
+        item_name = it.item_name or mi_name_map.get(it.menu_item_id, "Unknown Item")
+
+        # Decrement source
+        src = src_map[it.menu_item_id]
+        new_src_qty = round(float(src["quantity"]) - it.quantity, 3)
+        supabase.table("location_stock").update({
+            "quantity": new_src_qty,
+            "updated_at": now_iso,
+        }).eq("id", src["id"]).execute()
+
+        # Increment destination
+        dst = dst_map.get(it.menu_item_id)
+        if dst:
+            new_dst_qty = round(float(dst.get("quantity") or 0) + it.quantity, 3)
+            supabase.table("location_stock").update({
+                "quantity": new_dst_qty,
+                "item_name": item_name,
+                "unit": it.unit,
+                "updated_at": now_iso,
+            }).eq("id", dst["id"]).execute()
+        else:
+            supabase.table("location_stock").insert({
+                "location_id": body.to_location_id,
+                "menu_item_id": it.menu_item_id,
+                "item_name": item_name,
+                "unit": it.unit,
+                "quantity": round(it.quantity, 3),
+                "updated_at": now_iso,
+            }).execute()
+
+        # Log transfer record
+        transfer_rec = {
+            "transfer_number": transfer_number,
+            "from_location_id": body.from_location_id,
+            "to_location_id": body.to_location_id,
+            "menu_item_id": it.menu_item_id,
+            "item_name": item_name,
+            "quantity": it.quantity,
+            "unit": it.unit,
+            "notes": it.notes or body.notes,
+            "transferred_by": transferred_by,
+            "transfer_date": today,
+        }
+        supabase.table("stock_transfers").insert(transfer_rec).execute()
+        transfer_records.append(transfer_rec)
+
+    return {
+        "success": True,
+        "transfer_number": transfer_number,
+        "from_location": loc_map[body.from_location_id],
+        "to_location": loc_map[body.to_location_id],
+        "items_transferred": len(transfer_records),
+        "transfers": transfer_records,
     }
 
 

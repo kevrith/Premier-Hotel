@@ -158,8 +158,8 @@ async def get_suppliers(
     search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    current_user: dict = Depends(require_role(["admin", "manager", "owner"])),
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get all suppliers with filters"""
     try:
@@ -909,13 +909,21 @@ async def get_po_dashboard_stats(
 # =====================================================
 
 def _next_receipt_number(supabase: Client) -> str:
-    """Generate RCV-YYYY-0001 style receipt number."""
+    """Generate RCV-YYYY-0001 style receipt number (collision-safe via MAX)."""
     year = datetime.now().year
+    prefix = f"RCV-{year}-"
     result = supabase.table("stock_receipts").select("receipt_number").like(
-        "receipt_number", f"RCV-{year}-%"
-    ).execute()
-    seq = len(result.data or []) + 1
-    return f"RCV-{year}-{seq:04d}"
+        "receipt_number", f"{prefix}%"
+    ).order("receipt_number", desc=True).limit(1).execute()
+    if result.data:
+        try:
+            last_seq = int(result.data[0]["receipt_number"].replace(prefix, ""))
+            seq = last_seq + 1
+        except Exception:
+            seq = 1
+    else:
+        seq = 1
+    return f"{prefix}{seq:04d}"
 
 
 @router.post("/direct-receive")
@@ -957,56 +965,74 @@ async def direct_receive(
         # Insert line items + update stock
         item_rows = []
         for it in body.items:
-            row = {
+            row: dict = {
                 "receipt_id": receipt_id,
                 "item_name": it.item_name,
                 "quantity": it.quantity,
                 "unit_cost": it.unit_cost,
-                "notes": it.notes,
             }
             if it.menu_item_id:
                 row["menu_item_id"] = it.menu_item_id
+            if it.notes:
+                row["notes"] = it.notes
             item_rows.append(row)
 
         if item_rows:
             supabase.table("stock_receipt_items").insert(item_rows).execute()
 
-        # Update stock quantities for menu items
+        # Update stock quantities + WAC cost price for linked menu items
         menu_item_ids = [it.menu_item_id for it in body.items if it.menu_item_id]
         if menu_item_ids:
-            # Update global menu_items.stock_quantity
-            for it in body.items:
-                if not it.menu_item_id:
-                    continue
-                mi = supabase.table("menu_items").select("stock_quantity").eq("id", it.menu_item_id).execute()
-                if mi.data:
-                    current_qty = float(mi.data[0].get("stock_quantity") or 0)
-                    supabase.table("menu_items").update({
-                        "stock_quantity": current_qty + it.quantity
-                    }).eq("id", it.menu_item_id).execute()
+            # Fetch current qty + cost for all items in one call
+            mi_res = supabase.table("menu_items").select(
+                "id, name, category, stock_quantity, cost_price"
+            ).in_("id", menu_item_ids).execute()
+            mi_map = {m["id"]: m for m in (mi_res.data or [])}
 
-            # Update location_stock if a location was specified
+            for it in body.items:
+                if not it.menu_item_id or it.menu_item_id not in mi_map:
+                    continue
+                mi = mi_map[it.menu_item_id]
+                old_qty  = float(mi.get("stock_quantity") or 0)
+                old_cost = float(mi.get("cost_price") or 0)
+                new_qty  = old_qty + it.quantity
+
+                # Weighted Average Cost
+                if new_qty > 0:
+                    wac = round((old_qty * old_cost + it.quantity * it.unit_cost) / new_qty, 4)
+                else:
+                    wac = it.unit_cost
+
+                supabase.table("menu_items").update({
+                    "stock_quantity": new_qty,
+                    "cost_price": wac,
+                    "is_available": True,
+                }).eq("id", it.menu_item_id).execute()
+
+            # Update / insert location_stock if a location was specified
             if body.location_id:
                 for it in body.items:
                     if not it.menu_item_id:
                         continue
+                    mi = mi_map.get(it.menu_item_id, {})
                     ls = supabase.table("location_stock").select(
-                        "id, quantity"
+                        "id, quantity, cost_price"
                     ).eq("location_id", body.location_id).eq("menu_item_id", it.menu_item_id).execute()
 
                     if ls.data:
-                        current_qty = float(ls.data[0].get("quantity") or 0)
+                        loc_old_qty  = float(ls.data[0].get("quantity") or 0)
+                        loc_old_cost = float(ls.data[0].get("cost_price") or 0)
+                        loc_new_qty  = loc_old_qty + it.quantity
+                        loc_wac = round(
+                            (loc_old_qty * loc_old_cost + it.quantity * it.unit_cost) / loc_new_qty, 4
+                        ) if loc_new_qty > 0 else it.unit_cost
                         supabase.table("location_stock").update({
-                            "quantity": current_qty + it.quantity,
-                            "cost_price": it.unit_cost,
+                            "quantity": loc_new_qty,
+                            "cost_price": loc_wac,
                         }).eq("id", ls.data[0]["id"]).execute()
                     else:
-                        # Get item name for location_stock
-                        mi_name = supabase.table("menu_items").select("name, category").eq(
-                            "id", it.menu_item_id
-                        ).execute()
-                        name = mi_name.data[0]["name"] if mi_name.data else it.item_name
-                        cat = mi_name.data[0].get("category", "") if mi_name.data else ""
+                        name = mi.get("name", it.item_name)
+                        cat  = mi.get("category", "")
                         supabase.table("location_stock").insert({
                             "location_id": body.location_id,
                             "menu_item_id": it.menu_item_id,

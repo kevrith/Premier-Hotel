@@ -1149,7 +1149,7 @@ async def get_employee_details(
     employee_id: str,
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    current_user: dict = Depends(require_role(["admin", "manager", "owner", "waiter"])),
+    current_user: dict = Depends(require_role(["admin", "manager", "owner", "waiter", "staff"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """
@@ -1470,7 +1470,7 @@ async def get_employee_details(
 async def get_item_summary_report(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
-    current_user: dict = Depends(require_role(["admin", "manager", "waiter"])),
+    current_user: dict = Depends(require_role(["admin", "manager", "waiter", "staff", "owner"])),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """

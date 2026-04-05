@@ -1,29 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import api from '@/lib/api/client';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import { Loader2, Plus, Trash2, PackageCheck, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
-import { format } from 'date-fns';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import api from '@/lib/api/client';
+import { Trash2, ChevronDown, ChevronRight, Package, Search } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Supplier {
   id: string;
   name: string;
   phone?: string;
-  contact_person?: string;
 }
 
 interface Location {
@@ -36,401 +25,413 @@ interface MenuItem {
   id: string;
   name: string;
   category: string;
+  stock_quantity: number;
+  cost_price: number;
 }
 
-interface ReceiveItem {
+interface ReceiptLine {
   menu_item_id: string;
   item_name: string;
-  quantity: string;
-  unit_cost: string;
-  notes: string;
+  quantity: number;
+  unit_cost: number;
+}
+
+interface ReceiptHistoryItem {
+  id: string;
+  item_name: string;
+  quantity: number;
+  unit_cost: number;
+  subtotal: number;
+  menu_item_id?: string;
 }
 
 interface Receipt {
   id: string;
   receipt_number: string;
+  received_at: string;
   supplier_name: string;
   supplier_phone?: string;
   received_by_name: string;
   location_name?: string;
-  received_at: string;
   total_cost: number;
   notes?: string;
-  items: {
-    id: string;
-    item_name: string;
-    quantity: number;
-    unit_cost: number;
-    subtotal: number;
-  }[];
+  items: ReceiptHistoryItem[];
 }
 
-const emptyItem = (): ReceiveItem => ({
-  menu_item_id: '',
-  item_name: '',
-  quantity: '',
-  unit_cost: '',
-  notes: '',
-});
-
 export function StockReceiving() {
-  const { toast } = useToast();
-
   // Form state
   const [supplierId, setSupplierId] = useState('');
-  const [locationId, setLocationId] = useState('');
+  const [locationId, setLocationId] = useState('__none__');
   const [receivedAt, setReceivedAt] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<ReceiveItem[]>([emptyItem()]);
-  const [submitting, setSubmitting] = useState(false);
+  const [lines, setLines] = useState<ReceiptLine[]>([]);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<MenuItem[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   // Reference data
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [loadingRef, setLoadingRef] = useState(true);
+  const [allItems, setAllItems] = useState<MenuItem[]>([]);
 
-  // History
+  // History state
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  // New supplier dialog
-  const [showNewSupplier, setShowNewSupplier] = useState(false);
-  const [newSupplierName, setNewSupplierName] = useState('');
-  const [newSupplierPhone, setNewSupplierPhone] = useState('');
-  const [newSupplierContact, setNewSupplierContact] = useState('');
-  const [savingSupplier, setSavingSupplier] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadReferenceData();
     loadHistory();
   }, []);
 
-  const loadReferenceData = async () => {
-    setLoadingRef(true);
-    try {
-      const [supRes, locRes, menuRes] = await Promise.all([
-        api.get('/purchase-orders/suppliers'),
-        api.get('/locations'),
-        api.get('/menu/items?limit=500'),
-      ]);
-      setSuppliers((supRes.data as any)?.suppliers || supRes.data || []);
-      setLocations((locRes.data as any) || []);
-      const raw = (menuRes.data as any);
-      setMenuItems((raw?.items || raw || []).map((m: any) => ({
-        id: m.id,
-        name: m.name,
-        category: m.category || '',
-      })));
-    } catch {
-      toast({ title: 'Error', description: 'Failed to load reference data', variant: 'destructive' });
-    } finally {
-      setLoadingRef(false);
+  // Filter menu items as user types
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
     }
-  };
+    const filtered = allItems.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        (m.category || '').toLowerCase().includes(q)
+    );
+    setSearchResults(filtered.slice(0, 10));
+    setShowDropdown(filtered.length > 0);
+  }, [searchQuery, allItems]);
 
-  const loadHistory = async () => {
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  async function loadReferenceData() {
+    try {
+      const [supRes, locRes, itemRes] = await Promise.all([
+        api.get('/purchase-orders/suppliers?limit=500'),
+        api.get('/locations'),
+        api.get('/stock/levels'),
+      ]);
+      setSuppliers(supRes.data?.suppliers || supRes.data || []);
+      setLocations(locRes.data || []);
+      const raw: any[] = itemRes.data?.items || itemRes.data || [];
+      setAllItems(
+        raw.map((m) => ({
+          id: m.id,
+          name: m.name,
+          category: m.category || '',
+          stock_quantity: m.stock_quantity ?? m.quantity ?? 0,
+          cost_price: m.cost_price ?? 0,
+        }))
+      );
+    } catch {
+      toast.error('Failed to load reference data');
+    }
+  }
+
+  async function loadHistory() {
     setLoadingHistory(true);
     try {
-      const res = await api.get('/purchase-orders/direct-receive?limit=30');
-      setReceipts((res.data as any) || []);
+      const res = await api.get('/purchase-orders/direct-receive?limit=50');
+      setReceipts(res.data || []);
     } catch {
-      // silently ignore history load failure
+      // non-fatal
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }
 
-  const handleCreateSupplier = async () => {
-    if (!newSupplierName.trim()) return;
-    setSavingSupplier(true);
-    try {
-      const res = await api.post('/purchase-orders/suppliers', {
-        name: newSupplierName.trim(),
-        phone: newSupplierPhone.trim() || undefined,
-        contact_person: newSupplierContact.trim() || undefined,
-      });
-      const created = (res.data as any);
-      const newSup: Supplier = { id: created.id, name: created.name, phone: created.phone };
-      setSuppliers(prev => [newSup, ...prev]);
-      setSupplierId(newSup.id);
-      setShowNewSupplier(false);
-      setNewSupplierName('');
-      setNewSupplierPhone('');
-      setNewSupplierContact('');
-      toast({ title: 'Success', description: `Supplier "${newSup.name}" created` });
-    } catch (err: any) {
-      toast({ title: 'Error', description: err?.response?.data?.detail || 'Failed to create supplier', variant: 'destructive' });
-    } finally {
-      setSavingSupplier(false);
+  function addItem(item: MenuItem) {
+    // Skip if already added
+    if (lines.some((l) => l.menu_item_id === item.id)) {
+      setSearchQuery('');
+      setShowDropdown(false);
+      return;
     }
-  };
+    setLines((prev) => [
+      ...prev,
+      {
+        menu_item_id: item.id,
+        item_name: item.name,
+        quantity: 1,
+        unit_cost: item.cost_price ?? 0,
+      },
+    ]);
+    setSearchQuery('');
+    setShowDropdown(false);
+  }
 
-  const updateItem = (index: number, field: keyof ReceiveItem, value: string) => {
-    setItems(prev => prev.map((it, i) => {
-      if (i !== index) return it;
-      const updated = { ...it, [field]: value };
-      // Auto-fill item name when menu item is selected
-      if (field === 'menu_item_id' && value) {
-        const mi = menuItems.find(m => m.id === value);
-        if (mi) updated.item_name = mi.name;
-      }
-      return updated;
-    }));
-  };
+  function removeLine(idx: number) {
+    setLines((prev) => prev.filter((_, i) => i !== idx));
+  }
 
-  const addRow = () => setItems(prev => [...prev, emptyItem()]);
+  function updateLine(idx: number, field: 'quantity' | 'unit_cost', value: string) {
+    setLines((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, [field]: parseFloat(value) || 0 } : l))
+    );
+  }
 
-  const removeRow = (index: number) => {
-    if (items.length === 1) return;
-    setItems(prev => prev.filter((_, i) => i !== index));
-  };
+  const runningTotal = lines.reduce((sum, l) => sum + l.quantity * l.unit_cost, 0);
 
-  const grandTotal = items.reduce((sum, it) => {
-    const q = parseFloat(it.quantity) || 0;
-    const c = parseFloat(it.unit_cost) || 0;
-    return sum + q * c;
-  }, 0);
-
-  const handleSubmit = async () => {
+  async function handleSubmit() {
     if (!supplierId) {
-      toast({ title: 'Supplier required', description: 'Please select or create a supplier', variant: 'destructive' });
+      toast.error('Please select a supplier');
       return;
     }
-    const validItems = items.filter(it => it.item_name.trim() && parseFloat(it.quantity) > 0);
-    if (!validItems.length) {
-      toast({ title: 'No items', description: 'Add at least one item with a name and quantity', variant: 'destructive' });
+    if (lines.length === 0) {
+      toast.error('Add at least one item');
       return;
+    }
+    for (const l of lines) {
+      if (l.quantity <= 0) {
+        toast.error(`Quantity must be > 0 for "${l.item_name}"`);
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         supplier_id: supplierId,
-        location_id: locationId || undefined,
         received_at: receivedAt,
-        notes: notes.trim() || undefined,
-        items: validItems.map(it => ({
-          menu_item_id: it.menu_item_id || undefined,
-          item_name: it.item_name.trim(),
-          quantity: parseFloat(it.quantity),
-          unit_cost: parseFloat(it.unit_cost) || 0,
-          notes: it.notes.trim() || undefined,
-        })),
+        notes: notes || null,
+        items: lines,
       };
+      if (locationId && locationId !== '__none__') {
+        payload.location_id = locationId;
+      }
+
       const res = await api.post('/purchase-orders/direct-receive', payload);
-      const result = res.data as any;
-      toast({
-        title: 'Stock received',
-        description: `${result.receipt_number} — ${result.items_received} items, KES ${result.total_cost.toLocaleString()}`,
-      });
+      const d = res.data;
+      toast.success(
+        `Receipt ${d.receipt_number} saved — ${d.items_received} item(s), KES ${Number(d.total_cost).toLocaleString()}`
+      );
+
       // Reset form
       setSupplierId('');
-      setLocationId('');
-      setNotes('');
-      setItems([emptyItem()]);
+      setLocationId('__none__');
       setReceivedAt(new Date().toISOString().split('T')[0]);
+      setNotes('');
+      setLines([]);
       loadHistory();
     } catch (err: any) {
-      toast({ title: 'Error', description: err?.response?.data?.detail || 'Failed to receive stock', variant: 'destructive' });
+      toast.error(err?.response?.data?.detail || 'Failed to save receipt');
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  if (loadingRef) {
-    return (
-      <div className="flex items-center justify-center h-48">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   return (
     <div className="space-y-6">
-      {/* ── Receive Form ── */}
+      {/* ── New Receipt Form ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <PackageCheck className="h-5 w-5" />
-            Receive Stock
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Package className="h-5 w-5" />
+            Receive Stock from Supplier
           </CardTitle>
-          <CardDescription>
-            Record goods received from a supplier. Stock quantities update immediately.
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          {/* Supplier + Date + Location row */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
+          {/* Header fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-1">
               <Label>
-                Supplier <span className="text-red-500">*</span>
+                Supplier <span className="text-destructive">*</span>
               </Label>
-              <div className="flex gap-2">
-                <Select value={supplierId} onValueChange={setSupplierId}>
-                  <SelectTrigger className={!supplierId ? 'border-red-400' : ''}>
-                    <SelectValue placeholder="Select supplier…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {suppliers.map(s => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}{s.phone ? ` · ${s.phone}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() => setShowNewSupplier(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Date Received</Label>
-              <Input
-                type="date"
-                value={receivedAt}
-                onChange={e => setReceivedAt(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Receive Into (Location)</Label>
-              <Select value={locationId || '__none__'} onValueChange={v => setLocationId(v === '__none__' ? '' : v)}>
+              <Select value={supplierId} onValueChange={setSupplierId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All locations / unspecified" />
+                  <SelectValue placeholder="Select supplier…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">No specific location</SelectItem>
-                  {locations.map(l => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name} <span className="text-muted-foreground text-xs">({l.type})</span>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          </div>
 
-          {/* Items table */}
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[220px]">Menu Item</TableHead>
-                  <TableHead>Item Name</TableHead>
-                  <TableHead className="w-[110px]">Qty</TableHead>
-                  <TableHead className="w-[130px]">Unit Cost (KES)</TableHead>
-                  <TableHead className="w-[120px] text-right">Subtotal</TableHead>
-                  <TableHead className="w-[40px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((it, idx) => {
-                  const subtotal = (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_cost) || 0);
-                  return (
-                    <TableRow key={idx}>
-                      <TableCell>
-                        <Select
-                          value={it.menu_item_id || '__none__'}
-                          onValueChange={v => updateItem(idx, 'menu_item_id', v === '__none__' ? '' : v)}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Link to menu item…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">— no link —</SelectItem>
-                            {menuItems.map(m => (
-                              <SelectItem key={m.id} value={m.id}>
-                                {m.name} {m.category ? `(${m.category})` : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          className="h-8 text-sm"
-                          placeholder="e.g. Soda 300ml"
-                          value={it.item_name}
-                          onChange={e => updateItem(idx, 'item_name', e.target.value)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          className="h-8 text-sm"
-                          type="number"
-                          min="0"
-                          step="any"
-                          placeholder="0"
-                          value={it.quantity}
-                          onChange={e => updateItem(idx, 'quantity', e.target.value)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          className="h-8 text-sm"
-                          type="number"
-                          min="0"
-                          step="any"
-                          placeholder="0.00"
-                          value={it.unit_cost}
-                          onChange={e => updateItem(idx, 'unit_cost', e.target.value)}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-sm">
-                        {subtotal > 0 ? `KES ${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          type="button"
-                          onClick={() => removeRow(idx)}
-                          disabled={items.length === 1}
-                          className="p-1 rounded text-muted-foreground hover:text-destructive disabled:opacity-30 transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+            <div className="space-y-1">
+              <Label>Receive into Location</Label>
+              <Select value={locationId} onValueChange={setLocationId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Central store / none" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— No specific location —</SelectItem>
+                  {locations.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}{' '}
+                      <span className="text-muted-foreground capitalize text-xs">({l.type})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="flex items-center justify-between">
-            <Button type="button" variant="outline" size="sm" onClick={addRow}>
-              <Plus className="h-4 w-4 mr-1" /> Add Row
-            </Button>
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground">Grand Total</div>
-              <div className="text-xl font-bold">
-                KES {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-              </div>
+            <div className="space-y-1">
+              <Label>Date Received</Label>
+              <Input
+                type="date"
+                value={receivedAt}
+                onChange={(e) => setReceivedAt(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Notes</Label>
+              <Input
+                placeholder="Optional notes…"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Notes (optional)</Label>
-            <Textarea
-              placeholder="e.g. Delivery note #123, partial order…"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={2}
-            />
+          {/* Item search */}
+          <div ref={searchRef} className="relative">
+            <Label>Search &amp; Add Items</Label>
+            <div className="relative mt-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-9"
+                placeholder="Type item name or category to add…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => {
+                  if (searchQuery.trim()) setShowDropdown(searchResults.length > 0);
+                }}
+              />
+            </div>
+            {showDropdown && (
+              <div className="absolute z-50 mt-1 w-full max-h-60 overflow-y-auto rounded-md border bg-popover shadow-md">
+                {searchResults.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex justify-between items-center gap-2"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      addItem(item);
+                    }}
+                  >
+                    <span className="font-medium">{item.name}</span>
+                    <span className="text-muted-foreground text-xs shrink-0">
+                      {item.category} · stock: {item.stock_quantity}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="flex justify-end pt-2">
-            <Button onClick={handleSubmit} disabled={submitting} className="min-w-[160px]">
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PackageCheck className="mr-2 h-4 w-4" />}
-              Receive Stock
+          {/* Line items table */}
+          {lines.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="pb-2 font-medium min-w-[180px]">Item</th>
+                    <th className="pb-2 font-medium w-28 text-right">Qty</th>
+                    <th className="pb-2 font-medium w-32 text-right">Unit Cost (KES)</th>
+                    <th className="pb-2 font-medium w-28 text-right">Subtotal</th>
+                    <th className="pb-2 w-8" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {lines.map((line, idx) => (
+                    <tr key={`${line.menu_item_id}-${idx}`}>
+                      <td className="py-2 pr-2 font-medium">{line.item_name}</td>
+                      <td className="py-2 pr-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          className="h-8 w-24 text-right ml-auto"
+                          value={line.quantity}
+                          onChange={(e) => updateLine(idx, 'quantity', e.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="h-8 w-32 text-right ml-auto"
+                          value={line.unit_cost}
+                          onChange={(e) => updateLine(idx, 'unit_cost', e.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 pr-2 text-right tabular-nums">
+                        {(line.quantity * line.unit_cost).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="py-2">
+                        <button
+                          type="button"
+                          onClick={() => removeLine(idx)}
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t font-semibold">
+                    <td colSpan={3} className="pt-3 text-right pr-2">
+                      Total
+                    </td>
+                    <td className="pt-3 text-right tabular-nums pr-2">
+                      KES{' '}
+                      {runningTotal.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-md">
+              Use the search above to add items to this receipt
+            </p>
+          )}
+
+          <div className="flex justify-end">
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || lines.length === 0 || !supplierId}
+            >
+              {submitting
+                ? 'Saving…'
+                : `Save Receipt${lines.length > 0 ? ` (${lines.length} item${lines.length !== 1 ? 's' : ''})` : ''}`}
             </Button>
           </div>
         </CardContent>
@@ -438,87 +439,89 @@ export function StockReceiving() {
 
       {/* ── Receiving History ── */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Receiving History</CardTitle>
-            <button
-              type="button"
-              onClick={loadHistory}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <RefreshCw className={`h-4 w-4 ${loadingHistory ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
+        <CardHeader>
+          <CardTitle className="text-base sm:text-lg">Receiving History</CardTitle>
         </CardHeader>
         <CardContent>
           {loadingHistory ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
+            <p className="text-sm text-muted-foreground text-center py-4">Loading…</p>
           ) : receipts.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No receipts yet.</p>
+            <p className="text-sm text-muted-foreground text-center py-4">No receipts yet</p>
           ) : (
             <div className="space-y-2">
-              {receipts.map(rec => (
-                <div key={rec.id} className="border rounded-lg overflow-hidden">
+              {receipts.map((r) => (
+                <div key={r.id} className="border rounded-md overflow-hidden">
                   <button
                     type="button"
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors text-left"
-                    onClick={() => setExpandedId(expandedId === rec.id ? null : rec.id)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                    onClick={() => toggleExpand(r.id)}
                   >
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <Badge variant="outline" className="font-mono text-xs">{rec.receipt_number}</Badge>
-                      <span className="font-medium text-sm">{rec.supplier_name}</span>
-                      {rec.location_name && (
-                        <Badge variant="secondary" className="text-xs">{rec.location_name}</Badge>
+                    <div className="flex items-center gap-3 min-w-0">
+                      {expandedIds.has(r.id) ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                       )}
-                      <span className="text-xs text-muted-foreground">
-                        {format(new Date(rec.received_at), 'dd MMM yyyy')}
-                      </span>
-                      <span className="text-xs text-muted-foreground">by {rec.received_by_name}</span>
+                      <Badge variant="outline" className="font-mono text-xs shrink-0">
+                        {r.receipt_number}
+                      </Badge>
+                      <span className="font-medium truncate">{r.supplier_name}</span>
+                      {r.location_name && (
+                        <span className="text-muted-foreground text-xs hidden sm:inline">
+                          → {r.location_name}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="font-semibold text-sm">
-                        KES {Number(rec.total_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    <div className="flex items-center gap-4 shrink-0 ml-2">
+                      <span className="text-muted-foreground text-xs hidden sm:inline">
+                        {r.received_at}
                       </span>
-                      {expandedId === rec.id
-                        ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                      <span className="font-semibold tabular-nums">
+                        KES{' '}
+                        {Number(r.total_cost).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
                     </div>
                   </button>
 
-                  {expandedId === rec.id && (
-                    <div className="border-t px-4 py-3 bg-muted/20">
-                      {rec.notes && (
-                        <p className="text-xs text-muted-foreground mb-3">Note: {rec.notes}</p>
-                      )}
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-xs">Item</TableHead>
-                            <TableHead className="text-xs text-right">Qty</TableHead>
-                            <TableHead className="text-xs text-right">Unit Cost</TableHead>
-                            <TableHead className="text-xs text-right">Subtotal</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {rec.items.map(item => (
-                            <TableRow key={item.id}>
-                              <TableCell className="text-sm py-1.5">{item.item_name}</TableCell>
-                              <TableCell className="text-sm py-1.5 text-right">{item.quantity}</TableCell>
-                              <TableCell className="text-sm py-1.5 text-right">
-                                KES {Number(item.unit_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                              </TableCell>
-                              <TableCell className="text-sm py-1.5 text-right font-medium">
-                                KES {Number(item.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                      <div className="text-right mt-2 font-bold text-sm">
-                        Total: KES {Number(rec.total_cost).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {expandedIds.has(r.id) && (
+                    <div className="border-t px-4 py-3 bg-muted/20 space-y-3">
+                      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+                        <span>Date: {r.received_at}</span>
+                        {r.received_by_name && <span>Received by: {r.received_by_name}</span>}
+                        {r.location_name && <span>Location: {r.location_name}</span>}
+                        {r.notes && <span>Notes: {r.notes}</span>}
                       </div>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-muted-foreground border-b">
+                            <th className="pb-1 font-medium">Item</th>
+                            <th className="pb-1 font-medium text-right">Qty</th>
+                            <th className="pb-1 font-medium text-right">Unit Cost</th>
+                            <th className="pb-1 font-medium text-right">Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {(r.items || []).map((item) => (
+                            <tr key={item.id}>
+                              <td className="py-1.5">{item.item_name}</td>
+                              <td className="py-1.5 text-right tabular-nums">{item.quantity}</td>
+                              <td className="py-1.5 text-right tabular-nums">
+                                {Number(item.unit_cost).toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </td>
+                              <td className="py-1.5 text-right tabular-nums font-medium">
+                                {Number(item.subtotal).toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>
@@ -527,52 +530,6 @@ export function StockReceiving() {
           )}
         </CardContent>
       </Card>
-
-      {/* ── New Supplier Dialog ── */}
-      <Dialog open={showNewSupplier} onOpenChange={setShowNewSupplier}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add New Supplier</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>
-                Supplier Name <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                placeholder="e.g. Nairobi Beverages Ltd"
-                value={newSupplierName}
-                onChange={e => setNewSupplierName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Phone Number</Label>
-              <Input
-                placeholder="+254 7XX XXX XXX"
-                value={newSupplierPhone}
-                onChange={e => setNewSupplierPhone(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Contact Person</Label>
-              <Input
-                placeholder="Contact name"
-                value={newSupplierContact}
-                onChange={e => setNewSupplierContact(e.target.value)}
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowNewSupplier(false)}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={handleCreateSupplier} disabled={savingSupplier || !newSupplierName.trim()}>
-                {savingSupplier && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save Supplier
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

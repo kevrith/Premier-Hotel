@@ -33,8 +33,10 @@ import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { usePermissions, PERMISSIONS } from '@/hooks/usePermissions';
 import { buildItemSummaryHtml } from '@/lib/print';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
+import { ItemSummaryReport } from '@/components/Manager/Reports/ItemSummaryReport';
 import { toast } from 'react-hot-toast';
 import { ordersApi, Order } from '@/lib/api/orders';
+import OrderManagement from '@/components/Manager/OrderManagement';
 import { useOrderUpdates } from '@/hooks/useOrderUpdates';
 import { useOrderBell } from '@/hooks/useOrderBell';
 import { formatDistanceToNow } from 'date-fns';
@@ -64,153 +66,157 @@ import { tablesAPI, RestaurantTable } from '@/lib/api/tables';
 import { useAcceptedPaymentMethods } from '@/hooks/useAcceptedPaymentMethods';
 import { paymentService } from '@/lib/api/payments';
 
-// ── Waiter Report Panel (shown when manager grants report permission) ────────
-function WaiterReportPanel({ userId, userName, canPrintOnly }: { userId?: string; userName?: string; canPrintOnly?: boolean }) {
+// ── My Report Panel — shows only the logged-in waiter's own sales ────────────
+function MyReportPanel({ userId, userName }: { userId?: string; userName?: string }) {
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [selectedEmpId, setSelectedEmpId] = useState<string>('all');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Load staff list on mount
-  useEffect(() => {
-    import('@/lib/api/client').then(({ default: apiClient }) => {
-      apiClient.get('/admin/users?roles=waiter,chef,manager&limit=100').then(res => {
-        const raw = res.data as any;
-        setEmployees((raw?.data ?? raw) || []);
-      }).catch(() => {});
-    });
-  }, []);
-
   const load = async () => {
+    if (!userId) return;
     setLoading(true);
     try {
       const apiClient = (await import('@/lib/api/client')).default;
-      if (selectedEmpId === 'all') {
-        // Fetch item summary for all employees
-        const res = await apiClient.get('/reports/item-summary', {
-          params: { start_date: startDate, end_date: endDate }
-        });
-        setData({ items_by_category: res.data?.categories || [], all_employees: true, ...res.data });
-      } else {
-        // Fetch specific employee details
-        const res = await apiClient.get(`/reports/employee/${selectedEmpId}/details`, {
-          params: { start_date: startDate, end_date: endDate }
-        });
-        setData({ ...res.data, all_employees: false });
-      }
+      const res = await apiClient.get(`/reports/employee/${userId}/details`, {
+        params: { start_date: startDate, end_date: endDate }
+      });
+      setData(res.data);
+      // Expand all categories by default
+      const cats = res.data?.categories || res.data?.items_by_category || [];
+      setExpandedCats(new Set(cats.map((c: any) => c.category)));
     } catch { toast.error('Failed to load report'); }
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [startDate, endDate, selectedEmpId]);
+  useEffect(() => { load(); }, [startDate, endDate, userId]);
+
+  const toggleCat = (cat: string) =>
+    setExpandedCats(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+
+  const cats: any[] = data?.categories || data?.items_by_category || [];
+  const grandQty = cats.reduce((s: number, c: any) => s + (c.total_qty || 0), 0);
+  const grandRevenue = cats.reduce((s: number, c: any) => s + (c.total_revenue || 0), 0);
 
   const handlePrint = () => {
-    const cats = data?.items_by_category || data?.categories || [];
     if (!cats.length) return;
-    const empName = selectedEmpId === 'all'
-      ? 'All Staff'
-      : employees.find(e => e.id === selectedEmpId)?.full_name || userName;
     const html = buildItemSummaryHtml({
       categories: cats,
-      grand_total_qty: cats.reduce((s: number, c: any) => s + c.total_qty, 0),
-      grand_total_revenue: cats.reduce((s: number, c: any) => s + c.total_revenue, 0),
+      grand_total_qty: grandQty,
+      grand_total_revenue: grandRevenue,
       startDate,
       endDate,
-      employeeName: empName,
+      employeeName: userName || 'My Report',
     });
     setPreviewHtml(html);
     setPreviewOpen(true);
   };
 
-  const cats = data?.items_by_category || data?.categories || [];
+  const fmtKES = (v: number) =>
+    new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(v);
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle className="text-base">Items Sold Report</CardTitle>
+            <div>
+              <CardTitle className="text-base">My Items Sold Report</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">{userName}</p>
+            </div>
             <div className="flex gap-2 items-end flex-wrap">
-              {/* Employee selector */}
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Employee</p>
-                <select value={selectedEmpId} onChange={e => setSelectedEmpId(e.target.value)}
-                  className="border rounded px-2 py-1 text-sm bg-background">
-                  <option value="all">All Staff</option>
-                  {employees.map((e: any) => (
-                    <option key={e.id} value={e.id}>{e.full_name} ({e.role})</option>
-                  ))}
-                </select>
-              </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">From</p>
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                  className="border rounded px-2 py-1 text-sm" />
+                  className="border rounded px-2 py-1 text-sm bg-background" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">To</p>
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-                  className="border rounded px-2 py-1 text-sm" />
+                  className="border rounded px-2 py-1 text-sm bg-background" />
               </div>
               <Button size="sm" variant="outline" onClick={load} disabled={loading}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />Refresh
               </Button>
               <Button size="sm" onClick={handlePrint} disabled={!cats.length}>
-                <Printer className="h-3.5 w-3.5 mr-1" />Print Items Sold
+                <Printer className="h-3.5 w-3.5 mr-1" />Print
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading...</div>
+            <div className="text-center py-8 text-muted-foreground">Loading…</div>
           ) : !data ? (
             <div className="text-center py-8 text-muted-foreground">No data</div>
           ) : (
             <div className="space-y-4">
-              {/* Summary stats for specific employee */}
-              {!canPrintOnly && !data.all_employees && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { label: 'Total Sales', value: `KES ${(data.total_sales || 0).toLocaleString()}` },
-                    { label: 'Total Orders', value: data.total_orders || 0 },
-                    { label: 'Completed', value: data.completed_orders || 0 },
-                    { label: 'Items Sold', value: data.total_items_sold || 0 },
-                  ].map(s => (
-                    <Card key={s.label} className="border-0 bg-muted/50">
-                      <CardContent className="p-3">
-                        <p className="text-xs text-muted-foreground">{s.label}</p>
-                        <p className="text-lg font-bold">{s.value}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-              {/* Items table */}
+              {/* Summary stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Total Sales', value: fmtKES(data.total_sales || 0) },
+                  { label: 'Total Orders', value: data.total_orders || 0 },
+                  { label: 'Completed', value: data.completed_orders || 0 },
+                  { label: 'Items Sold', value: data.total_items_sold || grandQty },
+                ].map(s => (
+                  <Card key={s.label} className="border-0 bg-muted/50">
+                    <CardContent className="p-3">
+                      <p className="text-xs text-muted-foreground">{s.label}</p>
+                      <p className="text-lg font-bold">{s.value}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Items by category */}
               {cats.length > 0 ? (
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-muted">
-                        <th className="text-left px-3 py-2">Item</th>
-                        <th className="text-right px-3 py-2">Qty</th>
+                      <tr className="bg-gray-800 text-white">
+                        <th className="text-left px-3 py-2 w-1/2">Department / Item</th>
+                        <th className="text-right px-3 py-2 w-20">Qty</th>
                         <th className="text-right px-3 py-2">Revenue</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {cats.map((cat: any) =>
-                        (cat.items || []).map((item: any, i: number) => (
-                          <tr key={i} className="border-t">
-                            <td className="px-3 py-1.5">{item.name}</td>
-                            <td className="px-3 py-1.5 text-right">{item.qty}</td>
-                            <td className="px-3 py-1.5 text-right">KES {(item.revenue || 0).toLocaleString()}</td>
+                      {cats.map((cat: any) => (
+                        <>
+                          <tr
+                            key={cat.category}
+                            className="bg-blue-50 hover:bg-blue-100 cursor-pointer select-none"
+                            onClick={() => toggleCat(cat.category)}
+                          >
+                            <td className="px-3 py-2 font-bold text-blue-600 flex items-center gap-1">
+                              {expandedCats.has(cat.category)
+                                ? <span className="text-xs">▼</span>
+                                : <span className="text-xs">▶</span>}
+                              {cat.category.toUpperCase()}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-600">{cat.total_qty}</td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-600">{fmtKES(cat.total_revenue)}</td>
                           </tr>
-                        ))
-                      )}
+                          {expandedCats.has(cat.category) && (cat.items || []).map((item: any, i: number) => (
+                            <tr key={i} className={`border-t ${i % 2 === 0 ? 'bg-background' : 'bg-muted/30'}`}>
+                              <td className="px-3 py-1.5 pl-8">{item.name}</td>
+                              <td className="px-3 py-1.5 text-right">{item.qty}</td>
+                              <td className="px-3 py-1.5 text-right">{fmtKES(item.revenue || 0)}</td>
+                            </tr>
+                          ))}
+                        </>
+                      ))}
+                      <tr className="border-t-2 bg-green-50 font-bold">
+                        <td className="px-3 py-2 text-green-700">GRAND TOTAL</td>
+                        <td className="px-3 py-2 text-right text-green-700">{grandQty}</td>
+                        <td className="px-3 py-2 text-right text-green-700">{fmtKES(grandRevenue)}</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -221,7 +227,7 @@ function WaiterReportPanel({ userId, userName, canPrintOnly }: { userId?: string
           )}
         </CardContent>
       </Card>
-      <PrintPreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} html={previewHtml} title="Items Sold" />
+      <PrintPreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} html={previewHtml} title="My Items Sold" />
     </div>
   );
 }
@@ -880,6 +886,11 @@ export default function WaiterDashboard() {
             <TabsTrigger value="stock-take" className="text-xs sm:text-sm py-2">
               Stock
             </TabsTrigger>
+            {hasPermission(PERMISSIONS.MANAGE_ORDERS) && (
+              <TabsTrigger value="orders" className="text-xs sm:text-sm py-2">
+                Orders
+              </TabsTrigger>
+            )}
             {(hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS) || hasPermission(PERMISSIONS.PRINT_ITEM_SUMMARY)) && (
               <TabsTrigger value="my-report" className="text-xs sm:text-sm py-2">
                 My Report
@@ -1027,10 +1038,17 @@ export default function WaiterDashboard() {
             <DailyStockTaking defaultSessionType="bar" />
           </TabsContent>
 
-          {/* My Report Tab — visible only with permission */}
+          {/* Orders Tab — visible only with can_manage_orders permission */}
+          {hasPermission(PERMISSIONS.MANAGE_ORDERS) && (
+            <TabsContent value="orders" className="space-y-4">
+              <OrderManagement />
+            </TabsContent>
+          )}
+
+          {/* My Report Tab — visible only with permission; shows full item summary for all staff */}
           {(hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS) || hasPermission(PERMISSIONS.PRINT_ITEM_SUMMARY)) && (
             <TabsContent value="my-report" className="space-y-4">
-              <WaiterReportPanel userId={user?.id} userName={user?.full_name} canPrintOnly={!hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS)} />
+              <ItemSummaryReport />
             </TabsContent>
           )}
         </Tabs>
@@ -1097,7 +1115,7 @@ export default function WaiterDashboard() {
                             </SelectItem>
                           ))}
                           {availableTables.length === 0 && (
-                            <SelectItem value="" disabled>
+                            <SelectItem value="__none__" disabled>
                               No tables available
                             </SelectItem>
                           )}

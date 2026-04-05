@@ -56,6 +56,8 @@ import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { ImportCenter } from '@/components/Admin/ImportCenter';
 import { DataExportCenter } from '@/components/Admin/DataExportCenter';
 import { LocationManagement } from '@/components/Admin/LocationManagement';
+import { StockReceiving } from '@/components/Admin/StockReceiving';
+import { StockTransfer } from '@/components/Admin/StockTransfer';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
 function LazyTab({ active, children }: { active: boolean; children: React.ReactNode }) {
@@ -517,7 +519,24 @@ export default function ManagerDashboard() {
           {/* Purchase Orders / Receiving Tab */}
           <TabsContent value="purchases" className="space-y-6">
             <LazyTab active={activeTab === 'purchases'}>
-              <InventoryManagement />
+              <Tabs defaultValue="purchase-orders">
+                <div className="overflow-x-auto pb-1">
+                  <TabsList className="flex gap-1 w-max min-w-full h-auto">
+                    <TabsTrigger value="purchase-orders" className="text-xs sm:text-sm flex-1">Purchase Orders</TabsTrigger>
+                    <TabsTrigger value="receiving" className="text-xs sm:text-sm flex-1">Receive Stock</TabsTrigger>
+                    <TabsTrigger value="transfer" className="text-xs sm:text-sm flex-1">Transfer Stock</TabsTrigger>
+                  </TabsList>
+                </div>
+                <TabsContent value="purchase-orders" className="mt-4">
+                  <InventoryManagement />
+                </TabsContent>
+                <TabsContent value="receiving" className="mt-4">
+                  <StockReceiving />
+                </TabsContent>
+                <TabsContent value="transfer" className="mt-4">
+                  <StockTransfer />
+                </TabsContent>
+              </Tabs>
             </LazyTab>
           </TabsContent>
 

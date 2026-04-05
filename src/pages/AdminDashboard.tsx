@@ -29,6 +29,7 @@ import { TableManagement } from '@/components/Admin/TableManagement';
 import OrderManagement from '@/components/Manager/OrderManagement';
 import { PermissionManagement } from '@/components/Permissions/PermissionManagement';
 import { StockReceiving } from '@/components/Admin/StockReceiving';
+import { StockTransfer } from '@/components/Admin/StockTransfer';
 
 export default function AdminDashboard() {
   const { isLoading } = useAuth();
@@ -126,6 +127,7 @@ export default function AdminDashboard() {
               <TabsList className="flex flex-wrap w-full h-auto gap-1 mb-4">
                 <TabsTrigger value="stock-management" className="text-xs sm:text-sm flex-1">Stock Management</TabsTrigger>
                 <TabsTrigger value="receiving" className="text-xs sm:text-sm flex-1">Receive Stock</TabsTrigger>
+                <TabsTrigger value="transfer" className="text-xs sm:text-sm flex-1">Transfer Stock</TabsTrigger>
                 <TabsTrigger value="purchases" className="text-xs sm:text-sm flex-1">Purchase Orders</TabsTrigger>
                 <TabsTrigger value="stock-take" className="text-xs sm:text-sm flex-1">Stock Taking</TabsTrigger>
               </TabsList>
@@ -134,6 +136,9 @@ export default function AdminDashboard() {
               </TabsContent>
               <TabsContent value="receiving">
                 <StockReceiving />
+              </TabsContent>
+              <TabsContent value="transfer">
+                <StockTransfer />
               </TabsContent>
               <TabsContent value="purchases">
                 <InventoryManagement />
