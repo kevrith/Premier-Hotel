@@ -124,17 +124,35 @@ export default function Login() {
   };
 
   const getCachedUserDirect = () => {
+    // 1. Primary: Zustand auth-storage (has lastAuthenticatedAt, cleared on logout)
     try {
       const stored = localStorage.getItem('auth-storage');
-      if (!stored) return null;
-      const parsed = JSON.parse(stored);
-      const cachedUser = parsed?.state?.user;
-      const lastAuth = parsed?.state?.lastAuthenticatedAt;
-      if (!cachedUser || !lastAuth) return null;
-      const hoursSince = (Date.now() - new Date(lastAuth).getTime()) / (1000 * 60 * 60);
-      if (hoursSince > 168) return null; // 7 days
-      return cachedUser;
-    } catch { return null; }
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const cachedUser = parsed?.state?.user;
+        const lastAuth = parsed?.state?.lastAuthenticatedAt;
+        if (cachedUser && lastAuth) {
+          const hoursSince = (Date.now() - new Date(lastAuth).getTime()) / (1000 * 60 * 60);
+          if (hoursSince <= 168) return cachedUser; // within 7 days
+        }
+      }
+    } catch { /* fall through */ }
+
+    // 2. Fallback: offline-auth-backup — written on login, NOT cleared on logout
+    //    Covers the case where user was logged out (session expired / manual logout)
+    //    but needs to access the system offline on their own device.
+    try {
+      const backup = localStorage.getItem('offline-auth-backup');
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        if (parsed?.role && parsed?.savedAt) {
+          const hoursSince = (Date.now() - new Date(parsed.savedAt).getTime()) / (1000 * 60 * 60);
+          if (hoursSince <= 168) return parsed; // within 7 days
+        }
+      }
+    } catch { /* ignore */ }
+
+    return null;
   };
 
   // Check for cached session for offline login (alias of getCachedUserDirect)

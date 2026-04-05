@@ -176,6 +176,16 @@ const useAuthStore = create<AuthState>()(
               token: response.access_token || '',
             });
 
+            // Write a separate offline backup that survives logout.
+            // getCachedUserDirect() in Login.tsx reads this as fallback.
+            localStorage.setItem('offline-auth-backup', JSON.stringify({
+              id: user.id,
+              email: user.email || '',
+              full_name: user.full_name || '',
+              role: user.role,
+              savedAt: new Date().toISOString(),
+            }));
+
             // Fire-and-forget: warm SW cache + IndexedDB with data needed offline
             preCacheEssentials(user.role).catch(() => {});
           } catch (e) {
