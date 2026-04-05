@@ -292,6 +292,91 @@ async def get_purchase_orders(
         )
 
 
+@router.get("/direct-receive")
+async def list_direct_receipts(
+    supplier_id: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    current_user: dict = Depends(require_role(["admin", "manager", "owner"])),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """List all direct stock receipts with optional filters."""
+    step = "init"
+    try:
+        step = "query stock_receipts"
+        q = supabase.table("stock_receipts").select(
+            "id, receipt_number, supplier_id, location_id, received_by, "
+            "received_at, notes, total_cost, created_at"
+        ).order("created_at", desc=True).limit(50)
+        if supplier_id:
+            q = q.eq("supplier_id", supplier_id)
+        if from_date:
+            q = q.gte("received_at", from_date)
+        if to_date:
+            q = q.lte("received_at", to_date)
+        rows = q.execute().data or []
+
+        if not rows:
+            return []
+
+        step = "collect ids"
+        supplier_ids = list({r["supplier_id"] for r in rows if r.get("supplier_id")})
+        location_ids = list({r["location_id"]  for r in rows if r.get("location_id")})
+        user_ids     = list({r["received_by"]   for r in rows if r.get("received_by")})
+        receipt_ids  = [r["id"] for r in rows]
+
+        step = "load suppliers"
+        sup_map: dict = {}
+        if supplier_ids:
+            sup_map = {s["id"]: s for s in (
+                supabase.table("suppliers").select("id, name, phone")
+                .in_("id", supplier_ids).execute().data or []
+            )}
+
+        step = "load locations"
+        loc_map: dict = {}
+        if location_ids:
+            loc_map = {l["id"]: l for l in (
+                supabase.table("locations").select("id, name")
+                .in_("id", location_ids).execute().data or []
+            )}
+
+        step = "load users"
+        usr_map: dict = {}
+        if user_ids:
+            usr_map = {u["id"]: u for u in (
+                supabase.table("users").select("id, full_name")
+                .in_("id", user_ids).execute().data or []
+            )}
+
+        step = "load receipt items"
+        items_by_receipt: dict = {}
+        for item in (supabase.table("stock_receipt_items")
+                     .select("id, receipt_id, menu_item_id, item_name, quantity, unit_cost, subtotal, notes")
+                     .in_("receipt_id", receipt_ids).execute().data or []):
+            items_by_receipt.setdefault(item["receipt_id"], []).append(item)
+
+        step = "assemble"
+        out = []
+        for rec in rows:
+            sup = sup_map.get(rec.get("supplier_id") or "", {})
+            loc = loc_map.get(rec.get("location_id") or "", {})
+            usr = usr_map.get(rec.get("received_by") or "", {})
+            out.append({
+                **rec,
+                "supplier_name":    sup.get("name", ""),
+                "supplier_phone":   sup.get("phone", ""),
+                "received_by_name": usr.get("full_name", ""),
+                "location_name":    loc.get("name", ""),
+                "items":            items_by_receipt.get(rec["id"], []),
+            })
+        return out
+
+    except Exception as e:
+        logging.error("[direct-receive GET] step=%s\n%s", step, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"[step={step}] {str(e)}")
+
+
 @router.get("/{po_id}")
 async def get_purchase_order(
     po_id: str,
@@ -1056,99 +1141,3 @@ async def direct_receive(
         raise HTTPException(status_code=500, detail=f"Failed to receive stock: {str(e)}")
 
 
-@router.get("/direct-receive")
-async def list_direct_receipts(
-    supplier_id: Optional[str] = None,
-    from_date: Optional[str] = None,
-    to_date: Optional[str] = None,
-    current_user: dict = Depends(require_role(["admin", "manager", "owner"])),
-    supabase: Client = Depends(get_supabase_admin),
-):
-    """List all direct stock receipts with optional filters."""
-    step = "init"
-    try:
-        # ── 1. Fetch receipts ────────────────────────────────────────────────
-        step = "query stock_receipts"
-        q = supabase.table("stock_receipts").select(
-            "id, receipt_number, supplier_id, location_id, received_by, "
-            "received_at, notes, total_cost, created_at"
-        ).order("created_at", desc=True).limit(50)
-        if supplier_id:
-            q = q.eq("supplier_id", supplier_id)
-        if from_date:
-            q = q.gte("received_at", from_date)
-        if to_date:
-            q = q.lte("received_at", to_date)
-        rows = q.execute().data or []
-
-        if not rows:
-            return []
-
-        # ── 2. Collect FK ids ────────────────────────────────────────────────
-        step = "collect ids"
-        supplier_ids = list({r["supplier_id"] for r in rows if r.get("supplier_id")})
-        location_ids = list({r["location_id"]  for r in rows if r.get("location_id")})
-        user_ids     = list({r["received_by"]   for r in rows if r.get("received_by")})
-        receipt_ids  = [r["id"] for r in rows]
-
-        # ── 3. Batch lookups ─────────────────────────────────────────────────
-        step = "load suppliers"
-        sup_map: dict = {}
-        if supplier_ids:
-            sup_map = {
-                s["id"]: s
-                for s in (supabase.table("suppliers").select("id, name, phone")
-                           .in_("id", supplier_ids).execute().data or [])
-            }
-
-        step = "load locations"
-        loc_map: dict = {}
-        if location_ids:
-            loc_map = {
-                l["id"]: l
-                for l in (supabase.table("locations").select("id, name")
-                           .in_("id", location_ids).execute().data or [])
-            }
-
-        step = "load users"
-        usr_map: dict = {}
-        if user_ids:
-            usr_map = {
-                u["id"]: u
-                for u in (supabase.table("users").select("id, full_name")
-                           .in_("id", user_ids).execute().data or [])
-            }
-
-        # ── 4. Fetch line items ──────────────────────────────────────────────
-        step = "load receipt items"
-        items_by_receipt: dict = {}
-        raw_items = (
-            supabase.table("stock_receipt_items")
-            .select("id, receipt_id, menu_item_id, item_name, quantity, unit_cost, subtotal, notes")
-            .in_("receipt_id", receipt_ids)
-            .execute().data or []
-        )
-        for item in raw_items:
-            items_by_receipt.setdefault(item["receipt_id"], []).append(item)
-
-        # ── 5. Assemble ──────────────────────────────────────────────────────
-        step = "assemble"
-        out = []
-        for rec in rows:
-            sup = sup_map.get(rec.get("supplier_id") or "", {})
-            loc = loc_map.get(rec.get("location_id") or "", {})
-            usr = usr_map.get(rec.get("received_by") or "", {})
-            out.append({
-                **rec,
-                "supplier_name":    sup.get("name", ""),
-                "supplier_phone":   sup.get("phone", ""),
-                "received_by_name": usr.get("full_name", ""),
-                "location_name":    loc.get("name", ""),
-                "items":            items_by_receipt.get(rec["id"], []),
-            })
-        return out
-
-    except Exception as e:
-        tb = traceback.format_exc()
-        logging.error("[direct-receive GET] step=%s\n%s", step, tb)
-        raise HTTPException(status_code=500, detail=f"[step={step}] {str(e)}")
