@@ -9,7 +9,41 @@ import { persist } from 'zustand/middleware';
 import axios from 'axios';
 import * as authApi from '@/lib/api/auth';
 import { cacheUser, cacheMenuItems } from '@/lib/db/localDatabase';
+import { dbHelpers } from '@/db/schema';
 import { api } from '@/lib/api/client';
+
+/**
+ * Pre-cache data that staff need to work offline.
+ * Called fire-and-forget after every successful login.
+ * Errors are silently swallowed — caching is non-fatal.
+ */
+async function preCacheEssentials(role: string) {
+  // 1. Menu items — every role that takes orders needs these
+  try {
+    const menuRes = await api.get('/menu/items');
+    await cacheMenuItems(menuRes.data || []);
+  } catch { /* non-fatal */ }
+
+  // 2. Tables — waiters need to select a table when creating orders
+  try {
+    const tablesRes = await api.get('/tables');
+    await dbHelpers.setCachedData('tables', tablesRes.data, 60); // 60 min
+  } catch { /* non-fatal */ }
+
+  // 3. Locations (bars/sections) — needed for stock and order routing
+  try {
+    const locRes = await api.get('/locations');
+    await dbHelpers.setCachedData('locations', locRes.data, 60);
+  } catch { /* non-fatal */ }
+
+  // 4. Pending orders — waiter/chef needs to see their queue offline
+  if (['waiter', 'chef', 'manager', 'admin'].includes(role)) {
+    try {
+      await api.get('/orders?status=pending&limit=100');
+      // SW NetworkFirst intercepts this and caches in api-orders automatically
+    } catch { /* non-fatal */ }
+  }
+}
 
 const API_BASE_URL = (import.meta as any).env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
@@ -132,7 +166,7 @@ const useAuthStore = create<AuthState>()(
             });
           }
 
-          // Cache user and menu items for offline use (non-fatal)
+          // Cache user and critical data for offline use (non-fatal)
           try {
             await cacheUser({
               id: user.id,
@@ -142,10 +176,8 @@ const useAuthStore = create<AuthState>()(
               token: response.access_token || '',
             });
 
-            // Cache menu in background
-            api.get('/menu/items').then(res => {
-              cacheMenuItems(res.data || []).catch(() => {});
-            }).catch(() => {});
+            // Fire-and-forget: warm SW cache + IndexedDB with data needed offline
+            preCacheEssentials(user.role).catch(() => {});
           } catch (e) {
             // Caching failure is non-fatal
           }

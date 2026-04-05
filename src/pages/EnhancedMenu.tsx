@@ -18,6 +18,7 @@ import menuService from '@/lib/api/services/menuService';
 import { ordersApi } from '@/lib/api/orders';
 import { printOrderSlipAndBill } from '@/lib/print';
 import useAuthStore from '@/stores/authStore.secure';
+import { db } from '@/db/schema';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { MenuItem } from '@/types';
 
@@ -311,7 +312,51 @@ export default function EnhancedMenu() {
 
       console.log('Creating order:', orderData);
 
-      const createdOrder = await ordersApi.create(orderData as any);
+      // ── Detect network errors vs server errors ───────────────────────────────
+      const NETWORK_CODES = ['ERR_NETWORK', 'ERR_INTERNET_DISCONNECTED', 'ERR_NAME_NOT_RESOLVED', 'ECONNABORTED', 'ERR_FAILED'];
+      const isNetworkError = (err: any) =>
+        !err?.response && (
+          !navigator.onLine ||
+          NETWORK_CODES.includes(err?.code) ||
+          err?.message === 'Network Error'
+        );
+
+      let createdOrder: any;
+      let isOfflineOrder = false;
+
+      try {
+        createdOrder = await ordersApi.create(orderData as any);
+      } catch (error: any) {
+        if (isNetworkError(error) && isStaff) {
+          // ── Offline fallback: save locally + queue for sync ──────────────────
+          isOfflineOrder = true;
+          const tempNumber = `OFF-${Date.now().toString().slice(-6)}`;
+          const offlineOrder = {
+            ...orderData,
+            order_number: tempNumber,
+            status: 'pending',
+            offline: true,
+            total_amount: cart.reduce((sum, i) => sum + (i.price ?? 0) * i.quantity, 0),
+            created_at: new Date().toISOString(),
+          };
+
+          await db.orders.add({ ...offlineOrder, userId: user?.id || '', items: cart, total: offlineOrder.total_amount });
+          await db.pendingSync.add({
+            action: 'create',
+            entityType: 'order',
+            data: { ...orderData, _url: '/orders', _method: 'post' },
+            timestamp: new Date().toISOString(),
+            priority: 1,
+            retryCount: 0,
+          });
+
+          createdOrder = offlineOrder;
+          toast('Order saved offline — will sync when connection returns', { icon: '📶', duration: 5000 });
+        } else {
+          // Real server error — rethrow so the outer catch handles it
+          throw error;
+        }
+      }
 
       // Clear cart
       clearCart();
@@ -326,17 +371,17 @@ export default function EnhancedMenu() {
         const autoLogout = localStorage.getItem('pos:auto_logout_desktop') === 'true';
         const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
 
-        if (shouldPrint) {
+        if (shouldPrint && !isOfflineOrder) {
           setPrintOrder({
             ...createdOrder,
             waiter_name: user?.full_name,
-            _autoLogout: autoLogout && !isMobile, // carry flag into overlay
+            _autoLogout: autoLogout && !isMobile,
           });
           return;
         }
 
         // Auto-logout on desktop if setting is enabled (no print)
-        if (autoLogout && !isMobile) {
+        if (autoLogout && !isMobile && !isOfflineOrder) {
           toast.success(
             `Order ${createdOrder.order_number} created! Logging out...`,
             { duration: 2500, icon: '✅' }
@@ -348,10 +393,12 @@ export default function EnhancedMenu() {
           return;
         }
 
-        toast.success(
-          `Order ${createdOrder.order_number} created successfully! Ready to take another order.`,
-          { duration: 5000, icon: '✅' }
-        );
+        if (!isOfflineOrder) {
+          toast.success(
+            `Order ${createdOrder.order_number} created successfully! Ready to take another order.`,
+            { duration: 5000, icon: '✅' }
+          );
+        }
       } else {
         // Customers: navigate to My Orders to track their order
         toast.success(

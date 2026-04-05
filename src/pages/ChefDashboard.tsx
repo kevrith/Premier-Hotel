@@ -134,24 +134,28 @@ export default function ChefDashboard() {
     }
   }, [isAuthenticated, role, navigate]);
 
-  // Load initial orders
+  // Load initial orders — falls back to SW cache / IndexedDB when offline
   useEffect(() => {
     async function loadOrders() {
       try {
         setLoading(true);
         const data = await ordersApi.getKitchenOrders();
-        console.log('[CHEF DEBUG] Kitchen orders loaded:', data);
-        console.log('[CHEF DEBUG] All orders:', JSON.stringify(data.map(o => ({
-          order_number: o.order_number,
-          assigned_waiter_id: o.assigned_waiter_id,
-          assigned_chef_id: o.assigned_chef_id,
-          assigned_waiter: o.assigned_waiter,
-          assigned_chef: o.assigned_chef
-        })), null, 2));
         setAllOrders(data);
       } catch (error) {
         console.error('Failed to load orders:', error);
-        toast.error('Failed to load orders');
+        // Offline fallback — show cached pending orders
+        try {
+          const { db } = await import('@/db/schema');
+          const offline = await db.orders.filter(o => !!o.offline).toArray();
+          if (offline.length > 0) {
+            setAllOrders(offline.map(o => ({ ...o, id: `offline-${o.id}` } as any)));
+            toast('Showing cached orders — working offline', { icon: '📶' });
+          } else {
+            toast.error('No cached orders available offline');
+          }
+        } catch {
+          toast.error('Failed to load orders');
+        }
       } finally {
         setLoading(false);
       }
@@ -177,19 +181,28 @@ export default function ChefDashboard() {
     }
   };
 
-  // Update order status
+  const NETWORK_CODES = ['ERR_NETWORK', 'ERR_INTERNET_DISCONNECTED', 'ERR_NAME_NOT_RESOLVED', 'ECONNABORTED', 'ERR_FAILED'];
+  const isNetworkError = (err: any) =>
+    !err?.response && (!navigator.onLine || NETWORK_CODES.includes(err?.code) || err?.message === 'Network Error');
+
+  // Update order status — optimistic update + offline queue
   const handleStatusUpdate = async (orderId: string, newStatus: string) => {
+    // Optimistic update so the UI responds immediately
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
     try {
       setUpdating(orderId);
-      console.log(`[DEBUG] Updating order ${orderId} to status: ${newStatus}`);
-      const updatedOrder = await ordersApi.updateStatus(orderId, { status: newStatus as any });
-      console.log('[DEBUG] API returned updated order:', updatedOrder);
+      await ordersApi.updateStatus(orderId, { status: newStatus as any });
       toast.success(`Order updated to ${newStatus}`);
-      // Refresh orders to reflect the change
       await refreshOrders();
     } catch (error) {
-      console.error('Failed to update order:', error);
-      toast.error('Failed to update order status');
+      if (isNetworkError(error)) {
+        await OfflineService.processOrderUpdateOffline(orderId, newStatus);
+        toast('Status saved — will sync when connected', { icon: '📶', duration: 4000 });
+      } else {
+        // Revert optimistic update on genuine server error
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: o.status } : o));
+        toast.error('Failed to update order status');
+      }
     } finally {
       setUpdating(null);
     }
@@ -201,6 +214,8 @@ export default function ChefDashboard() {
       toast.error('Workload full — you already have 5 active orders');
       return;
     }
+    // Optimistic update
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'preparing' } : o));
     try {
       setUpdating(orderId);
       await ordersApi.updateStatus(orderId, { status: 'confirmed' as any });
@@ -208,8 +223,13 @@ export default function ChefDashboard() {
       toast.success('Order accepted and now being prepared');
       await refreshOrders();
     } catch (error) {
-      console.error('Failed to accept and prepare order:', error);
-      toast.error('Failed to update order status');
+      if (isNetworkError(error)) {
+        await OfflineService.processOrderUpdateOffline(orderId, 'preparing');
+        toast('Status saved — will sync when connected', { icon: '📶', duration: 4000 });
+      } else {
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'pending' } : o));
+        toast.error('Failed to update order status');
+      }
     } finally {
       setUpdating(null);
     }

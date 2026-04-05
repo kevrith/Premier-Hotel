@@ -35,6 +35,7 @@ import { buildItemSummaryHtml } from '@/lib/print';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { toast } from 'react-hot-toast';
 import { ordersApi, Order } from '@/lib/api/orders';
+import { db } from '@/db/schema';
 import OrderManagement from '@/components/Manager/OrderManagement';
 import { useOrderUpdates } from '@/hooks/useOrderUpdates';
 import { useOrderBell } from '@/hooks/useOrderBell';
@@ -331,26 +332,36 @@ export default function WaiterDashboard() {
     }
   }, [isAuthenticated, role, navigate]);
 
-  // Load initial orders
+  // Load initial orders — falls back to IndexedDB offline queue when offline
   useEffect(() => {
     async function loadOrders() {
       try {
         setLoading(true);
-        // Get all active orders (pending, confirmed, preparing, ready)
         const data = await ordersApi.getAll({ date: 'today' });
-        console.log('All orders loaded:', data);
-        
-        // Filter to show active orders only (including served orders with unpaid bills)
-        const activeOrders = data.filter(o =>
+        // Merge any locally-queued offline orders not yet in the server response
+        const offlineOrders = await db.orders.filter(o => !!o.offline).toArray();
+        const serverIds = new Set(data.map((o: any) => o.order_number));
+        const pendingOffline = offlineOrders
+          .filter(o => !serverIds.has(o.order_number))
+          .map(o => ({ ...o, id: `offline-${o.id}` } as any));
+        const merged = [...data, ...pendingOffline];
+        const activeOrders = merged.filter((o: any) =>
           ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(o.status)
         );
-        
-        console.log('Active orders after filtering:', activeOrders);
-        
         setAllOrders(activeOrders);
       } catch (error) {
         console.error('Failed to load orders:', error);
-        toast.error('Failed to load orders');
+        // Offline fallback — show locally queued orders
+        try {
+          const offlineOrders = await db.orders.filter(o => !!o.offline).toArray();
+          const mapped = offlineOrders.map(o => ({ ...o, id: `offline-${o.id}` } as any));
+          setAllOrders(mapped);
+          if (mapped.length > 0) {
+            toast('Showing offline orders — will sync when connected', { icon: '📶' });
+          }
+        } catch {
+          toast.error('Failed to load orders');
+        }
       } finally {
         setLoading(false);
       }
@@ -416,7 +427,13 @@ export default function WaiterDashboard() {
     try {
       setLoading(true);
       const data = await ordersApi.getAll({ limit: 100 });
-      const activeOrders = data.filter(o =>
+      const offlineOrders = await db.orders.filter(o => !!o.offline).toArray();
+      const serverIds = new Set(data.map((o: any) => o.order_number));
+      const pendingOffline = offlineOrders
+        .filter(o => !serverIds.has(o.order_number))
+        .map(o => ({ ...o, id: `offline-${o.id}` } as any));
+      const merged = [...data, ...pendingOffline];
+      const activeOrders = merged.filter((o: any) =>
         ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(o.status)
       );
       setAllOrders(activeOrders);

@@ -14,6 +14,7 @@ import { DebugUserRole } from './DebugUserRole';
 import { PermissionManagement } from '@/components/Permissions/PermissionManagement';
 import { reportsService } from '@/lib/api/reports';
 import api from '@/lib/api/client';
+import { OfflineGate } from '@/components/shared/OfflineGate';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
 function LazyTab({ active, children }: { active: boolean; children: ReactNode }) {
@@ -223,7 +224,9 @@ export function AdminDashboard() {
 
         <TabsContent value="reports">
           <LazyTab active={activeTab === 'reports'}>
-            <AdvancedReporting />
+            <OfflineGate message="Reports require an internet connection. Please reconnect to view them.">
+              <AdvancedReporting />
+            </OfflineGate>
           </LazyTab>
         </TabsContent>
 

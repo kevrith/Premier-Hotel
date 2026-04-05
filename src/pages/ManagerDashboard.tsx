@@ -58,6 +58,7 @@ import { DataExportCenter } from '@/components/Admin/DataExportCenter';
 import { LocationManagement } from '@/components/Admin/LocationManagement';
 import { StockReceiving } from '@/components/Admin/StockReceiving';
 import { StockTransfer } from '@/components/Admin/StockTransfer';
+import { OfflineGate } from '@/components/shared/OfflineGate';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
 function LazyTab({ active, children }: { active: boolean; children: React.ReactNode }) {
@@ -383,6 +384,7 @@ export default function ManagerDashboard() {
           {/* Financial Reports Tab */}
           <TabsContent value="financial-reports" className="space-y-4 sm:space-y-6">
             <LazyTab active={activeTab === 'financial-reports'}>
+            <OfflineGate message="Financial reports require an internet connection. Please reconnect to view them.">
               <Tabs defaultValue="overview" className="space-y-4">
                 <div className="overflow-x-auto pb-1">
                   <TabsList className="inline-flex h-auto gap-1 p-1 min-w-max">
@@ -478,6 +480,7 @@ export default function ManagerDashboard() {
                   <CustomerLifetimeValueReport />
                 </TabsContent>
               </Tabs>
+            </OfflineGate>
             </LazyTab>
           </TabsContent>
 
@@ -519,6 +522,7 @@ export default function ManagerDashboard() {
           {/* Purchase Orders / Receiving Tab */}
           <TabsContent value="purchases" className="space-y-6">
             <LazyTab active={activeTab === 'purchases'}>
+            <OfflineGate message="Stock receiving and purchasing requires an internet connection.">
               <Tabs defaultValue="purchase-orders">
                 <div className="overflow-x-auto pb-1">
                   <TabsList className="flex gap-1 w-max min-w-full h-auto">
@@ -537,6 +541,7 @@ export default function ManagerDashboard() {
                   <StockTransfer />
                 </TabsContent>
               </Tabs>
+            </OfflineGate>
             </LazyTab>
           </TabsContent>
 

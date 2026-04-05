@@ -104,6 +104,21 @@ registerRoute(
   })
 );
 
+// ── Tables & Locations — NetworkFirst (30 min cache) — critical for offline ordering ─
+registerRoute(
+  ({ url }) =>
+    API_PATTERN.test(url.href) &&
+    (url.pathname.includes('/tables') || url.pathname.includes('/locations')),
+  new NetworkFirst({
+    cacheName: 'api-tables-locations',
+    networkTimeoutSeconds: 5,
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 30 * 60 }),
+    ],
+  })
+);
+
 // ── Rooms — NetworkFirst with 5s timeout, falls back to cache ─────────────────
 registerRoute(
   ({ url }) => API_PATTERN.test(url.href) && url.pathname.includes('/rooms'),
