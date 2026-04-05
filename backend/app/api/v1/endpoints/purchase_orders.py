@@ -1076,7 +1076,7 @@ async def list_direct_receipts(
             query = query.gte("received_at", from_date)
         if to_date:
             query = query.lte("received_at", to_date)
-        query = query.order("created_at", desc=True).range(skip, skip + limit - 1)
+        query = query.order("created_at", desc=True).limit(limit).offset(skip)
         result = query.execute()
         rows = result.data or []
 
