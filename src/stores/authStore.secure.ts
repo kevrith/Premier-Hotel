@@ -189,8 +189,14 @@ const useAuthStore = create<AuthState>()(
           };
         } catch (error: any) {
           const errorMessage = error.response?.data?.detail || error.message || 'Login failed';
+          const NETWORK_CODES = ['ERR_NETWORK', 'ERR_INTERNET_DISCONNECTED', 'ERR_NAME_NOT_RESOLVED', 'ECONNABORTED', 'ERR_FAILED', 'ERR_CONNECTION_REFUSED'];
+          const isNetworkError = !error.response && (
+            !navigator.onLine ||
+            NETWORK_CODES.includes(error.code) ||
+            error.message === 'Network Error'
+          );
           set({ error: errorMessage, isLoading: false });
-          return { success: false, error: errorMessage };
+          return { success: false, error: errorMessage, isNetworkError };
         }
       },
 

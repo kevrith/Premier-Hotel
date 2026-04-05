@@ -269,6 +269,17 @@ export default function Login() {
             break;
         }
       }
+    } else if ((result as any).isNetworkError) {
+      // Network is down — try cached session with the password they just typed
+      const cached = getCachedUserDirect();
+      if (cached) {
+        // Accept offline — no password re-check here (password is in httpOnly cookie, not stored)
+        useAuthStore.setState({ user: cached, role: cached.role, isAuthenticated: true, isOfflineSession: true });
+        toast('No internet connection. Continuing with your last session offline.', { icon: '📶', duration: 5000 });
+        redirectByRole(cached.role);
+      } else {
+        toast.error('No internet connection and no cached session found. Please connect to log in.');
+      }
     } else {
       toast.error(result.error || 'Login failed. Please try again.');
     }
