@@ -33,7 +33,6 @@ import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { usePermissions, PERMISSIONS } from '@/hooks/usePermissions';
 import { buildItemSummaryHtml } from '@/lib/print';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
-import { ItemSummaryReport } from '@/components/Manager/Reports/ItemSummaryReport';
 import { toast } from 'react-hot-toast';
 import { ordersApi, Order } from '@/lib/api/orders';
 import OrderManagement from '@/components/Manager/OrderManagement';
@@ -66,33 +65,49 @@ import { tablesAPI, RestaurantTable } from '@/lib/api/tables';
 import { useAcceptedPaymentMethods } from '@/hooks/useAcceptedPaymentMethods';
 import { paymentService } from '@/lib/api/payments';
 
-// ── My Report Panel — shows only the logged-in waiter's own sales ────────────
-function MyReportPanel({ userId, userName }: { userId?: string; userName?: string }) {
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+// ── Staff Report Panel — employee selector + per-waiter items sold ────────────
+function StaffReportPanel({ currentUserId, currentUserName }: { currentUserId?: string; currentUserName?: string }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [selectedId, setSelectedId] = useState<string>(currentUserId || '');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Load staff list on mount
+  useEffect(() => {
+    import('@/lib/api/client').then(({ default: apiClient }) => {
+      apiClient.get('/admin/users?roles=waiter,chef,manager&limit=200').then(res => {
+        const raw = res.data as any;
+        setEmployees((raw?.data ?? raw) || []);
+      }).catch(() => {});
+    });
+  }, []);
+
+  const selectedName = selectedId
+    ? (employees.find(e => e.id === selectedId)?.full_name || currentUserName || '')
+    : '';
+
   const load = async () => {
-    if (!userId) return;
+    if (!selectedId) return;
     setLoading(true);
     try {
       const apiClient = (await import('@/lib/api/client')).default;
-      const res = await apiClient.get(`/reports/employee/${userId}/details`, {
+      const res = await apiClient.get(`/reports/employee/${selectedId}/details`, {
         params: { start_date: startDate, end_date: endDate }
       });
       setData(res.data);
-      // Expand all categories by default
       const cats = res.data?.categories || res.data?.items_by_category || [];
       setExpandedCats(new Set(cats.map((c: any) => c.category)));
     } catch { toast.error('Failed to load report'); }
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [startDate, endDate, userId]);
+  useEffect(() => { load(); }, [startDate, endDate, selectedId]);
 
   const toggleCat = (cat: string) =>
     setExpandedCats(prev => {
@@ -113,7 +128,7 @@ function MyReportPanel({ userId, userName }: { userId?: string; userName?: strin
       grand_total_revenue: grandRevenue,
       startDate,
       endDate,
-      employeeName: userName || 'My Report',
+      employeeName: selectedName,
     });
     setPreviewHtml(html);
     setPreviewOpen(true);
@@ -127,11 +142,24 @@ function MyReportPanel({ userId, userName }: { userId?: string; userName?: strin
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="text-base">My Items Sold Report</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">{userName}</p>
-            </div>
+            <CardTitle className="text-base">Items Sold Report</CardTitle>
             <div className="flex gap-2 items-end flex-wrap">
+              {/* Employee selector */}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Employee</p>
+                <select
+                  value={selectedId}
+                  onChange={e => setSelectedId(e.target.value)}
+                  className="border rounded px-2 py-1 text-sm bg-background"
+                >
+                  <option value="">— Select waiter —</option>
+                  {employees.map((e: any) => (
+                    <option key={e.id} value={e.id}>
+                      {e.full_name} ({e.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">From</p>
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
@@ -142,7 +170,7 @@ function MyReportPanel({ userId, userName }: { userId?: string; userName?: strin
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                   className="border rounded px-2 py-1 text-sm bg-background" />
               </div>
-              <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+              <Button size="sm" variant="outline" onClick={load} disabled={loading || !selectedId}>
                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />Refresh
               </Button>
               <Button size="sm" onClick={handlePrint} disabled={!cats.length}>
@@ -152,7 +180,9 @@ function MyReportPanel({ userId, userName }: { userId?: string; userName?: strin
           </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
+          {!selectedId ? (
+            <p className="text-center py-8 text-muted-foreground">Select an employee above to view their report</p>
+          ) : loading ? (
             <div className="text-center py-8 text-muted-foreground">Loading…</div>
           ) : !data ? (
             <div className="text-center py-8 text-muted-foreground">No data</div>
@@ -195,9 +225,7 @@ function MyReportPanel({ userId, userName }: { userId?: string; userName?: strin
                             onClick={() => toggleCat(cat.category)}
                           >
                             <td className="px-3 py-2 font-bold text-blue-600 flex items-center gap-1">
-                              {expandedCats.has(cat.category)
-                                ? <span className="text-xs">▼</span>
-                                : <span className="text-xs">▶</span>}
+                              {expandedCats.has(cat.category) ? <span className="text-xs">▼</span> : <span className="text-xs">▶</span>}
                               {cat.category.toUpperCase()}
                             </td>
                             <td className="px-3 py-2 text-right font-bold text-blue-600">{cat.total_qty}</td>
@@ -227,7 +255,7 @@ function MyReportPanel({ userId, userName }: { userId?: string; userName?: strin
           )}
         </CardContent>
       </Card>
-      <PrintPreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} html={previewHtml} title="My Items Sold" />
+      <PrintPreviewModal open={previewOpen} onClose={() => setPreviewOpen(false)} html={previewHtml} title="Items Sold" />
     </div>
   );
 }
@@ -1045,10 +1073,10 @@ export default function WaiterDashboard() {
             </TabsContent>
           )}
 
-          {/* My Report Tab — visible only with permission; shows full item summary for all staff */}
+          {/* My Report Tab — visible only with permission; select any employee, view & print */}
           {(hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS) || hasPermission(PERMISSIONS.PRINT_ITEM_SUMMARY)) && (
             <TabsContent value="my-report" className="space-y-4">
-              <ItemSummaryReport />
+              <StaffReportPanel currentUserId={user?.id} currentUserName={user?.full_name} />
             </TabsContent>
           )}
         </Tabs>
