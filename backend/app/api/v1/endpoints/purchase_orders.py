@@ -1067,66 +1067,69 @@ async def list_direct_receipts(
     supabase: Client = Depends(get_supabase_admin),
 ):
     """List all direct stock receipts with optional filters."""
+    step = "init"
     try:
-        # Simple select — no joins to avoid FK schema-cache issues
-        query = supabase.table("stock_receipts").select("*")
+        step = "query stock_receipts"
+        q = supabase.table("stock_receipts").select("*").order("created_at", desc=True).limit(limit)
         if supplier_id:
-            query = query.eq("supplier_id", supplier_id)
+            q = q.eq("supplier_id", supplier_id)
         if from_date:
-            query = query.gte("received_at", from_date)
+            q = q.gte("received_at", from_date)
         if to_date:
-            query = query.lte("received_at", to_date)
-        query = query.order("created_at", desc=True).limit(limit).offset(skip)
-        result = query.execute()
+            q = q.lte("received_at", to_date)
+        result = q.execute()
         rows = result.data or []
 
         if not rows:
             return []
 
-        # Batch-load related data to avoid N+1 queries
+        step = "collect ids"
         supplier_ids = list({r["supplier_id"] for r in rows if r.get("supplier_id")})
-        location_ids  = list({r["location_id"]  for r in rows if r.get("location_id")})
-        user_ids      = list({r["received_by"]   for r in rows if r.get("received_by")})
-        receipt_ids   = [r["id"] for r in rows]
+        location_ids = list({r["location_id"]  for r in rows if r.get("location_id")})
+        user_ids     = list({r["received_by"]   for r in rows if r.get("received_by")})
+        receipt_ids  = [r["id"] for r in rows]
 
+        step = "load suppliers"
         sup_map = {}
         if supplier_ids:
             sr = supabase.table("suppliers").select("id, name, phone").in_("id", supplier_ids).execute()
             sup_map = {s["id"]: s for s in (sr.data or [])}
 
+        step = "load locations"
         loc_map = {}
         if location_ids:
             lr = supabase.table("locations").select("id, name").in_("id", location_ids).execute()
             loc_map = {l["id"]: l for l in (lr.data or [])}
 
+        step = "load users"
         usr_map = {}
         if user_ids:
             ur = supabase.table("users").select("id, full_name").in_("id", user_ids).execute()
             usr_map = {u["id"]: u for u in (ur.data or [])}
 
-        # Fetch all items for these receipts in one call
-        items_res = supabase.table("stock_receipt_items").select("*").in_(
-            "receipt_id", receipt_ids
-        ).execute()
+        step = "load receipt items"
+        items_res = supabase.table("stock_receipt_items").select("*").in_("receipt_id", receipt_ids).execute()
         items_by_receipt: dict = {}
         for item in (items_res.data or []):
             items_by_receipt.setdefault(item["receipt_id"], []).append(item)
 
+        step = "assemble response"
         receipts = []
         for rec in rows:
-            sup  = sup_map.get(rec.get("supplier_id") or "", {})
-            loc  = loc_map.get(rec.get("location_id") or "", {})
-            usr  = usr_map.get(rec.get("received_by") or "", {})
+            sup = sup_map.get(rec.get("supplier_id") or "", {})
+            loc = loc_map.get(rec.get("location_id") or "", {})
+            usr = usr_map.get(rec.get("received_by") or "", {})
             receipts.append({
                 **rec,
-                "supplier_name":   sup.get("name", ""),
-                "supplier_phone":  sup.get("phone", ""),
+                "supplier_name":    sup.get("name", ""),
+                "supplier_phone":   sup.get("phone", ""),
                 "received_by_name": usr.get("full_name", ""),
-                "location_name":   loc.get("name", ""),
-                "items": items_by_receipt.get(rec["id"], []),
+                "location_name":    loc.get("name", ""),
+                "items":            items_by_receipt.get(rec["id"], []),
             })
         return receipts
 
     except Exception as e:
-        logging.error(f"[direct-receive GET] {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch receipts: {str(e)}")
+        tb = traceback.format_exc()
+        logging.error(f"[direct-receive GET] step={step} error={tb}")
+        raise HTTPException(status_code=500, detail=f"[step={step}] {str(e)}")
