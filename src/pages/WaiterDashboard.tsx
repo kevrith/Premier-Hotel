@@ -81,9 +81,9 @@ function StaffReportPanel({ currentUserId, currentUserName }: { currentUserId?: 
   // Load staff list on mount
   useEffect(() => {
     import('@/lib/api/client').then(({ default: apiClient }) => {
-      apiClient.get('/admin/users?roles=waiter,chef,manager&limit=200').then(res => {
+      apiClient.get('/reports/staff-list').then(res => {
         const raw = res.data as any;
-        setEmployees((raw?.data ?? raw) || []);
+        setEmployees(Array.isArray(raw) ? raw : (raw?.data ?? []));
       }).catch(() => {});
     });
   }, []);

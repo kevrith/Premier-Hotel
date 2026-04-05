@@ -1144,6 +1144,21 @@ async def get_category_breakdown(
         )
 
 
+@router.get("/staff-list")
+async def get_staff_list(
+    current_user: dict = Depends(require_role(["admin", "manager", "owner", "waiter", "staff"])),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """Return id, full_name, role for all sales staff. Used by report panels."""
+    try:
+        res = supabase.table("users").select("id, full_name, role").in_(
+            "role", ["waiter", "chef", "manager", "admin"]
+        ).order("full_name").execute()
+        return res.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch staff list: {str(e)}")
+
+
 @router.get("/employee/{employee_id}/details")
 async def get_employee_details(
     employee_id: str,
