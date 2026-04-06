@@ -34,7 +34,7 @@ async def get_reports_overview(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get overall reports overview with key metrics.
@@ -45,6 +45,8 @@ async def get_reports_overview(
             end_date = datetime.now().isoformat()
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
+
+        COMPLETED_STATUSES = ["served", "completed", "delivered", "paid"]
 
         def _bookings():
             return supabase.table("bookings").select(
@@ -60,20 +62,20 @@ async def get_reports_overview(
         bookings_data = bookings_res.data or []
         orders_data   = orders_res.data or []
 
-        VOID_STATUSES_RPT = {"voided", "void", "cancelled", "canceled", "void_requested"}
+        # Only count completed/served/delivered orders for revenue (matches owner dashboard)
+        completed_orders_data = [o for o in orders_data if o.get("status") in COMPLETED_STATUSES]
         booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings_data)
         order_revenue   = sum(
             sum(float(i.get("price", 0)) * int(i.get("quantity", 0))
                 for i in (o.get("items") or []) if isinstance(i, dict) and not i.get("voided"))
-            for o in orders_data
-            if o.get("status") not in VOID_STATUSES_RPT
+            for o in completed_orders_data
         )
         total_revenue = booking_revenue + order_revenue
 
         total_bookings     = len(bookings_data)
         confirmed_bookings = sum(1 for b in bookings_data if b.get("status") in ["confirmed", "checked_in", "checked_out"])
         total_orders       = len(orders_data)
-        completed_orders   = sum(1 for o in orders_data if o.get("status") in ["delivered", "completed", "served"])
+        completed_orders   = len(completed_orders_data)
 
         booking_users = {b["customer_id"] for b in bookings_data if b.get("customer_id")}
         order_users   = {o["customer_id"] for o in orders_data   if o.get("customer_id")}
