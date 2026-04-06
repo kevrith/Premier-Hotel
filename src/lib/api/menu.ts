@@ -5,7 +5,6 @@
  */
 
 import apiClient from './client';
-import { dbHelpers } from '../db/schema';
 
 // All requests go through the offline-aware apiClient.
 // Paths must include the /menu prefix since apiClient's baseURL is /api/v1.
@@ -116,10 +115,6 @@ class MenuAPIService {
   async createMenuItem(itemData: MenuItemCreate): Promise<MenuItem> {
     try {
       const response = await api.post<MenuItem>('/items', itemData);
-      // Bust the menu items cache so the new item appears immediately
-      try {
-        await dbHelpers.deleteCachedDataByPrefix('/menu/items');
-      } catch { /* non-fatal */ }
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Failed to create menu item');
@@ -132,10 +127,6 @@ class MenuAPIService {
   async updateMenuItem(itemId: string, itemData: MenuItemUpdate): Promise<MenuItem> {
     try {
       const response = await api.put<MenuItem>(`/items/${itemId}`, itemData);
-      // Invalidate the menu items GET cache so the next load reflects the change
-      try {
-        await dbHelpers.deleteCachedDataByPrefix('/menu/items');
-      } catch { /* non-fatal */ }
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Failed to update menu item');
@@ -148,10 +139,6 @@ class MenuAPIService {
   async deleteMenuItem(itemId: string): Promise<{ message: string }> {
     try {
       const response = await api.delete(`/items/${itemId}`);
-      // Invalidate cache on delete too
-      try {
-        await dbHelpers.deleteCachedDataByPrefix('/menu/items');
-      } catch { /* non-fatal */ }
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Failed to delete menu item');

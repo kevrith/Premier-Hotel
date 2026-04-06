@@ -211,6 +211,12 @@ apiClient.interceptors.response.use(
       cacheGetResponse(cacheKey, response.data, ttl);
     }
 
+    // Invalidate menu items cache after any successful mutation on a menu item
+    const method = (config.method ?? '').toLowerCase();
+    if (isMutation(method) && config.url?.includes('/menu/items')) {
+      dbHelpers.deleteCachedDataByPrefix('/menu/items').catch(() => {});
+    }
+
     return response;
   },
 
