@@ -124,7 +124,11 @@ export function StockReceiving() {
         api.get('/stock/levels'),
       ]);
       setSuppliers(supRes.data?.suppliers || supRes.data || []);
-      setLocations(locRes.data || []);
+      const locs: Location[] = locRes.data || [];
+      setLocations(locs);
+      // Auto-select the first store-type location (Central Store) so stock always lands somewhere
+      const defaultLoc = locs.find(l => l.type === 'store') || locs[0];
+      if (defaultLoc) setLocationId(defaultLoc.id);
       const raw: any[] = itemRes.data?.items || itemRes.data || [];
       setAllItems(
         raw.map((m) => ({

@@ -1094,8 +1094,15 @@ async def direct_receive(
                     "is_available": True,
                 }).eq("id", it.menu_item_id).execute()
 
-            # Update / insert location_stock if a location was specified
-            if body.location_id:
+            # Update / insert location_stock — use provided location or fall back to first store location
+            effective_location_id = body.location_id
+            if not effective_location_id:
+                # Find the first store-type location as a fallback so items always land in stock
+                fallback = supabase.table("locations").select("id").eq("type", "store").limit(1).execute()
+                if fallback.data:
+                    effective_location_id = fallback.data[0]["id"]
+
+            if effective_location_id:
                 for it in body.items:
                     if not it.menu_item_id:
                         continue
