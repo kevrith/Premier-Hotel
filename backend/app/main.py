@@ -160,6 +160,7 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 # ==================== APPLICATION LIFECYCLE ====================
 
 _keepalive_task: asyncio.Task = None
+_eod_task: asyncio.Task = None
 
 async def _db_keepalive():
     """
@@ -178,6 +179,50 @@ async def _db_keepalive():
             logger.debug("DB keepalive ping sent (both clients)")
         except Exception as e:
             logger.warning(f"DB keepalive ping failed: {e}")
+
+
+async def _midnight_eod_closer():
+    """
+    Every night at midnight EAT (UTC+3 = 21:00 UTC), automatically mark all
+    remaining active orders as 'served' so kitchen and waiter screens start
+    the next day clean.
+    """
+    from datetime import date, timedelta, timezone as tz2
+    EAT_OFFSET = 3 * 3600  # seconds
+
+    while True:
+        try:
+            # Calculate seconds until next midnight EAT
+            now_utc = datetime.now(timezone.utc)
+            now_eat_ts = now_utc.timestamp() + EAT_OFFSET
+            # midnight EAT in UTC timestamp
+            eat_today_midnight = (int(now_eat_ts) // 86400 + 1) * 86400 - EAT_OFFSET
+            sleep_secs = eat_today_midnight - now_utc.timestamp()
+            if sleep_secs < 0:
+                sleep_secs += 86400
+            logger.info(f"[EOD] Next auto-close in {sleep_secs/3600:.1f} hours")
+            await asyncio.sleep(sleep_secs)
+        except asyncio.CancelledError:
+            return
+
+        # It's midnight EAT — close yesterday's orders
+        try:
+            close_date = (datetime.now(timezone.utc) + timedelta(hours=3) - timedelta(days=0)).strftime("%Y-%m-%d")
+            supabase = get_supabase_admin()
+            ACTIVE_STATUSES = ["pending", "confirmed", "preparing", "in-progress", "ready"]
+            res = supabase.table("orders").select("id").in_(
+                "status", ACTIVE_STATUSES
+            ).gte("created_at", f"{close_date}T00:00:00").lte("created_at", f"{close_date}T23:59:59").execute()
+            ids = [o["id"] for o in (res.data or [])]
+            if ids:
+                supabase.table("orders").update({
+                    "status": "served",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "notes": "[Auto-closed at end of day]",
+                }).in_("id", ids).execute()
+                logger.info(f"[EOD] Auto-closed {len(ids)} orders for {close_date}")
+        except Exception as e:
+            logger.error(f"[EOD] Auto-close failed: {e}")
 
 
 @app.on_event("startup")
@@ -212,6 +257,11 @@ async def startup():
     _keepalive_task = asyncio.create_task(_db_keepalive())
     logger.info("✅ DB keepalive task started (pings every 4 min to prevent cold starts)")
 
+    # Start midnight EOD order closer
+    global _eod_task
+    _eod_task = asyncio.create_task(_midnight_eod_closer())
+    logger.info("✅ Midnight EOD order-closer task started (runs daily at midnight EAT)")
+
     try:
         # Start automatic email queue processor
         supabase = get_supabase_admin()
@@ -228,6 +278,8 @@ async def shutdown():
     global _keepalive_task
     if _keepalive_task:
         _keepalive_task.cancel()
+    if _eod_task:
+        _eod_task.cancel()
     logger.info(f"🛑 {settings.APP_NAME} shutting down...")
 
     try:

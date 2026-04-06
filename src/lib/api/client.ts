@@ -74,8 +74,12 @@ const NO_OFFLINE_QUEUE_PATTERNS = [
   '/bulk-cancel',
   '/reverse',
   '/auth/',
-  '/location-stock/transfer',  // stock transfers must be real-time — queuing causes duplicate movements
-  '/location-stock/adjust',    // stock adjustments are not safe to replay offline
+  '/location-stock/transfer',    // stock transfers must be real-time — queuing causes duplicate movements
+  '/location-stock/adjust',      // stock adjustments are not safe to replay offline
+  '/purchase-orders/direct-receive', // stock receiving updates inventory — must be real-time
+  '/purchase-orders/',           // PO approval, send, cancel, receive — all real-time
+  '/stock/receive',              // unified stock receive — real-time
+  '/orders/end-of-day',          // EOD close — real-time only
 ];
 
 function shouldQueueOffline(url: string): boolean {
@@ -199,7 +203,12 @@ apiClient.interceptors.response.use(
       const ttl = config.url.includes('/menu') ? 24 * 60
                 : config.url.includes('/rooms') ? 60
                 : 30;
-      cacheGetResponse(config.url, response.data, ttl);
+      // Build cache key that includes query params so date/filter changes aren't cached together
+      const params = config.params;
+      const cacheKey = params && Object.keys(params).length > 0
+        ? `${config.url}?${new URLSearchParams(params).toString()}`
+        : config.url;
+      cacheGetResponse(cacheKey, response.data, ttl);
     }
 
     return response;
@@ -245,9 +254,13 @@ apiClient.interceptors.response.use(
         }
       }
 
-      // GETs offline → try IndexedDB cache
+      // GETs offline → try IndexedDB cache (match cache key including query params)
       if (method === 'get' && url) {
-        const cached = await getCachedGet(url);
+        const offlineParams = originalRequest?.params;
+        const offlineCacheKey = offlineParams && Object.keys(offlineParams).length > 0
+          ? `${url}?${new URLSearchParams(offlineParams).toString()}`
+          : url;
+        const cached = await getCachedGet(offlineCacheKey);
         if (cached) {
           return Promise.resolve({
             data:       cached,

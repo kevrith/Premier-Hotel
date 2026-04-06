@@ -26,8 +26,10 @@ import {
   RefreshCw,
   Wifi,
   Printer,
-  User
+  User,
+  MoonStar,
 } from 'lucide-react';
+import api from '@/lib/api/client';
 import { BillsManagement } from '@/components/Bills';
 import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { usePermissions, PERMISSIONS } from '@/hooks/usePermissions';
@@ -856,6 +858,29 @@ export default function WaiterDashboard() {
               <Button variant="outline" size="sm" onClick={refreshOrders} disabled={loading}>
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </Button>
+              {(role === 'admin' || role === 'manager') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                  title="Close all active orders for today"
+                  onClick={async () => {
+                    const active = orders.filter(o => ['pending','confirmed','preparing','in-progress','ready'].includes(o.status));
+                    if (active.length === 0) { toast('No active orders to close.'); return; }
+                    if (!window.confirm(`Close ${active.length} active order(s) for today?\n\nThis marks them all as served and clears the active view.`)) return;
+                    try {
+                      const res = await api.post('/orders/end-of-day');
+                      toast.success(res.data?.message || 'Day closed successfully');
+                      await refreshOrders();
+                    } catch (err: any) {
+                      toast.error(err?.response?.data?.detail || 'Failed to close day');
+                    }
+                  }}
+                >
+                  <MoonStar className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-1 text-xs">End of Day</span>
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => window.open('/print-station', '_blank')} title="Open KOT Print Station">
                 <Printer className="h-4 w-4" />
               </Button>

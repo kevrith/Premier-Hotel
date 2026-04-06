@@ -227,16 +227,21 @@ export const db = new PremierHotelDB();
 
 // Initialize database
 db.open().then(async () => {
-  // Clean up any stuck void/payment items that should never have been queued.
-  // These cause the "syncing pending actions" banner to loop indefinitely.
-  const BLOCKED_URL_PATTERNS = ['/void', '/payments', '/bulk-cancel', '/reverse'];
+  // Clean up any stuck items that should never have been queued.
+  // Keep this in sync with NO_OFFLINE_QUEUE_PATTERNS in client.ts.
+  const BLOCKED_URL_PATTERNS = [
+    '/void', '/payments', '/bulk-cancel', '/reverse',
+    '/location-stock/transfer', '/location-stock/adjust',
+    '/purchase-orders/direct-receive', '/purchase-orders/',
+    '/stock/receive', '/orders/end-of-day',
+  ];
   try {
     const stuck = await db.pendingSync
       .filter(item => !!item.data?._url && BLOCKED_URL_PATTERNS.some(p => item.data._url.includes(p)))
       .toArray();
     if (stuck.length > 0) {
       await db.pendingSync.bulkDelete(stuck.map(i => i.id!));
-      console.log(`[DB] Cleaned ${stuck.length} stuck void/payment item(s) from sync queue`);
+      console.log(`[DB] Cleaned ${stuck.length} stuck item(s) from sync queue`);
     }
   } catch { /* non-fatal */ }
 }).catch((err) => {

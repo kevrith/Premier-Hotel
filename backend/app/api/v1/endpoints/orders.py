@@ -1948,3 +1948,66 @@ async def void_entire_receipt(
         "voided_amount": voided_amount,
         "order_id": order_id,
     }
+
+
+# ── End-of-Day Order Close ────────────────────────────────────────────────────
+
+@router.post("/end-of-day")
+async def end_of_day_close(
+    target_date: Optional[str] = Query(default=None, description="Date YYYY-MM-DD, defaults to today"),
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Mark all active orders from the given date as 'served'.
+    Clears pending, confirmed, preparing, in-progress, and ready orders
+    so they no longer appear in the kitchen and waiter active views.
+    Admin / manager only.
+    """
+    user_role = current_user.get("role", "")
+    if user_role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin or manager role required")
+
+    close_date = target_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    ACTIVE_STATUSES = ["pending", "confirmed", "preparing", "in-progress", "ready"]
+
+    # Fetch all active orders for the date
+    res = supabase.table("orders").select("id, order_number, status").in_(
+        "status", ACTIVE_STATUSES
+    ).gte("created_at", f"{close_date}T00:00:00").lte("created_at", f"{close_date}T23:59:59").execute()
+
+    orders_to_close = res.data or []
+
+    if not orders_to_close:
+        return {
+            "success": True,
+            "date": close_date,
+            "closed": 0,
+            "message": "No active orders to close for this date.",
+        }
+
+    order_ids = [o["id"] for o in orders_to_close]
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Bulk update to 'served'
+    supabase.table("orders").update({
+        "status": "served",
+        "updated_at": now_iso,
+        "notes": f"[Closed at end of day by {current_user.get('full_name', 'staff')}]",
+    }).in_("id", order_ids).execute()
+
+    logger.info(f"[EOD] Closed {len(order_ids)} orders for {close_date} by {current_user.get('id')}")
+
+    # Broadcast refresh event so open kitchen/waiter screens update automatically
+    try:
+        await ws_manager.broadcast_to_all({"type": "orders_eod_closed", "date": close_date, "count": len(order_ids)})
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "date": close_date,
+        "closed": len(order_ids),
+        "message": f"Closed {len(order_ids)} active order(s) for {close_date}.",
+    }

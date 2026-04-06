@@ -22,11 +22,13 @@ import {
   Flag,
   Volume2,
   VolumeX,
+  MoonStar,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { useOrderUpdates, Order } from '@/hooks/useOrderUpdates';
 import { ordersApi } from '@/lib/api/orders';
+import api from '@/lib/api/client';
 import { useOrderBell } from '@/hooks/useOrderBell';
 import OfflineService from '@/services/offlineService';
 import {
@@ -762,6 +764,30 @@ export default function ChefDashboard() {
               >
                 {newOrderCount} new order{newOrderCount > 1 ? 's' : ''}
               </Badge>
+            )}
+
+            {/* End of Day — admin/manager only */}
+            {(user?.role === 'admin' || user?.role === 'manager') && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2 border-orange-300 text-orange-700 hover:bg-orange-50"
+                onClick={async () => {
+                  const active = orders.filter(o => ['pending','confirmed','preparing','in-progress','ready'].includes(o.status));
+                  if (active.length === 0) { toast('No active orders to close.'); return; }
+                  if (!window.confirm(`Close ${active.length} active order(s) for today?\n\nThis marks them all as served and clears the kitchen view.`)) return;
+                  try {
+                    const res = await api.post('/orders/end-of-day');
+                    toast.success(res.data?.message || 'Day closed successfully');
+                    await refreshOrders();
+                  } catch (err: any) {
+                    toast.error(err?.response?.data?.detail || 'Failed to close day');
+                  }
+                }}
+              >
+                <MoonStar className="h-4 w-4" />
+                <span className="hidden sm:inline text-xs">End of Day</span>
+              </Button>
             )}
           </div>
         </div>
