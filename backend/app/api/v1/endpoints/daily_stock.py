@@ -682,3 +682,155 @@ async def get_stock_take_history(
         "session_date", start_date
     ).order("session_date", desc=True).execute()
     return sessions_res.data or []
+
+
+# ── Kitchen Stock (standalone — not linked to menu_items) ─────────────────────
+
+class KitchenStockEntry(BaseModel):
+    item_id: str
+    item_name: str
+    opening_stock: float
+    purchases: float = 0
+    closing_stock: float
+
+
+class SubmitKitchenStockRequest(BaseModel):
+    stock_date: str  # YYYY-MM-DD
+    branch_id: Optional[str] = None
+    items: List[KitchenStockEntry]
+    notes: Optional[str] = None
+
+
+@router.get("/kitchen-sheet")
+async def get_kitchen_sheet(
+    stock_date: str = Query(default=None, description="Date YYYY-MM-DD, defaults to today"),
+    branch_id: Optional[str] = Query(default=None),
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Return the kitchen stock sheet for a given date.
+    Opening stock = previous day's closing stock (or 0 if first day).
+    Purchases are entered manually.
+    """
+    if not stock_date:
+        stock_date = date.today().isoformat()
+
+    stock_date_obj = date.fromisoformat(stock_date)
+    prev_date = (stock_date_obj - timedelta(days=1)).isoformat()
+
+    # Get all active kitchen stock items
+    items_res = supabase.table("kitchen_stock_items").select(
+        "id, name, unit, sort_order"
+    ).eq("is_active", True).order("sort_order").execute()
+    items = items_res.data or []
+
+    # Get yesterday's closing stock
+    prev_closing_map: dict = {}
+    prev_q = supabase.table("kitchen_daily_stock").select(
+        "item_id, closing_stock"
+    ).eq("stock_date", prev_date)
+    if branch_id:
+        prev_q = prev_q.eq("branch_id", branch_id)
+    else:
+        prev_q = prev_q.is_("branch_id", "null")
+    prev_res = prev_q.execute()
+    for row in (prev_res.data or []):
+        prev_closing_map[row["item_id"]] = float(row["closing_stock"])
+
+    # Get today's existing entries (if already submitted/saved)
+    today_map: dict = {}
+    today_q = supabase.table("kitchen_daily_stock").select(
+        "item_id, opening_stock, purchases, closing_stock, notes"
+    ).eq("stock_date", stock_date)
+    if branch_id:
+        today_q = today_q.eq("branch_id", branch_id)
+    else:
+        today_q = today_q.is_("branch_id", "null")
+    today_res = today_q.execute()
+    for row in (today_res.data or []):
+        today_map[row["item_id"]] = row
+
+    sheet_items = []
+    for item in items:
+        iid = item["id"]
+        existing = today_map.get(iid)
+        if existing:
+            opening = float(existing["opening_stock"])
+            purchases = float(existing["purchases"])
+            closing = float(existing["closing_stock"])
+        else:
+            opening = prev_closing_map.get(iid, 0.0)
+            purchases = 0.0
+            closing = None  # not yet submitted
+
+        sheet_items.append({
+            "item_id": iid,
+            "item_name": item["name"],
+            "unit": item["unit"],
+            "opening_stock": opening,
+            "purchases": purchases,
+            "closing_stock": closing,
+            "already_submitted": existing is not None,
+        })
+
+    return {
+        "stock_date": stock_date,
+        "branch_id": branch_id,
+        "items": sheet_items,
+        "already_submitted": len(today_map) > 0,
+    }
+
+
+@router.post("/kitchen-submit")
+async def submit_kitchen_stock(
+    req: SubmitKitchenStockRequest,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """Save kitchen daily stock. Upserts by (item_id, stock_date, branch_id)."""
+    user_role = current_user.get("role", "")
+    if user_role not in ["admin", "manager", "chef", "staff"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    user_id = current_user.get("id")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    rows = []
+    for entry in req.items:
+        row: dict = {
+            "item_id": entry.item_id,
+            "stock_date": req.stock_date,
+            "opening_stock": round(entry.opening_stock, 3),
+            "purchases": round(entry.purchases, 3),
+            "closing_stock": round(entry.closing_stock, 3),
+            "submitted_by": user_id,
+            "updated_at": now_iso,
+        }
+        if req.notes:
+            row["notes"] = req.notes
+        if req.branch_id:
+            row["branch_id"] = req.branch_id
+        rows.append(row)
+
+    if rows:
+        supabase.table("kitchen_daily_stock").upsert(
+            rows, on_conflict="item_id,stock_date,branch_id"
+        ).execute()
+
+    return {
+        "success": True,
+        "stock_date": req.stock_date,
+        "items_recorded": len(rows),
+        "message": f"Kitchen stock saved for {req.stock_date}",
+    }
+
+
+@router.get("/kitchen-items")
+async def get_kitchen_items(
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """List kitchen stock items (for admin management)."""
+    res = supabase.table("kitchen_stock_items").select("*").order("sort_order").execute()
+    return res.data or []

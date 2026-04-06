@@ -215,6 +215,29 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
   const [sessionNotes, setSessionNotes] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
 
+  // ── Kitchen stock (standalone — not linked to menu/orders) ─────────────────
+  interface KitchenSheetItem {
+    item_id: string;
+    item_name: string;
+    unit: string;
+    opening_stock: number;
+    purchases: number;
+    closing_stock: number | null;
+    already_submitted: boolean;
+  }
+  interface KitchenSheetData {
+    stock_date: string;
+    branch_id: string | null;
+    items: KitchenSheetItem[];
+    already_submitted: boolean;
+  }
+  const [kitchenData, setKitchenData] = useState<KitchenSheetData | null>(null);
+  const [kitchenLoading, setKitchenLoading] = useState(false);
+  const [kitchenSubmitting, setKitchenSubmitting] = useState(false);
+  const [kitchenClosing, setKitchenClosing] = useState<Record<string, string>>({});
+  const [kitchenPurchases, setKitchenPurchases] = useState<Record<string, string>>({});
+  const [kitchenEditMode, setKitchenEditMode] = useState(false);
+
   const fetchRollup = useCallback(async () => {
     setRollupLoading(true);
     try {
@@ -357,9 +380,38 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
     }
   }, [selectedDate, sessionType, selectedLocationId]);
 
+  const fetchKitchenSheet = useCallback(async () => {
+    setKitchenLoading(true);
+    try {
+      let url = `/daily-stock/kitchen-sheet?stock_date=${selectedDate}`;
+      const res = await apiClient.get(url);
+      const data: KitchenSheetData = res.data as any;
+      setKitchenData(data);
+      const pc: Record<string, string> = {};
+      const closing: Record<string, string> = {};
+      for (const item of data.items) {
+        if (item.purchases > 0) pc[item.item_id] = String(item.purchases);
+        if (item.closing_stock !== null && item.closing_stock !== undefined) {
+          closing[item.item_id] = String(item.closing_stock);
+        }
+      }
+      setKitchenPurchases(pc);
+      setKitchenClosing(closing);
+      setKitchenEditMode(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to load kitchen stock sheet');
+    } finally {
+      setKitchenLoading(false);
+    }
+  }, [selectedDate]);
+
   useEffect(() => {
-    fetchSheet();
-  }, [fetchSheet, reloadTick]);
+    if (sessionType === 'kitchen') {
+      fetchKitchenSheet();
+    } else {
+      fetchSheet();
+    }
+  }, [fetchSheet, fetchKitchenSheet, sessionType, reloadTick]);
 
   // ── Computed discrepancy (live, from inputs) ─────────────────────────────
 
@@ -435,6 +487,36 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
       toast.error(err?.response?.data?.detail || 'Failed to submit stock take');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleKitchenSubmit = async () => {
+    if (!kitchenData) return;
+    const items = kitchenData.items.map((item) => ({
+      item_id: item.item_id,
+      item_name: item.item_name,
+      opening_stock: item.opening_stock,
+      purchases: parseFloat(kitchenPurchases[item.item_id] || '0'),
+      closing_stock: parseFloat(kitchenClosing[item.item_id] || '0'),
+    }));
+    const anyFilled = items.some((i) => kitchenClosing[i.item_id] !== undefined && kitchenClosing[i.item_id] !== '');
+    if (!anyFilled) {
+      toast.error('Enter at least one closing stock value before saving.');
+      return;
+    }
+    setKitchenSubmitting(true);
+    try {
+      await apiClient.post('/daily-stock/kitchen-submit', {
+        stock_date: selectedDate,
+        items,
+      });
+      toast.success(`Kitchen stock saved for ${selectedDate}`);
+      setKitchenEditMode(false);
+      fetchKitchenSheet();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to save kitchen stock');
+    } finally {
+      setKitchenSubmitting(false);
     }
   };
 
@@ -743,8 +825,8 @@ ${mode === 'variance' ? `<div class="summary">
         </Card>
       )}
 
-      {/* ── Summary Cards ── */}
-      {summary && (
+      {/* ── Summary Cards (bar/all only) ── */}
+      {sessionType !== 'kitchen' && summary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Card>
             <CardContent className="pt-4 pb-3">
@@ -796,8 +878,8 @@ ${mode === 'variance' ? `<div class="summary">
         </div>
       )}
 
-      {/* ── Submitted banner ── */}
-      {isSubmitted && (
+      {/* ── Submitted banner (bar/all only) ── */}
+      {sessionType !== 'kitchen' && isSubmitted && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>
@@ -806,8 +888,8 @@ ${mode === 'variance' ? `<div class="summary">
         </div>
       )}
 
-      {/* ── Low Stock Alerts ── */}
-      {alerts.length > 0 && (
+      {/* ── Low Stock Alerts (bar/all only) ── */}
+      {sessionType !== 'kitchen' && alerts.length > 0 && (
         <Card className="border-amber-200">
           <CardHeader
             className="py-3 cursor-pointer select-none"
@@ -848,8 +930,8 @@ ${mode === 'variance' ? `<div class="summary">
         </Card>
       )}
 
-      {/* ── Filter bar ── */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* ── Filter bar (bar/all only) ── */}
+      {sessionType !== 'kitchen' && <div className="flex flex-wrap items-center gap-2">
         <Filter className="h-4 w-4 text-muted-foreground" />
         {(['all', 'low_stock'] as FilterType[]).map((f) => (
           <Button
@@ -880,7 +962,7 @@ ${mode === 'variance' ? `<div class="summary">
             </Button>
           </>
         )}
-      </div>
+      </div>}
 
       {/* ── Combined Bars View ── */}
       {viewMode === 'combined' && (
@@ -1006,8 +1088,132 @@ ${mode === 'variance' ? `<div class="summary">
         </>
       )}
 
-      {/* ── Main Table ── */}
-      {viewMode === 'single' && (loading ? (
+      {/* ── Kitchen Stock Table ── */}
+      {sessionType === 'kitchen' && (
+        kitchenLoading ? (
+          <Card>
+            <CardContent className="py-16 text-center">
+              <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-primary opacity-70" />
+              <p className="text-muted-foreground">Loading kitchen stock sheet…</p>
+            </CardContent>
+          </Card>
+        ) : !kitchenData || kitchenData.items.length === 0 ? (
+          <Card>
+            <CardContent className="py-16 text-center">
+              <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="text-muted-foreground">No kitchen stock items found.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {kitchenData.already_submitted && !kitchenEditMode && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>Kitchen stock for <strong>{selectedDate}</strong> already saved. Click <strong>Edit</strong> to update.</span>
+              </div>
+            )}
+            <Card className="overflow-hidden">
+              <CardHeader className="py-2 px-4 bg-muted/40 border-b">
+                <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Kitchen Stock — {selectedDate}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/20 text-muted-foreground">
+                        <th className="text-left px-3 py-2 font-medium w-8">#</th>
+                        <th className="text-left px-3 py-2 font-medium min-w-[140px]">Item</th>
+                        <th className="text-right px-3 py-2 font-medium">Opening Stock</th>
+                        <th className="text-right px-3 py-2 font-medium min-w-[120px]">Purchases</th>
+                        <th className="text-right px-3 py-2 font-medium min-w-[130px]">Closing Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kitchenData.items.map((item, idx) => {
+                        const showInputs = !kitchenData.already_submitted || kitchenEditMode;
+                        return (
+                          <tr key={item.item_id} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                            <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
+                            <td className="px-3 py-2">
+                              <div className="font-medium">{item.item_name}</div>
+                              <div className="text-muted-foreground text-xs">{item.unit}</div>
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums font-medium">
+                              {fmt(item.opening_stock, 2)}
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              {showInputs ? (
+                                <Input
+                                  type="number" min="0" step="0.01" placeholder="0"
+                                  value={kitchenPurchases[item.item_id] ?? ''}
+                                  onChange={(e) => setKitchenPurchases(prev => ({ ...prev, [item.item_id]: e.target.value }))}
+                                  className="h-7 w-24 text-right text-xs ml-auto focus:ring-primary"
+                                />
+                              ) : (
+                                <span className="tabular-nums text-blue-600">{fmt(item.purchases, 2)}</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 text-right">
+                              {showInputs ? (
+                                <Input
+                                  type="number" min="0" step="0.01" placeholder="Closing"
+                                  value={kitchenClosing[item.item_id] ?? ''}
+                                  onChange={(e) => setKitchenClosing(prev => ({ ...prev, [item.item_id]: e.target.value }))}
+                                  className="h-7 w-28 text-right text-xs ml-auto focus:ring-primary"
+                                />
+                              ) : (
+                                <span className="tabular-nums font-semibold">
+                                  {item.closing_stock !== null ? fmt(item.closing_stock, 2) : '—'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Submit / Edit row */}
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-xs text-muted-foreground">
+                    {kitchenData.already_submitted
+                      ? kitchenEditMode ? 'Editing — closing stock will carry over as tomorrow\'s opening.' : 'Previously saved. Closing stock will carry over as tomorrow\'s opening.'
+                      : 'Closing stock will automatically become tomorrow\'s opening stock.'}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {kitchenData.already_submitted && !kitchenEditMode && (
+                      <Button variant="outline" size="sm" onClick={() => setKitchenEditMode(true)} className="gap-1.5">
+                        <Pencil className="h-4 w-4" /> Edit
+                      </Button>
+                    )}
+                    {kitchenEditMode && (
+                      <Button variant="ghost" size="sm" onClick={() => { setKitchenEditMode(false); fetchKitchenSheet(); }}>
+                        Cancel
+                      </Button>
+                    )}
+                    {(!kitchenData.already_submitted || kitchenEditMode) && (
+                      <Button onClick={handleKitchenSubmit} disabled={kitchenSubmitting} className="gap-1.5">
+                        <Save className="h-4 w-4" />
+                        {kitchenSubmitting ? 'Saving…' : kitchenData.already_submitted ? 'Update Kitchen Stock' : 'Save Kitchen Stock'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )
+      )}
+
+      {/* ── Main Table (bar/all only) ── */}
+      {sessionType !== 'kitchen' && viewMode === 'single' && (loading ? (
         <Card>
           <CardContent className="py-16 text-center">
             <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-primary opacity-70" />
@@ -1205,8 +1411,8 @@ ${mode === 'variance' ? `<div class="summary">
         </div>
       ))}
 
-      {/* ── Notes + Submit ── */}
-      {viewMode === 'single' && sheetData && sheetData.items.length > 0 && (
+      {/* ── Notes + Submit (bar/all only) ── */}
+      {sessionType !== 'kitchen' && viewMode === 'single' && sheetData && sheetData.items.length > 0 && (
         <Card>
           <CardContent className="pt-4 pb-4 space-y-3">
             <div>
