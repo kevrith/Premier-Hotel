@@ -308,34 +308,43 @@ async def get_manager_orders(
         if type and type != "all":
             query = query.eq("order_type", type)
 
-        # Custom date range takes priority over shortcut filter
-        if start_date and end_date:
-            s = start_date if 'T' in start_date else f"{start_date}T00:00:00"
-            e = end_date if 'T' in end_date else f"{end_date}T23:59:59"
-            query = query.gte("created_at", s).lte("created_at", e)
-        elif date and date != "all":
-            today = datetime.now(timezone.utc).date().isoformat()
-            if date == "today":
-                query = query.gte("created_at", f"{today}T00:00:00").lte("created_at", f"{today}T23:59:59")
-            elif date == "yesterday":
-                yest = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
-                query = query.gte("created_at", f"{yest}T00:00:00").lte("created_at", f"{yest}T23:59:59")
-            elif date == "week":
-                week_ago = (datetime.now(timezone.utc).date() - timedelta(days=7)).isoformat()
-                query = query.gte("created_at", f"{week_ago}T00:00:00")
+        # When searching by order number / customer, search DB directly across all history
+        if search:
+            s = search.strip()
+            query = query.or_(
+                f"order_number.ilike.%{s}%,"
+                f"customer_name.ilike.%{s}%,"
+                f"customer_phone.ilike.%{s}%"
+            )
+            query = query.limit(500)  # generous limit — find old orders anywhere
+        else:
+            # Apply date filter
+            if start_date and end_date:
+                s = start_date if 'T' in start_date else f"{start_date}T00:00:00"
+                e = end_date if 'T' in end_date else f"{end_date}T23:59:59"
+                query = query.gte("created_at", s).lte("created_at", e).limit(1000)
+            elif date and date != "all":
+                today = datetime.now(timezone.utc).date()
+                today_str = today.isoformat()
+                if date == "today":
+                    query = query.gte("created_at", f"{today_str}T00:00:00").lte("created_at", f"{today_str}T23:59:59").limit(500)
+                elif date == "yesterday":
+                    yest = (today - timedelta(days=1)).isoformat()
+                    query = query.gte("created_at", f"{yest}T00:00:00").lte("created_at", f"{yest}T23:59:59").limit(500)
+                elif date == "week":
+                    week_ago = (today - timedelta(days=7)).isoformat()
+                    query = query.gte("created_at", f"{week_ago}T00:00:00").limit(1000)
+                elif date == "month":
+                    month_start = today.replace(day=1).isoformat()
+                    query = query.gte("created_at", f"{month_start}T00:00:00").limit(2000)
+                else:
+                    query = query.limit(200)
+            else:
+                # "all" with no date — cap at 500 most recent
+                query = query.limit(500)
 
-        query = query.limit(200)
         result = query.execute()
         orders = result.data or []
-
-        if search:
-            s = search.lower()
-            orders = [
-                o for o in orders if
-                s in (o.get("order_number") or "").lower() or
-                s in (o.get("customer_name") or "").lower() or
-                s in (o.get("customer_phone") or "").lower()
-            ]
 
         return {"data": orders, "total": len(orders)}
     except Exception as e:

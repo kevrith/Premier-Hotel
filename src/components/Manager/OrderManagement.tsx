@@ -391,14 +391,11 @@ export default function OrderManagement() {
   });
 
   const filteredOrders = orders.filter((order: Order) => {
-    const matchesSearch =
-      order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer_phone.includes(searchTerm);
+    // Search is handled server-side; only apply employee filter client-side
     const matchesEmployee = employeeFilter === 'all' ||
       order.assigned_waiter_id === employeeFilter ||
       order.created_by_staff_id === employeeFilter;
-    return matchesSearch && matchesEmployee;
+    return matchesEmployee;
   });
 
   const toggleOrderSelection = (orderId: string) => {
@@ -494,6 +491,7 @@ export default function OrderManagement() {
                   <SelectItem value="yesterday">Yesterday</SelectItem>
                   <SelectItem value="week">This Week</SelectItem>
                   <SelectItem value="month">This Month</SelectItem>
+                  <SelectItem value="all">All Time</SelectItem>
                   <SelectItem value="custom">Custom Range</SelectItem>
                 </SelectContent>
               </Select>
