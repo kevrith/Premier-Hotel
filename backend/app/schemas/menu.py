@@ -56,14 +56,18 @@ class MenuItemUpdate(BaseModel):
 class MenuItemResponse(MenuItemBase):
     """Menu item response schema - Returns data with both available and is_available for frontend compatibility"""
     id: str
+    # Override base_price to allow 0 for stock-only kitchen/ingredient items
+    base_price: Optional[Decimal] = Field(None, ge=0)
     available: Optional[bool] = True
     is_available: Optional[bool] = True  # Duplicate field for frontend compatibility
     popular: Optional[bool] = False
     rating: Optional[Decimal] = None
     track_inventory: Optional[bool] = False
-    stock_quantity: Optional[int] = 0
-    reorder_level: Optional[int] = None
+    stock_quantity: Optional[float] = 0
+    reorder_level: Optional[float] = None
     unit: Optional[str] = None
+    cost_price: Optional[Decimal] = Field(None, ge=0)
+    stock_department: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

@@ -333,6 +333,17 @@ export const dbHelpers = {
     });
   },
 
+  // Delete a cached entry by key (for cache invalidation after mutations)
+  async deleteCachedData(key: string) {
+    await db.cache.delete(key);
+  },
+
+  // Delete all cache entries whose key starts with a given prefix
+  async deleteCachedDataByPrefix(prefix: string) {
+    const keys = await db.cache.where('key').startsWith(prefix).primaryKeys();
+    await db.cache.bulkDelete(keys);
+  },
+
   // Log a conflict for resolution
   async logConflict(entityType: string, entityId: string, localVersion: any, serverVersion: any) {
     await db.conflicts.add({
