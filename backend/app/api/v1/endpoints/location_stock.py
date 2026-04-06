@@ -474,6 +474,87 @@ async def transfer_stock_batch(
     }
 
 
+@stock_router.post("/transfer/{transfer_number}/reverse")
+async def reverse_transfer(
+    transfer_number: str,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Reverse all stock movements for a given transfer_number.
+    Moves stock back from the destination to the source and deletes the transfer records.
+    Admin/manager only.
+    """
+    _require_manager(current_user)
+
+    # Load all records for this transfer number
+    trn_res = supabase.table("stock_transfers").select("*").eq(
+        "transfer_number", transfer_number
+    ).execute()
+
+    records = trn_res.data or []
+    if not records:
+        raise HTTPException(status_code=404, detail=f"Transfer {transfer_number} not found")
+
+    # Check it hasn't already been reversed
+    if any(r.get("reversed") for r in records):
+        raise HTTPException(status_code=409, detail="This transfer has already been reversed")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for rec in records:
+        from_loc = rec.get("from_location_id")
+        to_loc   = rec.get("to_location_id")
+        item_id  = rec.get("menu_item_id")
+        qty      = float(rec.get("quantity") or 0)
+
+        # Give stock back to source (from_location)
+        if from_loc:
+            src_res = supabase.table("location_stock").select("id, quantity").eq(
+                "location_id", from_loc
+            ).eq("menu_item_id", item_id).execute()
+            if src_res.data:
+                new_qty = round(float(src_res.data[0]["quantity"]) + qty, 3)
+                supabase.table("location_stock").update({
+                    "quantity": new_qty, "updated_at": now_iso,
+                }).eq("id", src_res.data[0]["id"]).execute()
+            else:
+                # Item row was deleted — recreate it
+                supabase.table("location_stock").insert({
+                    "location_id": from_loc,
+                    "menu_item_id": item_id,
+                    "item_name": rec.get("item_name", ""),
+                    "unit": rec.get("unit", "piece"),
+                    "quantity": qty,
+                    "updated_at": now_iso,
+                }).execute()
+
+        # Deduct from destination (to_location)
+        dst_res = supabase.table("location_stock").select("id, quantity").eq(
+            "location_id", to_loc
+        ).eq("menu_item_id", item_id).execute()
+        if dst_res.data:
+            new_qty = round(max(0, float(dst_res.data[0]["quantity"]) - qty), 3)
+            supabase.table("location_stock").update({
+                "quantity": new_qty, "updated_at": now_iso,
+            }).eq("id", dst_res.data[0]["id"]).execute()
+
+    # Mark the original transfer records as reversed (don't delete — keep audit trail)
+    supabase.table("stock_transfers").update({
+        "reversed": True,
+        "reversed_by": current_user.get("id"),
+        "reversed_at": now_iso,
+        "notes": (records[0].get("notes") or "") + f" [REVERSED by {current_user.get('full_name', 'staff')}]",
+    }).eq("transfer_number", transfer_number).execute()
+
+    return {
+        "success": True,
+        "transfer_number": transfer_number,
+        "items_reversed": len(records),
+        "message": f"Transfer {transfer_number} reversed — stock returned to source location",
+    }
+
+
 @stock_router.get("/{location_id}")
 async def get_location_stock(
     location_id: str,

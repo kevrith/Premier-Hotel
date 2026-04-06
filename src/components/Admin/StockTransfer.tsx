@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api/client';
-import { Trash2, ChevronDown, ChevronRight, ArrowRight, Search, Shuffle } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, ArrowRight, Search, Shuffle, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Location {
@@ -42,6 +42,7 @@ interface TransferRecord {
   quantity: number;
   unit: string;
   notes?: string;
+  reversed?: boolean;
 }
 
 export function StockTransfer() {
@@ -68,6 +69,7 @@ export function StockTransfer() {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
+  const [reversingGroup, setReversingGroup] = useState<string | null>(null);
 
   useEffect(() => {
     loadLocations();
@@ -247,6 +249,24 @@ export function StockTransfer() {
       toast.error(err?.response?.data?.detail || 'Transfer failed');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleReverse(transferNumber: string) {
+    if (!window.confirm(
+      `Reverse transfer ${transferNumber}?\n\nThis will move all transferred stock back to the source location.`
+    )) return;
+    setReversingGroup(transferNumber);
+    try {
+      const res = await api.post(`/location-stock/transfer/${transferNumber}/reverse`);
+      toast.success(res.data?.message || `Transfer ${transferNumber} reversed`);
+      loadHistory();
+      // Reload source stock in case this transfer's from-location is currently selected
+      if (fromLocationId) loadSourceStock(fromLocationId);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to reverse transfer');
+    } finally {
+      setReversingGroup(null);
     }
   }
 
@@ -477,33 +497,49 @@ export function StockTransfer() {
                 const isOpen = expandedGroups.has(key);
                 return (
                   <div key={key} className="border rounded-md overflow-hidden">
-                    <button
-                      type="button"
-                      className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
-                      onClick={() => toggleGroup(key)}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {isOpen ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
-                        <Badge variant="outline" className="font-mono text-xs shrink-0">
-                          {key}
-                        </Badge>
-                        <span className="font-medium truncate hidden sm:inline">
-                          {first.from_location_name}{' '}
-                          <ArrowRight className="h-3 w-3 inline" />{' '}
-                          {first.to_location_name}
+                    <div className="flex items-center">
+                      <button
+                        type="button"
+                        className="flex-1 flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+                        onClick={() => toggleGroup(key)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {isOpen ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                          )}
+                          <Badge variant={first.reversed ? 'secondary' : 'outline'} className="font-mono text-xs shrink-0">
+                            {key}
+                          </Badge>
+                          {first.reversed && (
+                            <Badge variant="secondary" className="text-xs shrink-0">Reversed</Badge>
+                          )}
+                          <span className="font-medium truncate hidden sm:inline">
+                            {first.from_location_name}{' '}
+                            <ArrowRight className="h-3 w-3 inline" />{' '}
+                            {first.to_location_name}
+                          </span>
+                          <span className="text-muted-foreground text-xs">
+                            {group.length} item{group.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <span className="text-muted-foreground text-xs shrink-0 ml-2">
+                          {first.transfer_date}
                         </span>
-                        <span className="text-muted-foreground text-xs">
-                          {group.length} item{group.length !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      <span className="text-muted-foreground text-xs shrink-0 ml-2">
-                        {first.transfer_date}
-                      </span>
-                    </button>
+                      </button>
+                      {!first.reversed && (
+                        <button
+                          type="button"
+                          title="Reverse this transfer"
+                          disabled={reversingGroup === key}
+                          onClick={(e) => { e.stopPropagation(); handleReverse(key); }}
+                          className="px-3 py-3 text-destructive hover:bg-destructive/10 transition-colors shrink-0 disabled:opacity-50"
+                        >
+                          <RotateCcw className={`h-4 w-4 ${reversingGroup === key ? 'animate-spin' : ''}`} />
+                        </button>
+                      )}
+                    </div>
                     {isOpen && (
                       <div className="border-t px-4 py-3 bg-muted/20 space-y-3">
                         <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
