@@ -26,6 +26,7 @@ import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Unauthorized from "./pages/Unauthorized";
+import MaintenancePage from "./pages/MaintenancePage";
 import NotFound from "./pages/NotFound";
 import EnhancedMenu from "./pages/EnhancedMenu";
 import Rooms from "./pages/Rooms";
@@ -226,6 +227,7 @@ const App = () => {
               <Route path="/payment/paypal/return" element={<PayPalReturn />} />
               <Route path="/payment/paypal/cancel" element={<PayPalCancel />} />
 
+              <Route path="/maintenance" element={<MaintenancePage />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

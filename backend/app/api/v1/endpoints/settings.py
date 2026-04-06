@@ -287,6 +287,18 @@ async def update_notification_config(
 _SYSTEM_DEFAULTS = {"maintenance_mode": False, "offline_mode": True}
 
 
+@router.get("/maintenance-status")
+async def get_maintenance_status(
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Public endpoint — checked by ProtectedRoute to block non-admins during maintenance."""
+    try:
+        config = _get_setting(supabase_admin, "system_config", _SYSTEM_DEFAULTS.copy())
+        return {"maintenance_mode": bool(config.get("maintenance_mode", False))}
+    except Exception:
+        return {"maintenance_mode": False}  # fail open — don't block access on error
+
+
 @router.get("/system-config")
 async def get_system_config(
     current_user: dict = Depends(require_admin_or_manager),

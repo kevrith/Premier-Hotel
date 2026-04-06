@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { toast as hotToast } from 'react-hot-toast';
 import TaxSettings from './TaxSettings';
 import apiClient from '@/lib/api/client';
+import { invalidateMaintenanceCache } from '@/components/ProtectedRoute';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -246,6 +247,8 @@ export function SystemConfiguration() {
     setSaving(section);
     try {
       await apiClient.put(endpoint, data);
+      // Bust the maintenance status cache so ProtectedRoute re-checks immediately
+      if (section === 'System') invalidateMaintenanceCache();
       toast({ title: 'Settings saved', description: `${section} settings updated successfully` });
     } catch (err: any) {
       hotToast.error(err?.response?.data?.detail || `Failed to save ${section} settings`);
