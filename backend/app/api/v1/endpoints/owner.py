@@ -83,18 +83,16 @@ def _stats_for_branch(supabase: Client, branch_id: Optional[str], start: str, en
     staff = staff_q.execute().data or []
     active_staff = sum(1 for s in staff if s.get("status") == "active")
 
-    # Orders — served/completed only, non-voided
-    COMPLETED_STATUSES = ["served", "completed", "delivered", "paid"]
+    # Orders — all non-voided/cancelled (matches reports section calculation)
     orders_q = supabase.table("orders").select("id, total_amount, status, created_at, customer_id") \
-        .gte("created_at", start).lte("created_at", end) \
-        .in_("status", COMPLETED_STATUSES)
+        .gte("created_at", start).lte("created_at", end)
     if branch_id:
         orders_q = orders_q.eq("branch_id", branch_id)
-    completed = orders_q.execute().data or []
-    fb_revenue = sum(_item_revenue(o) for o in completed)
+    all_orders = [o for o in (orders_q.execute().data or []) if o.get("status") not in _VOID_STATUSES]
+    fb_revenue = sum(_item_revenue(o) for o in all_orders)
 
     # Bookings — filter by branch_id directly
-    bookings_q = supabase.table("bookings").select("id, total_amount, paid_amount, status, created_at") \
+    bookings_q = supabase.table("bookings").select("id, total_amount, paid_amount, status, created_at, customer_id") \
         .gte("created_at", start).lte("created_at", end)
     if branch_id:
         bookings_q = bookings_q.eq("branch_id", branch_id)
@@ -111,7 +109,8 @@ def _stats_for_branch(supabase: Client, branch_id: Optional[str], start: str, en
     occupancy_rate = round(occupied / total_rooms * 100, 1) if total_rooms else 0
 
     total_revenue = fb_revenue + room_revenue
-    unique_customers = len({o.get("customer_id") for o in completed if o.get("customer_id")})
+    # Unique guests = from bookings only (orders are placed by staff, not actual hotel guests)
+    unique_customers = len({b.get("customer_id") for b in bookings if b.get("customer_id")})
 
     return {
         "total_revenue": round(total_revenue, 2),
@@ -581,19 +580,30 @@ def _audit(supabase: Client, user: dict, action: str, resource: str, resource_id
 
 @router.get("/analytics/seasonal")
 async def seasonal_trend(
+    branch_id: Optional[str] = Query(None, description="Filter by branch (omit for all branches)"),
     current_user: dict = Depends(require_role(OWNER_ROLES)),
     supabase: Client = Depends(get_supabase_admin)
 ):
     """12-month monthly revenue breakdown for seasonal analysis."""
     end = datetime.now()
     start = end.replace(year=end.year - 1, day=1)
-    orders, bookings = await _par(
-        lambda: supabase.table("orders").select("total_amount, status, created_at")
+
+    def _orders():
+        q = supabase.table("orders").select("total_amount, status, created_at") \
             .gte("created_at", start.isoformat()).lte("created_at", end.isoformat())
-            .in_("status", ["completed", "delivered", "served"]).execute().data or [],
-        lambda: supabase.table("bookings").select("paid_amount, total_amount, created_at")
-            .gte("created_at", start.isoformat()).lte("created_at", end.isoformat()).execute().data or [],
-    )
+        if branch_id:
+            q = q.eq("branch_id", branch_id)
+        return q.execute().data or []
+
+    def _bookings():
+        q = supabase.table("bookings").select("paid_amount, total_amount, created_at") \
+            .gte("created_at", start.isoformat()).lte("created_at", end.isoformat())
+        if branch_id:
+            q = q.eq("branch_id", branch_id)
+        return q.execute().data or []
+
+    raw_orders, bookings = await _par(_orders, _bookings)
+    orders = [o for o in raw_orders if o.get("status") not in _VOID_STATUSES]
 
     by_month: dict = {}
     for o in orders:
@@ -630,9 +640,9 @@ async def yoy_comparison(
     last_end = last_year_month_end.replace(hour=23, minute=59, second=59).isoformat()
 
     def _rev(s, e):
-        o = supabase.table("orders").select("total_amount, status") \
-            .gte("created_at", s).lte("created_at", e) \
-            .in_("status", ["completed", "delivered", "served"]).execute().data or []
+        o = [x for x in (supabase.table("orders").select("total_amount, status")
+            .gte("created_at", s).lte("created_at", e).execute().data or [])
+            if x.get("status") not in _VOID_STATUSES]
         b = supabase.table("bookings").select("paid_amount, total_amount") \
             .gte("created_at", s).lte("created_at", e).execute().data or []
         return (sum(float(x.get("total_amount") or 0) for x in o),
@@ -664,13 +674,14 @@ async def revenue_forecast(
     """Linear regression forecast for next N days based on last 90 days."""
     end = datetime.now().replace(hour=23, minute=59, second=59)
     start = (end - timedelta(days=90)).replace(hour=0, minute=0, second=0)
-    orders, bookings = await _par(
+    raw_orders_fc, bookings_fc = await _par(
         lambda: supabase.table("orders").select("total_amount, status, created_at")
-            .gte("created_at", start.isoformat()).lte("created_at", end.isoformat())
-            .in_("status", ["completed", "delivered", "served"]).execute().data or [],
+            .gte("created_at", start.isoformat()).lte("created_at", end.isoformat()).execute().data or [],
         lambda: supabase.table("bookings").select("paid_amount, total_amount, created_at")
             .gte("created_at", start.isoformat()).lte("created_at", end.isoformat()).execute().data or [],
     )
+    orders = [o for o in raw_orders_fc if o.get("status") not in _VOID_STATUSES]
+    bookings = bookings_fc
 
     by_day: dict = {}
     for o in orders:

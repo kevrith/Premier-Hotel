@@ -266,6 +266,90 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   );
 };
 
+// ─── Revenue Trend Section (with branch filter) ───────────────────────────────
+
+const RevenueTrendSection = ({ branches }: { branches: BranchSummary[] }) => {
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [trendData, setTrendData] = useState<any[]>([]);
+  const [loadingTrend, setLoadingTrend] = useState(true);
+
+  const loadTrend = useCallback(async () => {
+    setLoadingTrend(true);
+    try {
+      const params: Record<string, string> = {};
+      if (selectedBranch !== 'all') params.branch_id = selectedBranch;
+      const res = await api.get('/owner/analytics/seasonal', { params });
+      setTrendData(res.data.months || []);
+    } catch {
+      toast.error('Failed to load revenue trend');
+    }
+    setLoadingTrend(false);
+  }, [selectedBranch]);
+
+  useEffect(() => { loadTrend(); }, [loadTrend]);
+
+  const peak = trendData.reduce((a: any, b: any) => b.total > a.total ? b : a, trendData[0] || {});
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-sm font-semibold">12-Month Revenue Trend</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {peak?.label ? `Peak: ${peak.label}` : 'Spot peak seasons at a glance'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {branches.length > 1 && (
+              <select
+                value={selectedBranch}
+                onChange={e => setSelectedBranch(e.target.value)}
+                className="text-xs border border-border rounded-md px-2.5 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="all">All Branches</option>
+                {branches.map(b => (
+                  <option key={b.id ?? 'unassigned'} value={b.id ?? ''}>{b.name}</option>
+                ))}
+              </select>
+            )}
+            <button onClick={loadTrend} disabled={loadingTrend} className="p-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50">
+              <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${loadingTrend ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loadingTrend ? (
+          <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">Loading trend...</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={trendData}>
+              <defs>
+                <linearGradient id="ovFbGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="ovRoomGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval={0} angle={-30} textAnchor="end" height={45} />
+              <YAxis tickFormatter={(v: number) => v >= 1000 ? `${(v/1000).toFixed(0)}K` : `${v}`} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={40} />
+              <Tooltip formatter={(v: any, name: string) => [`KES ${Number(v).toLocaleString()}`, name]} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+              <Area type="monotone" dataKey="fb" name="F&B" stroke="#6366f1" fill="url(#ovFbGrad)" strokeWidth={2} dot={false} />
+              <Area type="monotone" dataKey="rooms" name="Rooms" stroke="#10b981" fill="url(#ovRoomGrad)" strokeWidth={2} dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 // ─── Overview Page ────────────────────────────────────────────────────────────
 
 const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, customEnd, onCustomRange }: {
@@ -395,12 +479,12 @@ const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, 
       {/* KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard icon={DollarSign} label="Total Revenue" value={fmtShort(c?.total_revenue || 0)} sub={`Rooms: ${fmtShort(c?.room_revenue || 0)}`} accent="emerald" loading={loading} />
-        <KpiCard icon={ShoppingCart} label="F&B Revenue" value={fmtShort(c?.fb_revenue || 0)} sub={`${c?.completed_orders || 0} completed orders`} accent="indigo" loading={loading} />
+        <KpiCard icon={ShoppingCart} label="F&B Revenue" value={fmtShort(c?.fb_revenue || 0)} sub={`${c?.total_orders || 0} orders`} accent="indigo" loading={loading} />
         <KpiCard icon={BedDouble} label="Avg Occupancy" value={pct(c?.avg_occupancy_rate || 0)} sub={`${c?.total_bookings || 0} bookings`} accent="blue" loading={loading} />
         <KpiCard icon={Users} label="Active Staff" value={String(c?.active_staff || 0)} sub={`${c?.total_staff || 0} total across ${branches.length} branch${branches.length !== 1 ? 'es' : ''}`} accent="purple" loading={loading} />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <KpiCard icon={Target} label="Total Orders" value={String(c?.total_orders || 0)} sub={`${c?.completed_orders || 0} fulfilled`} accent="amber" loading={loading} />
+        <KpiCard icon={Target} label="Total Orders" value={String(c?.total_orders || 0)} sub={`${c?.completed_orders || 0} served/completed`} accent="amber" loading={loading} />
         <KpiCard icon={Activity} label="Customers" value={String(c?.unique_customers || 0)} sub="Unique this period" accent="rose" loading={loading} />
         <KpiCard icon={Building2} label="Branches" value={String(branches.filter(b => b.status === 'active').length)} sub={`${branches.length} total registered`} accent="blue" loading={loading} />
         <KpiCard icon={TrendingUp} label="Total Bookings" value={String(c?.total_bookings || 0)} sub="Room bookings" accent="indigo" loading={loading} />
@@ -465,51 +549,8 @@ const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, 
         </div>
       )}
 
-      {/* Branch summary table */}
-      {!loading && branches.length > 0 && (
-        <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-0">
-            <CardTitle className="text-sm font-semibold">Branch Snapshot</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 mt-3">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-y bg-muted/40">
-                    <th className="text-left p-3 pl-5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Branch</th>
-                    <th className="text-right p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Revenue</th>
-                    <th className="text-right p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">Orders</th>
-                    <th className="text-right p-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide hidden md:table-cell">Occupancy</th>
-                    <th className="text-right p-3 pr-5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...branches].sort((a, b) => b.stats.total_revenue - a.stats.total_revenue).map((b, i) => (
-                    <tr key={b.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="p-3 pl-5">
-                        <div className="flex items-center gap-2.5">
-                          {i === 0 && <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 flex-shrink-0" />}
-                          {i !== 0 && <span className="text-muted-foreground text-xs w-3.5 text-center">{i + 1}</span>}
-                          <div>
-                            <p className="font-semibold">{b.name}</p>
-                            {b.location && <p className="text-xs text-muted-foreground">{b.location}</p>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-3 text-right">
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{fmtShort(b.stats.total_revenue)}</span>
-                      </td>
-                      <td className="p-3 text-right hidden md:table-cell text-muted-foreground">{b.stats.total_orders}</td>
-                      <td className="p-3 text-right hidden md:table-cell text-muted-foreground">{pct(b.stats.occupancy_rate)}</td>
-                      <td className="p-3 pr-5 text-right"><StatusBadge status={b.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Revenue Trend — with branch filter */}
+      <RevenueTrendSection branches={branches} />
     </div>
   );
 };

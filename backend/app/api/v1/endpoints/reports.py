@@ -46,8 +46,6 @@ async def get_reports_overview(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        COMPLETED_STATUSES = ["served", "completed", "delivered", "paid"]
-
         def _bookings():
             return supabase.table("bookings").select(
                 "status, paid_amount, total_amount, customer_id"
@@ -62,24 +60,26 @@ async def get_reports_overview(
         bookings_data = bookings_res.data or []
         orders_data   = orders_res.data or []
 
-        # Only count completed/served/delivered orders for revenue (matches owner dashboard)
-        completed_orders_data = [o for o in orders_data if o.get("status") in COMPLETED_STATUSES]
+        # All non-voided/cancelled orders count as revenue (matches item-summary reports section)
+        VOID_STATUSES_RPT = {"voided", "void", "cancelled", "canceled", "void_requested"}
+        non_void_orders = [o for o in orders_data if o.get("status") not in VOID_STATUSES_RPT]
         booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings_data)
         order_revenue   = sum(
             sum(float(i.get("price", 0)) * int(i.get("quantity", 0))
                 for i in (o.get("items") or []) if isinstance(i, dict) and not i.get("voided"))
-            for o in completed_orders_data
+            for o in non_void_orders
         )
         total_revenue = booking_revenue + order_revenue
 
         total_bookings     = len(bookings_data)
         confirmed_bookings = sum(1 for b in bookings_data if b.get("status") in ["confirmed", "checked_in", "checked_out"])
         total_orders       = len(orders_data)
-        completed_orders   = len(completed_orders_data)
+        completed_orders   = sum(1 for o in orders_data if o.get("status") in ["delivered", "completed", "served"])
 
+        # Active customers = unique guests from bookings only
+        # (F&B orders are placed by staff, not actual hotel guests, so customer_id there = staff ID)
         booking_users = {b["customer_id"] for b in bookings_data if b.get("customer_id")}
-        order_users   = {o["customer_id"] for o in orders_data   if o.get("customer_id")}
-        active_customers = len(booking_users | order_users)
+        active_customers = len(booking_users)
 
         paid_orders   = sum(1 for o in orders_data if o.get("payment_status") in ["paid", "completed"])
         paid_bookings = sum(1 for b in bookings_data if b.get("paid_amount") and float(b.get("paid_amount", 0)) > 0)
