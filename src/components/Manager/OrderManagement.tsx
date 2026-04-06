@@ -377,6 +377,7 @@ export default function OrderManagement() {
       special_instructions: order.customer_name ? `Customer: ${order.customer_name}, Phone:${order.customer_phone || ''}` : '',
       status: order.status,
       waiter_name: order.assigned_waiter?.full_name,
+      created_at: order.created_at,
     });
   };
 
