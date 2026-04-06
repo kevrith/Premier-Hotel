@@ -20,9 +20,10 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, ChevronRight, Settings,
   Search, Menu, X, LayoutDashboard, GitBranch,
   PieChart as PieChartIcon, FileText, CheckCircle2, Clock, Wifi,
-  LineChart, Cog, ClipboardList, UserSquare2, HeartHandshake, Bell, Download, Package, LogOut, Home
+  LineChart, Cog, ClipboardList, UserSquare2, HeartHandshake, Bell, Download, Package, LogOut, Home, Wallet
 } from 'lucide-react';
 import api from '@/lib/api/client';
+import { PettyCash } from '@/components/Admin/PettyCash';
 import { formatKES } from '@/lib/utils/format';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -97,6 +98,7 @@ const NAV_ITEMS = [
   { id: 'people',      label: 'People',       icon: UserSquare2 },
   { id: 'customers',   label: 'Customers',    icon: HeartHandshake },
   { id: 'alerts',      label: 'Alerts',       icon: Bell },
+  { id: 'petty-cash',  label: 'Petty Cash',   icon: Wallet },
   { id: 'stock',       label: 'Stock',        icon: Package },
   { id: 'health',      label: 'System Health', icon: Activity },
   { id: 'export',      label: 'Export',       icon: Download },
@@ -1475,6 +1477,7 @@ export default function OwnerDashboard() {
           {page === 'people' && <PeoplePage />}
           {page === 'customers' && <CustomersPage />}
           {page === 'alerts' && <AlertsPage isOwner={isOwner} />}
+          {page === 'petty-cash' && <PettyCash />}
           {page === 'stock' && <StockPage />}
           {page === 'health' && <SystemHealth />}
           {page === 'export' && <ExportPage />}
