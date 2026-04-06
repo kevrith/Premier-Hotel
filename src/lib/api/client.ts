@@ -74,6 +74,8 @@ const NO_OFFLINE_QUEUE_PATTERNS = [
   '/bulk-cancel',
   '/reverse',
   '/auth/',
+  '/location-stock/transfer',  // stock transfers must be real-time — queuing causes duplicate movements
+  '/location-stock/adjust',    // stock adjustments are not safe to replay offline
 ];
 
 function shouldQueueOffline(url: string): boolean {
