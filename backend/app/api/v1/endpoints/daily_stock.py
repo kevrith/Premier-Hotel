@@ -106,15 +106,21 @@ async def get_stock_sheet(
         for ls in (ls_res.data or []):
             location_stock_map[ls["menu_item_id"]] = ls
 
-    # Get purchases (stock_receipts) for this date
-    receipts_res = supabase.table("stock_receipts").select(
-        "menu_item_id, quantity, unit_cost, total_cost"
-    ).gte("received_at", f"{stock_date}T00:00:00").lte("received_at", f"{stock_date}T23:59:59").execute()
+    # Get purchases (stock_receipt_items) for this date
+    # stock_receipts holds the header (date), stock_receipt_items holds line items
+    receipt_headers = supabase.table("stock_receipts").select("id").eq(
+        "received_at", stock_date
+    ).execute()
+    receipt_ids = [r["id"] for r in (receipt_headers.data or [])]
 
     purchases_by_item = {}
-    for r in (receipts_res.data or []):
-        mid = r["menu_item_id"]
-        purchases_by_item[mid] = purchases_by_item.get(mid, 0) + float(r.get("quantity", 0))
+    if receipt_ids:
+        receipt_items_res = supabase.table("stock_receipt_items").select(
+            "menu_item_id, quantity"
+        ).in_("receipt_id", receipt_ids).execute()
+        for r in (receipt_items_res.data or []):
+            mid = r["menu_item_id"]
+            purchases_by_item[mid] = purchases_by_item.get(mid, 0) + float(r.get("quantity", 0))
 
     # Get system sales for this date from orders
     # When location_id provided, filter orders by bar_location_id
@@ -319,12 +325,17 @@ async def submit_stock_take(
         # Get purchases for this date (best-effort)
         purchases_by_item: dict = {}
         try:
-            receipts_res = supabase.table("stock_receipts").select(
-                "menu_item_id, quantity"
-            ).gte("received_at", f"{req.session_date}T00:00:00").lte("received_at", f"{req.session_date}T23:59:59").execute()
-            for r in (receipts_res.data or []):
-                mid = r["menu_item_id"]
-                purchases_by_item[mid] = purchases_by_item.get(mid, 0) + float(r.get("quantity", 0))
+            receipt_headers = supabase.table("stock_receipts").select("id").eq(
+                "received_at", req.session_date
+            ).execute()
+            receipt_ids = [r["id"] for r in (receipt_headers.data or [])]
+            if receipt_ids:
+                receipt_items_res = supabase.table("stock_receipt_items").select(
+                    "menu_item_id, quantity"
+                ).in_("receipt_id", receipt_ids).execute()
+                for r in (receipt_items_res.data or []):
+                    mid = r["menu_item_id"]
+                    purchases_by_item[mid] = purchases_by_item.get(mid, 0) + float(r.get("quantity", 0))
         except Exception:
             pass
 

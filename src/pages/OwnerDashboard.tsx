@@ -350,6 +350,104 @@ const RevenueTrendSection = ({ branches }: { branches: BranchSummary[] }) => {
   );
 };
 
+// ─── Peak Hours Section ───────────────────────────────────────────────────────
+
+const PeakHoursSection = () => {
+  const today = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [metric, setMetric] = useState<'revenue' | 'qty' | 'orders'>('revenue');
+  const [hourly, setHourly] = useState<{ hour: string; qty: number; revenue: number; orders: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/reports/item-summary', {
+        params: { start: selectedDate, end: selectedDate },
+      });
+      setHourly(res.data?.trends?.hourly || []);
+    } catch {
+      toast.error('Failed to load peak hours');
+    }
+    setLoading(false);
+  }, [selectedDate]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const sorted = [...hourly].sort((a, b) => b[metric] - a[metric]);
+  const max = Math.max(...sorted.map(h => h[metric]), 1);
+
+  const label = (v: number) => {
+    if (metric === 'revenue') return `KES ${v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toLocaleString()}`;
+    if (metric === 'qty') return `${v} items`;
+    return `${v} orders`;
+  };
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-sm font-semibold">Peak Order Hours</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">Busiest hours for the selected day</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="date"
+              value={selectedDate}
+              max={today}
+              onChange={e => setSelectedDate(e.target.value)}
+              className="text-xs border border-border rounded-md px-2.5 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <div className="flex rounded-md border border-border overflow-hidden text-xs">
+              {(['revenue', 'qty', 'orders'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMetric(m)}
+                  className={`px-2.5 py-1.5 capitalize transition-colors ${metric === m ? 'bg-indigo-600 text-white' : 'bg-background text-foreground hover:bg-muted'}`}
+                >
+                  {m === 'revenue' ? 'Revenue' : m === 'qty' ? 'Items' : 'Orders'}
+                </button>
+              ))}
+            </div>
+            <button onClick={load} disabled={loading} className="p-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50">
+              <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">Loading…</div>
+        ) : sorted.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">No orders recorded for this day.</p>
+        ) : (
+          <div className="space-y-2">
+            {sorted.map((h, i) => {
+              const pct = Math.round((h[metric] / max) * 100);
+              return (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="w-16 text-xs font-medium text-right shrink-0">{h.hour}</div>
+                  <div className="flex-1">
+                    <div className="w-full bg-muted rounded-full h-6">
+                      <div
+                        className="bg-gradient-to-r from-green-500 to-green-600 h-6 rounded-full flex items-center px-2 transition-all"
+                        style={{ width: `${Math.max(pct, 6)}%` }}
+                      >
+                        <span className="text-xs font-medium text-white truncate">{label(h[metric])}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 // ─── Overview Page ────────────────────────────────────────────────────────────
 
 const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, customEnd, onCustomRange }: {
@@ -551,6 +649,9 @@ const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, 
 
       {/* Revenue Trend — with branch filter */}
       <RevenueTrendSection branches={branches} />
+
+      {/* Peak Order Hours — with day picker and metric toggle */}
+      <PeakHoursSection />
     </div>
   );
 };
