@@ -266,6 +266,96 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   );
 };
 
+// ─── Petty Cash Widget ────────────────────────────────────────────────────────
+
+const PettyCashWidget = () => {
+  const today = new Date();
+  const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const [month, setMonth] = useState(currentMonth);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/petty-cash/all-branches-summary', { params: { month } });
+      setData(res.data);
+    } catch {
+      // silently fail — petty cash may not have entries yet
+    }
+    setLoading(false);
+  }, [month]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const fmt = (n: number) => `KES ${Number(n).toLocaleString('en-KE', { minimumFractionDigits: 0 })}`;
+
+  return (
+    <Card className="border-0 shadow-sm">
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-sm font-semibold">Petty Cash — Running Balance</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">Monthly cash flow across all branches</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="month"
+              value={month}
+              max={currentMonth}
+              onChange={e => setMonth(e.target.value)}
+              className="text-xs border border-border rounded-md px-2.5 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <button onClick={load} disabled={loading} className="p-1.5 rounded-md hover:bg-muted transition-colors disabled:opacity-50">
+              <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="h-24 flex items-center justify-center text-muted-foreground text-sm">Loading…</div>
+        ) : !data || data.branches?.length === 0 || data.branches?.every((b: any) => b.entry_count === 0) ? (
+          <p className="text-sm text-muted-foreground text-center py-4">No petty cash entries for this month.</p>
+        ) : (
+          <div className="space-y-3">
+            {/* Overall totals */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-indigo-50 dark:bg-indigo-950/30 px-4 py-3">
+                <p className="text-xs text-muted-foreground">Total Running Balance</p>
+                <p className={`text-lg font-bold mt-0.5 ${data.overall_cumulative >= 0 ? 'text-indigo-700' : 'text-red-600'}`}>
+                  {fmt(data.overall_cumulative)}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 px-4 py-3">
+                <p className="text-xs text-muted-foreground">Month Net</p>
+                <p className={`text-lg font-bold mt-0.5 ${data.overall_net_month >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                  {data.overall_net_month >= 0 ? '+' : ''}{fmt(data.overall_net_month)}
+                </p>
+              </div>
+            </div>
+            {/* Per-branch breakdown */}
+            {data.branches?.filter((b: any) => b.entry_count > 0).map((b: any) => (
+              <div key={b.branch_id} className="flex items-center justify-between text-sm border-t pt-2">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{b.branch_name}</p>
+                  <p className="text-xs text-muted-foreground">{b.entry_count} entries · latest: {b.latest_entry_date || '—'}</p>
+                </div>
+                <div className="text-right shrink-0 ml-4">
+                  <p className={`font-semibold ${b.current_cumulative >= 0 ? 'text-indigo-700' : 'text-red-600'}`}>
+                    {fmt(b.current_cumulative)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">month net: {fmt(b.net_month)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 // ─── Revenue Trend Section (with branch filter) ───────────────────────────────
 
 const RevenueTrendSection = ({ branches }: { branches: BranchSummary[] }) => {
@@ -646,6 +736,9 @@ const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, 
           </Card>
         </div>
       )}
+
+      {/* Petty Cash running balance widget */}
+      <PettyCashWidget />
 
       {/* Revenue Trend — with branch filter */}
       <RevenueTrendSection branches={branches} />

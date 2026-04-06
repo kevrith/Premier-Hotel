@@ -23,6 +23,7 @@ import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagem
 import { ImportCenter } from '@/components/Admin/ImportCenter';
 import { DataExportCenter } from '@/components/Admin/DataExportCenter';
 import { LocationManagement } from '@/components/Admin/LocationManagement';
+import { PettyCash } from '@/components/Admin/PettyCash';
 import { NetworkInfo } from '@/components/Admin/NetworkInfo';
 import { BranchManagement } from '@/components/Admin/BranchManagement';
 import { TableManagement } from '@/components/Admin/TableManagement';
@@ -95,6 +96,7 @@ export default function AdminDashboard() {
               <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Housekeeping</TabsTrigger>
               <TabsTrigger value="tables" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Tables</TabsTrigger>
               <TabsTrigger value="orders" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Orders</TabsTrigger>
+              <TabsTrigger value="petty-cash" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Petty Cash</TabsTrigger>
               <TabsTrigger value="permissions" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Permissions</TabsTrigger>
               <TabsTrigger value="settings" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Settings</TabsTrigger>
             </TabsList>
@@ -192,6 +194,11 @@ export default function AdminDashboard() {
           {/* Orders Tab - Full order management with reprint */}
           <TabsContent value="orders" className="space-y-4 sm:space-y-6">
             <OrderManagement />
+          </TabsContent>
+
+          {/* Petty Cash Tab */}
+          <TabsContent value="petty-cash" className="space-y-4 sm:space-y-6">
+            {activeTab === 'petty-cash' && <PettyCash />}
           </TabsContent>
 
           {/* Permissions Tab — only mount when active to avoid pre-auth 401 */}

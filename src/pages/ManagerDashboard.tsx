@@ -59,6 +59,7 @@ import { LocationManagement } from '@/components/Admin/LocationManagement';
 import { StockReceiving } from '@/components/Admin/StockReceiving';
 import { StockTransfer } from '@/components/Admin/StockTransfer';
 import { OfflineGate } from '@/components/shared/OfflineGate';
+import { PettyCash } from '@/components/Admin/PettyCash';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
 function LazyTab({ active, children }: { active: boolean; children: React.ReactNode }) {
@@ -196,6 +197,7 @@ export default function ManagerDashboard() {
             <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-1 sm:px-3">Housekeeping</TabsTrigger>
             <TabsTrigger value="import" className="text-xs sm:text-sm px-1 sm:px-3">Import</TabsTrigger>
             <TabsTrigger value="export-data" className="text-xs sm:text-sm px-1 sm:px-3">Export</TabsTrigger>
+            <TabsTrigger value="petty-cash" className="text-xs sm:text-sm px-1 sm:px-3">Petty Cash</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab — loads immediately, no LazyTab wrapper */}
@@ -570,6 +572,13 @@ export default function ManagerDashboard() {
           <TabsContent value="export-data" className="space-y-6">
             <LazyTab active={activeTab === 'export-data'}>
               <DataExportCenter />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Petty Cash Tab */}
+          <TabsContent value="petty-cash" className="space-y-6">
+            <LazyTab active={activeTab === 'petty-cash'}>
+              <PettyCash />
             </LazyTab>
           </TabsContent>
 
