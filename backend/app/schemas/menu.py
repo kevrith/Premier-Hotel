@@ -23,12 +23,12 @@ class MenuItemBase(BaseModel):
 
 class MenuItemCreate(MenuItemBase):
     """Menu item creation schema"""
-    available: Optional[bool] = True
-    popular: Optional[bool] = False
-    track_inventory: Optional[bool] = False
-    stock_quantity: Optional[float] = 0
+    available: Optional[bool] = None
+    popular: Optional[bool] = None
+    track_inventory: Optional[bool] = None
+    stock_quantity: Optional[float] = None
     reorder_level: Optional[float] = None
-    unit: Optional[str] = 'piece'
+    unit: Optional[str] = None
     cost_price: Optional[Decimal] = None
 
 

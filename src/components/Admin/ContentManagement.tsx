@@ -119,16 +119,24 @@ export function ContentManagement() {
 
   const handleToggleTracking = async (item: MenuItem) => {
     setTogglingId(item.id);
+    const newValue = !item.track_inventory;
+    // Optimistic update
+    setMenuItems(prev =>
+      prev.map(i => i.id === item.id ? { ...i, track_inventory: newValue } : i)
+    );
     try {
-      await menuAPI.updateMenuItem(item.id, { track_inventory: !item.track_inventory });
-      setMenuItems(prev =>
-        prev.map(i => i.id === item.id ? { ...i, track_inventory: !item.track_inventory } : i)
-      );
+      await menuAPI.updateMenuItem(item.id, { track_inventory: newValue });
       toast({
-        title: item.track_inventory ? 'Stock tracking disabled' : 'Stock tracking enabled',
-        description: `${item.name} will ${item.track_inventory ? 'no longer' : 'now'} appear in stock management`,
+        title: newValue ? 'Stock tracking enabled' : 'Stock tracking disabled',
+        description: `${item.name} will ${newValue ? 'now' : 'no longer'} appear in stock management`,
       });
+      // Re-fetch to confirm DB state matches — prevents stale data from reverting the toggle
+      await fetchData();
     } catch (error: any) {
+      // Revert optimistic update on failure
+      setMenuItems(prev =>
+        prev.map(i => i.id === item.id ? { ...i, track_inventory: item.track_inventory } : i)
+      );
       toast({ title: 'Failed to update', description: error.message, variant: 'destructive' });
     } finally {
       setTogglingId(null);
