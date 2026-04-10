@@ -23,9 +23,17 @@ router = APIRouter()
 
 
 async def generate_order_number(supabase_admin: Client) -> str:
-    """Generate sequential order number: PH-001, PH-002, ..., PH-999, PH-1000, etc."""
-    # Fetch all PH- order numbers and find the true numeric maximum
-    response = supabase_admin.table("orders").select("order_number").like("order_number", "PH-%").execute()
+    """Generate sequential order number using DB sequence (atomic, no duplicates)."""
+    try:
+        # Use the PostgreSQL sequence for atomic, collision-free generation
+        result = supabase_admin.rpc("next_order_number").execute()
+        if result.data:
+            return result.data
+    except Exception:
+        pass  # Fall back to Python implementation if sequence not yet created
+
+    # Fallback: fetch recent order numbers and pick max + random jitter
+    response = supabase_admin.table("orders").select("order_number").like("order_number", "PH-%").order("created_at", desc=True).limit(50).execute()
 
     max_number = 0
     if response.data:
@@ -37,7 +45,8 @@ async def generate_order_number(supabase_admin: Client) -> str:
             except (IndexError, ValueError):
                 pass
 
-    next_number = max_number + 1
+    # Add a small random jitter (1-5) on top of max to reduce concurrent collisions
+    next_number = max_number + random.randint(1, 5)
     return f"PH-{next_number:03d}" if next_number <= 999 else f"PH-{next_number}"
 
 
@@ -624,7 +633,7 @@ async def create_order(
         # Bar-only orders skip kitchen — set directly to ready so waiter serves immediately
         initial_status = "ready" if all_bar_items else "pending"
 
-        # Generate order number
+        # Generate order number and insert with retry on duplicate key
         order_number = await generate_order_number(supabase_admin)
 
         # Create order
@@ -658,10 +667,25 @@ async def create_order(
             "bar_location_id": current_user.get("assigned_location_id"),
         }
 
-        # Use admin client to bypass RLS for order insertion
-        response = supabase_admin.table("orders").insert(order_dict).execute()
+        # Use admin client to bypass RLS for order insertion — retry on duplicate order_number
+        response = None
+        for _attempt in range(5):
+            try:
+                response = supabase_admin.table("orders").insert(order_dict).execute()
+                if response.data:
+                    break
+            except Exception as insert_err:
+                err_str = str(insert_err)
+                if "duplicate key" in err_str and "order_number" in err_str:
+                    # Regenerate a new order number and retry
+                    order_number = await generate_order_number(supabase_admin)
+                    order_dict["order_number"] = order_number
+                    continue
+                raise
+            # Also check for duplicate in the response detail (Supabase returns 409 as exception)
+            break
 
-        if not response.data:
+        if not response or not response.data:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create order",
