@@ -190,10 +190,10 @@ const AlertCenter = ({ isOwner }: { isOwner: boolean }) => {
             </div>
             <div>
               <Label className="text-xs mb-1 block">Branch (optional)</Label>
-              <Select value={form.branch_id} onValueChange={v => setForm(f => ({ ...f, branch_id: v }))}>
+              <Select value={form.branch_id || 'all'} onValueChange={v => setForm(f => ({ ...f, branch_id: v === 'all' ? '' : v }))}>
                 <SelectTrigger><SelectValue placeholder="All Branches" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Branches</SelectItem>
+                  <SelectItem value="all">All Branches</SelectItem>
                   {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                 </SelectContent>
               </Select>

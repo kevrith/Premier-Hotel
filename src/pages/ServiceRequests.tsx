@@ -421,12 +421,12 @@ const ServiceRequests = () => {
               </div>
             </div>
 
-            <Select value={filters.status} onValueChange={(value) => setFilters({ ...filters, status: value })}>
+            <Select value={filters.status || 'all'} onValueChange={(value) => setFilters({ ...filters, status: value === 'all' ? '' : value })}>
               <SelectTrigger className="w-full md:w-[180px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Statuses</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="assigned">Assigned</SelectItem>
                 <SelectItem value="in_progress">In Progress</SelectItem>
@@ -435,12 +435,12 @@ const ServiceRequests = () => {
               </SelectContent>
             </Select>
 
-            <Select value={filters.category} onValueChange={(value) => setFilters({ ...filters, category: value })}>
+            <Select value={filters.category || 'all'} onValueChange={(value) => setFilters({ ...filters, category: value === 'all' ? '' : value })}>
               <SelectTrigger className="w-full md:w-[180px]">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Categories</SelectItem>
+                <SelectItem value="all">All Categories</SelectItem>
                 <SelectItem value="room_service">Room Service</SelectItem>
                 <SelectItem value="housekeeping">Housekeeping</SelectItem>
                 <SelectItem value="maintenance">Maintenance</SelectItem>
@@ -450,12 +450,12 @@ const ServiceRequests = () => {
               </SelectContent>
             </Select>
 
-            <Select value={filters.priority} onValueChange={(value) => setFilters({ ...filters, priority: value })}>
+            <Select value={filters.priority || 'all'} onValueChange={(value) => setFilters({ ...filters, priority: value === 'all' ? '' : value })}>
               <SelectTrigger className="w-full md:w-[180px]">
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Priorities</SelectItem>
+                <SelectItem value="all">All Priorities</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
                 <SelectItem value="normal">Normal</SelectItem>
                 <SelectItem value="high">High</SelectItem>

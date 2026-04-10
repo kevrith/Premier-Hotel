@@ -218,12 +218,12 @@ export const PermissionManagement: React.FC = () => {
                   Assign this staff member to a bar location. Multiple staff can share the same bar.
                 </p>
                 <div className="flex gap-2 items-center">
-                  <Select value={assignedLocation} onValueChange={setAssignedLocation}>
+                  <Select value={assignedLocation || 'none'} onValueChange={v => setAssignedLocation(v === 'none' ? '' : v)}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="No bar assigned (all access)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No bar assigned</SelectItem>
+                      <SelectItem value="none">No bar assigned</SelectItem>
                       {barLocations.map(loc => (
                         <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                       ))}

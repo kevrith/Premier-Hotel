@@ -1950,12 +1950,12 @@ export function QuickBooksReporting() {
               {selectedReport === 'Sales by Employee' && employees.length > 0 && (
                 <div className="space-y-2">
                   <Label>Select Employee (Optional - Leave blank for all employees)</Label>
-                  <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                  <Select value={selectedEmployee || 'all'} onValueChange={v => setSelectedEmployee(v === 'all' ? '' : v)}>
                     <SelectTrigger>
                       <SelectValue placeholder="All employees" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All employees</SelectItem>
+                      <SelectItem value="all">All employees</SelectItem>
                       {employees.map((employee) => (
                         <SelectItem key={employee.id} value={employee.id}>
                           {employee.first_name} {employee.last_name} - {employee.position}

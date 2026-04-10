@@ -35,6 +35,7 @@ export const PERMISSIONS = {
   MANAGE_ROOMS:           'can_manage_rooms',
   MANAGE_BOOKINGS:        'can_manage_bookings',
   MANAGE_ORDERS:          'can_manage_orders',
+  VOID_ORDERS:            'can_void_orders',
   PROCESS_PAYMENTS:       'can_process_payments',
   VIEW_ANALYTICS:         'can_view_analytics',
   MANAGE_MENU:            'can_manage_menu',

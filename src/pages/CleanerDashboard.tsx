@@ -1229,10 +1229,10 @@ export default function CleanerDashboard() {
             </div>
             <div className="space-y-2">
               <Label>Room</Label>
-              <Select value={linenMoveForm.room_id} onValueChange={v => setLinenMoveForm(p => ({ ...p, room_id: v }))}>
+              <Select value={linenMoveForm.room_id || 'none'} onValueChange={v => setLinenMoveForm(p => ({ ...p, room_id: v === 'none' ? '' : v }))}>
                 <SelectTrigger><SelectValue placeholder="Select room (optional)" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific room</SelectItem>
+                  <SelectItem value="none">No specific room</SelectItem>
                   {rooms.map(r => <SelectItem key={r.id} value={r.id}>Room {r.room_number}</SelectItem>)}
                 </SelectContent>
               </Select>

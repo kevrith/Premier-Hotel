@@ -24,18 +24,20 @@ router = APIRouter()
 
 async def generate_order_number(supabase_admin: Client) -> str:
     """Generate sequential order number: PH-001, PH-002, ..., PH-999, PH-1000, etc."""
-    # Get the highest existing order number
-    response = supabase_admin.table("orders").select("order_number").like("order_number", "PH-%").order("order_number", desc=True).limit(1).execute()
-    
+    # Fetch all PH- order numbers and find the true numeric maximum
+    response = supabase_admin.table("orders").select("order_number").like("order_number", "PH-%").execute()
+
+    max_number = 0
     if response.data:
-        # Extract number from last order (e.g., "PH-123" -> 123)
-        last_number = response.data[0]["order_number"].split("-")[1]
-        next_number = int(last_number) + 1
-    else:
-        # Start from 1 if no orders exist
-        next_number = 1
-    
-    # Use minimum 3 digits, expand as needed
+        for row in response.data:
+            try:
+                num = int(row["order_number"].split("-")[1])
+                if num > max_number:
+                    max_number = num
+            except (IndexError, ValueError):
+                pass
+
+    next_number = max_number + 1
     return f"PH-{next_number:03d}" if next_number <= 999 else f"PH-{next_number}"
 
 
