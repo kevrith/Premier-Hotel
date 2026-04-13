@@ -107,8 +107,9 @@ async def get_all_orders(
         if location_type:
             query = query.eq("location_type", location_type)
         if date == "today":
-            today = datetime.now(timezone.utc).date().isoformat()
-            query = query.gte("created_at", f"{today}T00:00:00").lte("created_at", f"{today}T23:59:59")
+            from app.core.business_day import get_business_day_range
+            biz_start, biz_end = get_business_day_range(supabase_admin)
+            query = query.gte("created_at", biz_start).lte("created_at", biz_end)
 
         # Apply pagination
         query = query.range(skip, skip + limit - 1).order("created_at", desc=True)
@@ -312,7 +313,9 @@ async def get_manager_orders(
         raise HTTPException(status_code=403, detail="Manager access required")
 
     try:
-        query = supabase_admin.table("orders").select("*").order("created_at", desc=True)
+        query = supabase_admin.table("orders").select(
+            "*, assigned_waiter:users!assigned_waiter_id(full_name), created_by_staff:users!created_by_staff_id(full_name)"
+        ).order("created_at", desc=True)
 
         if status and status != "all":
             query = query.eq("status", status)
@@ -338,7 +341,9 @@ async def get_manager_orders(
                 today = datetime.now(timezone.utc).date()
                 today_str = today.isoformat()
                 if date == "today":
-                    query = query.gte("created_at", f"{today_str}T00:00:00").lte("created_at", f"{today_str}T23:59:59").limit(500)
+                    from app.core.business_day import get_business_day_range
+                    biz_start, biz_end = get_business_day_range(supabase_admin)
+                    query = query.gte("created_at", biz_start).lte("created_at", biz_end).limit(500)
                 elif date == "yesterday":
                     yest = (today - timedelta(days=1)).isoformat()
                     query = query.gte("created_at", f"{yest}T00:00:00").lte("created_at", f"{yest}T23:59:59").limit(500)
@@ -372,9 +377,8 @@ async def get_manager_order_stats(
         raise HTTPException(status_code=403, detail="Manager access required")
 
     try:
-        today = datetime.now(timezone.utc).date().isoformat()
-        today_start = f"{today}T00:00:00"
-        today_end = f"{today}T23:59:59"
+        from app.core.business_day import get_business_day_range
+        today_start, today_end = get_business_day_range(supabase_admin)
 
         result = supabase_admin.table("orders").select(
             "status, total_amount, created_at, updated_at"

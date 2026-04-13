@@ -343,6 +343,13 @@ export default function OrderManagement() {
     onSuccess: () => toast.success('Export completed'),
   });
 
+  const resolveWaiterName = (order: any): string => {
+    return (order as any).assigned_waiter?.full_name
+      || (order as any).created_by_staff?.full_name
+      || order.customer_name   // last resort label if no staff found
+      || '';
+  };
+
   const handleReprintSlip = (order: Order) => {
     printOrderSlip({
       order_number: order.order_number,
@@ -355,7 +362,7 @@ export default function OrderManagement() {
       })),
       special_instructions: order.customer_name ? `Customer: ${order.customer_name}` : '',
       created_at: order.created_at,
-      waiter_name: order.assigned_waiter?.full_name,
+      waiter_name: resolveWaiterName(order),
     });
   };
 
@@ -376,7 +383,7 @@ export default function OrderManagement() {
       total_amount: parseFloat(order.total_amount || 0),
       special_instructions: order.customer_name ? `Customer: ${order.customer_name}, Phone:${order.customer_phone || ''}` : '',
       status: order.status,
-      waiter_name: order.assigned_waiter?.full_name,
+      waiter_name: resolveWaiterName(order),
       created_at: order.created_at,
     });
   };
@@ -541,6 +548,7 @@ export default function OrderManagement() {
                       </th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Order #</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Customer</th>
+                      <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Waiter</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Items</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Status</th>
                       <th className="p-2 sm:p-3 text-left text-xs sm:text-sm font-medium">Amount</th>
@@ -550,9 +558,9 @@ export default function OrderManagement() {
                   </thead>
                   <tbody>
                     {isLoading ? (
-                      <tr><td colSpan={8} className="p-4 sm:p-8 text-center text-sm">Loading...</td></tr>
+                      <tr><td colSpan={9} className="p-4 sm:p-8 text-center text-sm">Loading...</td></tr>
                     ) : filteredOrders.length === 0 ? (
-                      <tr><td colSpan={8} className="p-4 sm:p-8 text-center text-sm">No orders found</td></tr>
+                      <tr><td colSpan={9} className="p-4 sm:p-8 text-center text-sm">No orders found</td></tr>
                     ) : (
                       filteredOrders.map((order: Order) => {
                         return (
@@ -566,6 +574,11 @@ export default function OrderManagement() {
                             <td className="p-2 sm:p-3">
                               <p className="font-medium text-xs sm:text-sm">{order.customer_name}</p>
                               <p className="text-[10px] sm:text-xs text-muted-foreground">{order.customer_phone}</p>
+                            </td>
+                            <td className="p-2 sm:p-3">
+                              <p className="text-xs sm:text-sm text-muted-foreground">
+                                {resolveWaiterName(order) || '—'}
+                              </p>
                             </td>
                             <td className="p-2 sm:p-3 max-w-[180px]">
                               {(order.items || []).filter((i: any) => !i.voided).slice(0, 3).map((i: any, idx: number) => (
