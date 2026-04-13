@@ -313,9 +313,7 @@ async def get_manager_orders(
         raise HTTPException(status_code=403, detail="Manager access required")
 
     try:
-        query = supabase_admin.table("orders").select(
-            "*, assigned_waiter:users!assigned_waiter_id(full_name), created_by_staff:users!created_by_staff_id(full_name)"
-        ).order("created_at", desc=True)
+        query = supabase_admin.table("orders").select("*").order("created_at", desc=True)
 
         if status and status != "all":
             query = query.eq("status", status)
@@ -330,16 +328,14 @@ async def get_manager_orders(
                 f"customer_name.ilike.%{s}%,"
                 f"customer_phone.ilike.%{s}%"
             )
-            query = query.limit(500)  # generous limit — find old orders anywhere
+            query = query.limit(500)
         else:
-            # Apply date filter
             if start_date and end_date:
                 s = start_date if 'T' in start_date else f"{start_date}T00:00:00"
                 e = end_date if 'T' in end_date else f"{end_date}T23:59:59"
                 query = query.gte("created_at", s).lte("created_at", e).limit(1000)
             elif date and date != "all":
                 today = datetime.now(timezone.utc).date()
-                today_str = today.isoformat()
                 if date == "today":
                     from app.core.business_day import get_business_day_range
                     biz_start, biz_end = get_business_day_range(supabase_admin)
@@ -356,11 +352,31 @@ async def get_manager_orders(
                 else:
                     query = query.limit(200)
             else:
-                # "all" with no date — cap at 500 most recent
                 query = query.limit(500)
 
         result = query.execute()
         orders = result.data or []
+
+        # Batch-fetch waiter/staff names for all orders in one query
+        user_ids = set()
+        for o in orders:
+            if o.get("assigned_waiter_id"):
+                user_ids.add(o["assigned_waiter_id"])
+            if o.get("created_by_staff_id"):
+                user_ids.add(o["created_by_staff_id"])
+
+        user_map = {}
+        if user_ids:
+            users_res = supabase_admin.table("users").select("id, full_name").in_("id", list(user_ids)).execute()
+            user_map = {u["id"]: u for u in (users_res.data or [])}
+
+        for o in orders:
+            waiter_id = o.get("assigned_waiter_id")
+            staff_id = o.get("created_by_staff_id")
+            if waiter_id and waiter_id in user_map:
+                o["assigned_waiter"] = {"full_name": user_map[waiter_id]["full_name"]}
+            if staff_id and staff_id in user_map:
+                o["created_by_staff"] = {"full_name": user_map[staff_id]["full_name"]}
 
         return {"data": orders, "total": len(orders)}
     except Exception as e:
