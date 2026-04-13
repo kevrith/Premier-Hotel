@@ -10,6 +10,7 @@ from supabase import Client
 from pydantic import BaseModel
 from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import get_current_user
+from app.core.business_day import get_business_date_label, get_business_day_range_for_date, get_business_day_start_hour
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ async def get_stock_sheet(
     When location_id is provided, uses per-location stock from location_stock table.
     """
     if not stock_date:
-        stock_date = date.today().isoformat()
+        stock_date = get_business_date_label(supabase)
 
     stock_date_obj = date.fromisoformat(stock_date)
     prev_date = (stock_date_obj - timedelta(days=1)).isoformat()
@@ -122,11 +123,13 @@ async def get_stock_sheet(
             mid = r["menu_item_id"]
             purchases_by_item[mid] = purchases_by_item.get(mid, 0) + float(r.get("quantity", 0))
 
-    # Get system sales for this date from orders
-    # When location_id provided, filter orders by bar_location_id
+    # Get system sales for this date from orders using business day boundaries
+    # e.g. if start_hour=6: 06:00 EAT on stock_date → 05:59 EAT on stock_date+1
+    _biz_start_hour = get_business_day_start_hour(supabase)
+    _biz_start, _biz_end = get_business_day_range_for_date(stock_date, _biz_start_hour)
     orders_query = supabase.table("orders").select(
         "items, status, bar_location_id"
-    ).gte("created_at", f"{stock_date}T00:00:00").lte("created_at", f"{stock_date}T23:59:59").in_(
+    ).gte("created_at", _biz_start).lte("created_at", _biz_end).in_(
         "status", ["served", "completed", "delivered", "paid"]
     )
     if location_id:
@@ -540,7 +543,7 @@ async def get_bar_rollup(
     Used for the combined stock view.
     """
     if not stock_date:
-        stock_date = date.today().isoformat()
+        stock_date = get_business_date_label(supabase)
 
     # Fetch all bar locations
     locs_res = supabase.table("locations").select("*").eq("type", "bar").eq("is_active", True).order("name").execute()
@@ -714,7 +717,7 @@ async def get_kitchen_sheet(
     Purchases are entered manually.
     """
     if not stock_date:
-        stock_date = date.today().isoformat()
+        stock_date = get_business_date_label(supabase)
 
     stock_date_obj = date.fromisoformat(stock_date)
     prev_date = (stock_date_obj - timedelta(days=1)).isoformat()
