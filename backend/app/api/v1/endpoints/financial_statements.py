@@ -610,19 +610,38 @@ async def get_inventory_closing_stock(
         # ── 1. Fetch all tracked menu items ──────────────────────────────────
         items_result = supabase.table("menu_items").select(
             "id, name, category, stock_quantity, reorder_level, unit, cost_price, base_price, track_inventory"
-        ).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+        ).eq("track_inventory", True).execute()
         items = items_result.data or []
         item_map = {i["id"]: i for i in items}
 
         # ── 2. Check for daily stock-take sessions on that exact date ───────
-        #    Multiple sessions may exist (Bar A, Bar B, Kitchen…). Combine them all.
-        #    Physical closing qty per item = sum across all location sessions.
+        #    Multiple sessions may exist (Bar A, Bar B, Kitchen…). Sum across
+        #    DISTINCT locations — one submitted session per location per date.
+        #    Using only submitted sessions prevents drafts from contributing zero
+        #    data, and deduplicating by location prevents double-counting when the
+        #    same bar was submitted under different session_type values ('all' vs
+        #    'bar') which creates two separate session rows for the same location.
         physical_map: dict = {}   # item_id → combined physical closing qty
         try:
-            session_res = supabase.table("daily_stock_sessions").select("id").eq(
+            session_res = supabase.table("daily_stock_sessions").select(
+                "id, location_id, updated_at"
+            ).eq(
                 "session_date", as_of_date
-            ).execute()
-            for session in (session_res.data or []):
+            ).eq(
+                "status", "submitted"
+            ).order("updated_at", desc=True).execute()
+
+            # Keep only the most recent submitted session per location
+            # (location_id=None means a global/non-location session — treat as one slot)
+            seen_locations: set = set()
+            deduped_sessions = []
+            for s in (session_res.data or []):
+                key = s.get("location_id") or "__global__"
+                if key not in seen_locations:
+                    seen_locations.add(key)
+                    deduped_sessions.append(s)
+
+            for session in deduped_sessions:
                 items_res = supabase.table("daily_stock_items").select(
                     "menu_item_id, physical_closing"
                 ).eq("session_id", session["id"]).execute()

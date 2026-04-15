@@ -77,10 +77,12 @@ async def get_stock_sheet(
             location_info = loc_res.data[0]
             location_type_filter = location_info.get("type")  # 'bar' | 'kitchen' | 'store'
 
-    # Get all tracked menu items
+    # Get all tracked menu items — only items explicitly flagged track_inventory=true.
+    # Excluding items by stock_quantity>0 alone prevents untracked content items
+    # (e.g. menu descriptions, add-ons) from leaking into the stock sheet.
     items_res = supabase.table("menu_items").select(
         "id, name, category, stock_quantity, reorder_level, unit, cost_price, base_price, track_inventory, stock_department"
-    ).or_("track_inventory.eq.true,stock_quantity.gt.0").order("category,name").execute()
+    ).eq("track_inventory", True).order("category,name").execute()
     all_items = items_res.data or []
 
     # When operating in location mode, filter items by location type
@@ -147,14 +149,22 @@ async def get_stock_sheet(
                     system_sales_by_item[mid] = system_sales_by_item.get(mid, 0) + qty
 
     # Check for existing session (already submitted today)
+    # When a location_id is provided, look up by (session_date, location_id) only —
+    # ignoring session_type. Sessions for bar locations may have been submitted with
+    # session_type='all' (UI default) even though the location resolves to 'bar'.
+    # Matching on session_type here would return None and falsely show no existing
+    # session, which prevents Edit mode from working when switching locations.
     existing_session = None
     existing_items_map = {}
     try:
-        session_query = supabase.table("daily_stock_sessions").select("*").eq(
-            "session_date", stock_date
-        ).eq("session_type", effective_session_type)
         if location_id:
-            session_query = session_query.eq("location_id", location_id)
+            session_query = supabase.table("daily_stock_sessions").select("*").eq(
+                "session_date", stock_date
+            ).eq("location_id", location_id).order("updated_at", desc=True).limit(1)
+        else:
+            session_query = supabase.table("daily_stock_sessions").select("*").eq(
+                "session_date", stock_date
+            ).eq("session_type", effective_session_type).is_("location_id", "null")
         session_res = session_query.execute()
         if session_res.data:
             existing_session = session_res.data[0]
@@ -355,14 +365,22 @@ async def submit_stock_take(
             pass
 
         # Upsert session
+        # When a location_id is provided the location already uniquely identifies
+        # where stock was taken, so we match on (session_date, location_id) only.
+        # Ignoring session_type here prevents a second session being created when
+        # the same bar is re-submitted after the session_type toggle was changed
+        # (e.g. 'all' → 'bar'), which would cause double-counting in reports.
+        # For global (no-location) stock takes, session_type IS the distinguishing
+        # factor so we still include it in the lookup.
         session_id: str
-        session_q = supabase.table("daily_stock_sessions").select("id").eq(
-            "session_date", req.session_date
-        ).eq("session_type", req.session_type)
         if req.location_id:
-            session_q = session_q.eq("location_id", req.location_id)
+            session_q = supabase.table("daily_stock_sessions").select("id").eq(
+                "session_date", req.session_date
+            ).eq("location_id", req.location_id)
         else:
-            session_q = session_q.is_("location_id", "null")
+            session_q = supabase.table("daily_stock_sessions").select("id").eq(
+                "session_date", req.session_date
+            ).eq("session_type", req.session_type).is_("location_id", "null")
         existing = session_q.execute()
 
         if existing.data:
@@ -512,7 +530,7 @@ async def get_low_stock_alerts(
     """Get low stock alerts — used by chef dashboard on login."""
     items_res = supabase.table("menu_items").select(
         "id, name, category, stock_quantity, reorder_level, unit, track_inventory"
-    ).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+    ).eq("track_inventory", True).execute()
 
     items = items_res.data or []
     alerts = []
