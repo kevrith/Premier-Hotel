@@ -289,7 +289,9 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      toast.error('Network unavailable. Please check your connection and try again.', { id: 'network-error' });
+      // User is online but request failed — server may be temporarily unreachable
+      // (e.g. cold start). Don't blame the user's connection.
+      toast.error('Server temporarily unreachable. Please try again in a moment.', { id: 'network-error' });
       return Promise.reject(error);
     }
 

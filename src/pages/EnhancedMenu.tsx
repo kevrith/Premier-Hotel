@@ -325,7 +325,30 @@ export default function EnhancedMenu() {
       let isOfflineOrder = false;
 
       try {
-        createdOrder = await ordersApi.create(orderData as any);
+        const result = await ordersApi.create(orderData as any);
+
+        // The API client may return a synthetic offline response (no throw) when
+        // the server is unreachable (e.g. cold start 502). Detect and treat as offline.
+        if (result?.offline === true || result?.queued === true) {
+          isOfflineOrder = true;
+          const tempNumber = result?.tempId
+            ? `OFF-${result.tempId.toString().slice(-6)}`
+            : `OFF-${Date.now().toString().slice(-6)}`;
+          createdOrder = {
+            ...orderData,
+            order_number: tempNumber,
+            status: 'pending',
+            offline: true,
+            items: orderItems,
+            subtotal: cart.reduce((sum, i) => sum + (i.price ?? 0) * i.quantity, 0),
+            tax: 0,
+            total_amount: cart.reduce((sum, i) => sum + (i.price ?? 0) * i.quantity, 0),
+            created_at: new Date().toISOString(),
+          };
+          toast('Order queued — will sync when server is available', { icon: '📶', duration: 5000 });
+        } else {
+          createdOrder = result;
+        }
       } catch (error: any) {
         if (isNetworkError(error) && isStaff) {
           // ── Offline fallback: save locally + queue for sync ──────────────────

@@ -398,7 +398,7 @@ export default function MyOrders() {
           referenceType="order"
           referenceId={paymentOrder.id}
           amount={paymentOrder.total}
-          description={`Payment for Order #${paymentOrder.id.slice(0, 8)}`}
+          description={`Payment for Order #${paymentOrder.order_number || paymentOrder.id.slice(0, 8)}`}
           onSuccess={handlePaymentSuccess}
           onError={handlePaymentError}
         />
@@ -410,7 +410,7 @@ export default function MyOrders() {
           <DialogHeader>
             <DialogTitle>Track Your Order</DialogTitle>
             <DialogDescription>
-              Order #{trackedOrder?.id.slice(0, 8)} - Real-time status updates
+              Order #{trackedOrder?.order_number || trackedOrder?.id.slice(0, 8)} - Real-time status updates
             </DialogDescription>
           </DialogHeader>
 

@@ -15,6 +15,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import time
 import asyncio
+from datetime import datetime, timezone
 
 # Configure structured logging
 configure_logging()
@@ -237,8 +238,7 @@ async def _midnight_eod_closer():
             now_utc = datetime.now(timezone.utc)
             now_eat = now_utc + EAT_OFFSET
             prev_day_eat = (now_eat - timedelta(days=1)).date()
-            from datetime import datetime as _dt
-            prev_start_eat = _dt(prev_day_eat.year, prev_day_eat.month, prev_day_eat.day, start_hour, 0, 0)
+            prev_start_eat = datetime(prev_day_eat.year, prev_day_eat.month, prev_day_eat.day, start_hour, 0, 0)
             prev_start_utc = prev_start_eat - EAT_OFFSET
             prev_end_utc   = prev_start_utc + timedelta(hours=24)
 
@@ -312,8 +312,7 @@ async def startup():
         now_eat = now_utc + EAT_OFFSET
         # Previous business day window
         prev_day_eat = (now_eat - timedelta(days=1)).date()
-        from datetime import datetime as _dt2
-        prev_start_eat = _dt2(prev_day_eat.year, prev_day_eat.month, prev_day_eat.day, start_hour, 0, 0)
+        prev_start_eat = datetime(prev_day_eat.year, prev_day_eat.month, prev_day_eat.day, start_hour, 0, 0)
         prev_start_utc = prev_start_eat - EAT_OFFSET
         prev_end_utc   = prev_start_utc + timedelta(hours=24)
         biz_start = prev_start_utc.strftime("%Y-%m-%dT%H:%M:%S")
