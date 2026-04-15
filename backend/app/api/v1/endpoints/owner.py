@@ -834,7 +834,7 @@ async def inventory_alerts(
     try:
         items = supabase.table("menu_items").select(
             "id, name, category, stock_quantity, reorder_level, unit, cost_price, track_inventory, stock_department"
-        ).or_("track_inventory.eq.true,stock_quantity.gt.0").execute().data or []
+        ).eq("track_inventory", True).execute().data or []
 
         low = [i for i in items if float(i.get("stock_quantity") or 0) <= float(i.get("reorder_level") or 0)]
         critical = [i for i in low if float(i.get("stock_quantity") or 0) == 0]
@@ -1529,7 +1529,7 @@ async def owner_stock_balances(
     inv = get_supabase()
     query = inv.table("menu_items").select(
         "id, name, category, stock_quantity, reorder_level, unit, cost_price, is_available"
-    ).or_("track_inventory.eq.true,stock_quantity.gt.0")
+    ).eq("track_inventory", True)
     if category:
         query = query.eq("category", category)
     items = query.order("category").order("name").execute().data or []

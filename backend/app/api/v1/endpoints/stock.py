@@ -141,7 +141,7 @@ async def get_stock_levels(
 
     query = supabase.table("menu_items").select(
         "id, name, category, stock_quantity, reorder_level, unit, cost_price, base_price, track_inventory, is_available, stock_department"
-    ).or_("track_inventory.eq.true,stock_quantity.gt.0")
+    ).eq("track_inventory", True)
 
     if category:
         query = query.eq("category", category)
@@ -272,7 +272,7 @@ async def get_stock_summary(
     """Get stock summary stats for dashboard."""
     items_res = supabase.table("menu_items").select(
         "stock_quantity, reorder_level, cost_price, track_inventory"
-    ).or_("track_inventory.eq.true,stock_quantity.gt.0").execute()
+    ).eq("track_inventory", True).execute()
 
     items = items_res.data or []
     total_items = len(items)
