@@ -558,9 +558,15 @@ async def get_bar_rollup(
 
     for loc in bar_locations:
         lid = loc["id"]
+        # Only use submitted sessions — a draft session has no items yet and
+        # would make that bar appear blank in the combined view.
+        # Order by updated_at desc so the most recent submission wins when
+        # multiple session_type rows exist for the same location+date.
         session_res = supabase.table("daily_stock_sessions").select("id, status").eq(
             "session_date", stock_date
-        ).eq("location_id", lid).execute()
+        ).eq("location_id", lid).eq("status", "submitted").order(
+            "updated_at", desc=True
+        ).limit(1).execute()
 
         items_map: dict = {}
         if session_res.data:
@@ -574,7 +580,7 @@ async def get_bar_rollup(
                     items_map[mid] = it
                     all_item_ids.add(mid)
         else:
-            # No session yet — pull from location_stock for current quantities
+            # No submitted session yet — pull from location_stock for current quantities
             ls_res = supabase.table("location_stock").select(
                 "menu_item_id, item_name, category, unit, quantity"
             ).eq("location_id", lid).execute()
