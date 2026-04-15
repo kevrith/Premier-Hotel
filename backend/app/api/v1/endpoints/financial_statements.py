@@ -615,12 +615,22 @@ async def get_inventory_closing_stock(
         item_map = {i["id"]: i for i in items}
 
         # ── 2. Check for daily stock-take sessions on that exact date ───────
-        #    Multiple sessions may exist (Bar A, Bar B, Kitchen…). Sum across
-        #    DISTINCT locations — one submitted session per location per date.
-        #    Using only submitted sessions prevents drafts from contributing zero
-        #    data, and deduplicating by location prevents double-counting when the
-        #    same bar was submitted under different session_type values ('all' vs
-        #    'bar') which creates two separate session rows for the same location.
+        #
+        #    Precedence rules to avoid double-counting:
+        #
+        #    a) Location-specific sessions (location_id IS NOT NULL) are authoritative
+        #       for the items they contain. Their quantities are SUMMED across different
+        #       locations (Bar A qty + Bar B qty = correct combined total).
+        #
+        #    b) Global sessions (location_id IS NULL) may contain ALL items rolled up,
+        #       so they MUST NOT be added on top of location sessions for the same
+        #       items — that would double-count (global already = Bar A + Bar B).
+        #       Global sessions are used ONLY for items not present in any location
+        #       session (e.g. kitchen-only items submitted without a location).
+        #
+        #    c) Within each location slot, only the most recent submitted session is
+        #       used (handles the case where the same bar was re-submitted with a
+        #       different session_type value, creating two rows for the same location).
         physical_map: dict = {}   # item_id → combined physical closing qty
         try:
             session_res = supabase.table("daily_stock_sessions").select(
@@ -631,17 +641,27 @@ async def get_inventory_closing_stock(
                 "status", "submitted"
             ).order("updated_at", desc=True).execute()
 
-            # Keep only the most recent submitted session per location
-            # (location_id=None means a global/non-location session — treat as one slot)
-            seen_locations: set = set()
-            deduped_sessions = []
-            for s in (session_res.data or []):
-                key = s.get("location_id") or "__global__"
-                if key not in seen_locations:
-                    seen_locations.add(key)
-                    deduped_sessions.append(s)
+            all_sessions = session_res.data or []
 
-            for session in deduped_sessions:
+            # Separate location-specific from global, deduplicate within each group
+            loc_sessions: list = []
+            global_sessions: list = []
+            seen_loc_ids: set = set()
+
+            for s in all_sessions:
+                lid = s.get("location_id")
+                if lid:
+                    if lid not in seen_loc_ids:
+                        seen_loc_ids.add(lid)
+                        loc_sessions.append(s)
+                else:
+                    # Global: keep only the first (most recent, already ordered desc)
+                    if not global_sessions:
+                        global_sessions.append(s)
+
+            # Phase 1 — sum quantities from location-specific sessions
+            items_in_loc_sessions: set = set()
+            for session in loc_sessions:
                 items_res = supabase.table("daily_stock_items").select(
                     "menu_item_id, physical_closing"
                 ).eq("session_id", session["id"]).execute()
@@ -650,6 +670,20 @@ async def get_inventory_closing_stock(
                     phys = row.get("physical_closing")
                     if mid and phys is not None:
                         physical_map[mid] = physical_map.get(mid, 0.0) + float(phys)
+                        items_in_loc_sessions.add(mid)
+
+            # Phase 2 — fill in from global session ONLY for items not already
+            # covered by a location session (prevents global from doubling bar items)
+            for session in global_sessions:
+                items_res = supabase.table("daily_stock_items").select(
+                    "menu_item_id, physical_closing"
+                ).eq("session_id", session["id"]).execute()
+                for row in (items_res.data or []):
+                    mid = row.get("menu_item_id")
+                    phys = row.get("physical_closing")
+                    if mid and phys is not None and mid not in items_in_loc_sessions:
+                        physical_map[mid] = float(phys)
+
         except Exception:
             pass
 
@@ -672,16 +706,26 @@ async def get_inventory_closing_stock(
         except Exception:
             pass
 
-        # Stock receipts after as_of_date (these added stock AFTER the date we want)
+        # Stock receipts after as_of_date (these added stock AFTER the date we want).
+        # stock_receipts is a header table; line items are in stock_receipt_items.
         receipts_after: dict = {}  # item_id → qty received after cutoff
         try:
-            rcpt_res = supabase.table("stock_receipts").select(
-                "menu_item_id, quantity"
-            ).gt("received_at", after_ts).execute()
-            for r in (rcpt_res.data or []):
-                mid = r.get("menu_item_id")
-                if mid:
-                    receipts_after[mid] = receipts_after.get(mid, 0.0) + float(r.get("quantity", 0))
+            # Step 1: header IDs for receipts delivered after the cutoff date
+            rcpt_headers = supabase.table("stock_receipts").select(
+                "id"
+            ).gt("received_at", as_of_date).execute()
+            receipt_ids = [r["id"] for r in (rcpt_headers.data or [])]
+            # Step 2: line items for those receipts
+            if receipt_ids:
+                for chunk_start in range(0, len(receipt_ids), 50):
+                    chunk = receipt_ids[chunk_start:chunk_start + 50]
+                    ri_res = supabase.table("stock_receipt_items").select(
+                        "menu_item_id, quantity"
+                    ).in_("receipt_id", chunk).execute()
+                    for r in (ri_res.data or []):
+                        mid = r.get("menu_item_id")
+                        if mid:
+                            receipts_after[mid] = receipts_after.get(mid, 0.0) + float(r.get("quantity", 0))
         except Exception:
             pass
 
