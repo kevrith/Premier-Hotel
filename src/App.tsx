@@ -73,6 +73,7 @@ import PreArrivalRegistration from "./pages/PreArrivalRegistration";
 import CustomerPayment from "./pages/CustomerPayment";
 import PayPalReturn from "./pages/PayPalReturn";
 import PayPalCancel from "./pages/PayPalCancel";
+import { ConfirmDialogProvider } from "@/components/ui/ConfirmDialog";
 
 // Initialize i18n
 import "./i18n/config";
@@ -233,6 +234,8 @@ const App = () => {
             </Routes>
             </div>
 
+            {/* Enterprise confirm/prompt dialogs — replaces window.confirm/prompt */}
+            <ConfirmDialogProvider />
             {/* Global Toast Notifications */}
             <Toaster
               position="top-right"

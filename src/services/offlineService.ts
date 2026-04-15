@@ -335,7 +335,15 @@ export class OfflineService {
         failed++;
         const httpStatus = error?.response?.status;
 
-        // Drop immediately on client errors (4xx) — retrying won't help
+        // 401/403 means auth failed even after the interceptor's refresh attempt —
+        // abort the entire sync pass and let the auth:session-expired event handle it.
+        // Don't drop queued items so they can be replayed after re-login.
+        if (httpStatus === 401 || httpStatus === 403) {
+          console.warn(`[Sync] Auth error (${httpStatus}) during sync — stopping queue processing`);
+          break;
+        }
+
+        // Drop other client errors (4xx) immediately — retrying won't help
         if (httpStatus && httpStatus >= 400 && httpStatus < 500) {
           console.warn(`[Sync] Dropping item ${item.id} — server returned ${httpStatus}`);
           await db.pendingSync.delete(item.id!);

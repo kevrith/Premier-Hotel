@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect } from 'react';
 import useOfflineStore from '@/stores/offlineStore';
 import useAuthStore from '@/stores/authStore.secure';
-import { toast } from 'react-hot-toast';
+import { toastManager as toast } from '@/lib/toastManager';
 
 const OfflineContext = createContext<any>(undefined);
 
@@ -24,42 +24,42 @@ export function OfflineProvider({ children }: { children: any }) {
   } = useOfflineStore();
 
   useEffect(() => {
-    // Load pending changes from IndexedDB on mount
     loadQueueFromStorage();
 
-    // Setup online/offline event listeners
-    const handleOnline = () => {
+    const handleOnline = async () => {
       setOnlineStatus(true);
-      toast.success('Connection restored. Syncing data...');
-      syncData();
 
-      // Re-validate auth session after coming back online
-      const { isOfflineSession, checkAuth } = useAuthStore.getState();
-      if (isOfflineSession) {
-        checkAuth().then((valid) => {
-          if (!valid) {
-            toast.error('Your session has expired. Please log in again.');
-          }
-        });
+      const { isAuthenticated, refreshAccessToken } = useAuthStore.getState();
+
+      // If the user is logged in, refresh the token before replaying queued requests.
+      // Skipping this caused "session expired" errors because sync fired with a
+      // stale JWT before the refresh cycle had a chance to run.
+      if (isAuthenticated) {
+        const tokenValid = await refreshAccessToken();
+        if (!tokenValid) {
+          window.dispatchEvent(new CustomEvent('auth:session-expired'));
+          return;
+        }
       }
+
+      toast.success('Connection restored. Syncing data...', { id: 'connection-restored' });
+      syncData();
     };
 
     const handleOffline = () => {
       setOnlineStatus(false);
-      toast.error('Connection lost. Working offline...');
+      // Single deduped toast — id prevents stacking
+      toast.error('Connection lost. Working offline...', { id: 'connection-lost' });
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial online status
     setOnlineStatus(navigator.onLine);
 
-    // Desktop fix: navigator.onLine lies. Probe real connectivity on mount.
     if (navigator.onLine) {
-    const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
+      const apiBase = (import.meta as any).env?.VITE_API_BASE_URL || '';
       if (apiBase) {
-        // Use root /health (not /api/v1/health)
         const healthUrl = apiBase.replace('/api/v1', '') + '/health';
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), 4000);

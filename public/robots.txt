@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+
+# Block staff/internal routes from being indexed
+Disallow: /admin
+Disallow: /admin-dashboard
+Disallow: /manager-dashboard
+Disallow: /owner-dashboard
+Disallow: /chef-dashboard
+Disallow: /waiter-dashboard
+Disallow: /cleaner-dashboard
+Disallow: /print-station
+Disallow: /staff-check-in
+Disallow: /reports
+Disallow: /staff-management
+Disallow: /inventory
+Disallow: /expense-tracking
+Disallow: /notifications
+Disallow: /messages
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /unauthorized
+
+Sitemap: https://www.premierhotel.co.ke/sitemap.xml

@@ -29,6 +29,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useOrderUpdates, Order } from '@/hooks/useOrderUpdates';
 import { ordersApi } from '@/lib/api/orders';
 import api from '@/lib/api/client';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import { useOrderBell } from '@/hooks/useOrderBell';
 import OfflineService from '@/services/offlineService';
 import {
@@ -775,7 +776,13 @@ export default function ChefDashboard() {
                 onClick={async () => {
                   const active = orders.filter(o => ['pending','confirmed','preparing','in-progress','ready'].includes(o.status));
                   if (active.length === 0) { toast('No active orders to close.'); return; }
-                  if (!window.confirm(`Close ${active.length} active order(s) for today?\n\nThis marks them all as served and clears the kitchen view.`)) return;
+                  const ok = await confirmDialog.confirm({
+                    title: `Close ${active.length} Active Order(s)`,
+                    description: 'This marks them all as served and clears the kitchen view.',
+                    confirmLabel: 'Close Day',
+                    variant: 'warning',
+                  });
+                  if (!ok) return;
                   try {
                     const res = await api.post('/orders/end-of-day');
                     toast.success(res.data?.message || 'Day closed successfully');

@@ -92,7 +92,7 @@ export default function Login() {
     if (!cached) return;
     // Probe real connectivity with a tiny HEAD request
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
+    const timer = setTimeout(() => controller.abort(), 1500);
     const apiBase = (import.meta as any).env.VITE_API_BASE_URL || '';
     const healthUrl = apiBase.replace('/api/v1', '') + '/health';
     fetch(healthUrl, {

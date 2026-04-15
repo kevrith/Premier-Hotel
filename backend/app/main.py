@@ -183,44 +183,83 @@ async def _db_keepalive():
 
 async def _midnight_eod_closer():
     """
-    Every night at midnight EAT (UTC+3 = 21:00 UTC), automatically mark all
-    remaining active orders as 'served' so kitchen and waiter screens start
-    the next day clean.
+    Every night at the configured business-day-start hour EAT, automatically
+    mark all remaining active orders as 'served' so kitchen and waiter screens
+    start the next business day clean.
+
+    Uses the business_day_config setting (default 06:00 EAT) so that late-night
+    orders (e.g. 01:00) are correctly attributed to the previous business day.
     """
-    from datetime import date, timedelta, timezone as tz2
-    EAT_OFFSET = 3 * 3600  # seconds
+    from app.core.business_day import get_business_day_start_hour, EAT_OFFSET
+    from datetime import timedelta
 
     while True:
         try:
-            # Calculate seconds until next midnight EAT
+            supabase = get_supabase_admin()
+            start_hour = get_business_day_start_hour(supabase)
+
             now_utc = datetime.now(timezone.utc)
-            now_eat_ts = now_utc.timestamp() + EAT_OFFSET
-            # midnight EAT in UTC timestamp
-            eat_today_midnight = (int(now_eat_ts) // 86400 + 1) * 86400 - EAT_OFFSET
-            sleep_secs = eat_today_midnight - now_utc.timestamp()
+            now_eat = now_utc + EAT_OFFSET
+
+            # Next rollover = today at start_hour EAT; if already past, use tomorrow
+            next_rollover_eat = now_eat.replace(
+                hour=start_hour, minute=0, second=0, microsecond=0
+            )
+            if now_eat >= next_rollover_eat:
+                next_rollover_eat += timedelta(days=1)
+
+            next_rollover_utc = next_rollover_eat - EAT_OFFSET
+            sleep_secs = (next_rollover_utc - now_utc).total_seconds()
             if sleep_secs < 0:
-                sleep_secs += 86400
-            logger.info(f"[EOD] Next auto-close in {sleep_secs/3600:.1f} hours")
+                sleep_secs = 0
+
+            logger.info(
+                f"[EOD] Next business-day rollover in {sleep_secs/3600:.1f}h "
+                f"(at {next_rollover_eat.strftime('%H:%M')} EAT)"
+            )
             await asyncio.sleep(sleep_secs)
         except asyncio.CancelledError:
             return
+        except Exception as e:
+            logger.error(f"[EOD] Sleep calculation failed: {e}")
+            await asyncio.sleep(3600)  # retry in 1h
+            continue
 
-        # It's midnight EAT — close yesterday's orders
+        # Rollover time reached — close the previous business day's active orders
         try:
-            close_date = (datetime.now(timezone.utc) + timedelta(hours=3) - timedelta(days=0)).strftime("%Y-%m-%d")
+            from app.core.business_day import get_business_day_range, get_business_day_date_label
             supabase = get_supabase_admin()
+            # The previous business day ended at this moment — query its range
+            # by going back 1 second so we're still inside the old window
+            from app.core.business_day import get_business_day_start_hour, EAT_OFFSET, DEFAULT_START_HOUR
+            start_hour = get_business_day_start_hour(supabase)
+            # Previous window: (yesterday at start_hour EAT) → (today at start_hour EAT)
+            now_utc = datetime.now(timezone.utc)
+            now_eat = now_utc + EAT_OFFSET
+            prev_day_eat = (now_eat - timedelta(days=1)).date()
+            from datetime import datetime as _dt
+            prev_start_eat = _dt(prev_day_eat.year, prev_day_eat.month, prev_day_eat.day, start_hour, 0, 0)
+            prev_start_utc = prev_start_eat - EAT_OFFSET
+            prev_end_utc   = prev_start_utc + timedelta(hours=24)
+
+            biz_start = prev_start_utc.strftime("%Y-%m-%dT%H:%M:%S")
+            biz_end   = prev_end_utc.strftime("%Y-%m-%dT%H:%M:%S")
+
             ACTIVE_STATUSES = ["pending", "confirmed", "preparing", "in-progress", "ready"]
             res = supabase.table("orders").select("id").in_(
                 "status", ACTIVE_STATUSES
-            ).gte("created_at", f"{close_date}T00:00:00").lte("created_at", f"{close_date}T23:59:59").execute()
+            ).gte("created_at", biz_start).lte("created_at", biz_end).execute()
+
             ids = [o["id"] for o in (res.data or [])]
             if ids:
                 supabase.table("orders").update({
                     "status": "served",
                     "updated_at": datetime.now(timezone.utc).isoformat(),
-                    "notes": "[Auto-closed at end of day]",
+                    "notes": "[Auto-closed at business day rollover]",
                 }).in_("id", ids).execute()
-                logger.info(f"[EOD] Auto-closed {len(ids)} orders for {close_date}")
+                logger.info(f"[EOD] Auto-closed {len(ids)} orders for business day {prev_day_eat}")
+            else:
+                logger.info(f"[EOD] No active orders to close for business day {prev_day_eat}")
         except Exception as e:
             logger.error(f"[EOD] Auto-close failed: {e}")
 
@@ -260,7 +299,37 @@ async def startup():
     # Start midnight EOD order closer
     global _eod_task
     _eod_task = asyncio.create_task(_midnight_eod_closer())
-    logger.info("✅ Midnight EOD order-closer task started (runs daily at midnight EAT)")
+    logger.info("✅ Business-day EOD order-closer task started")
+
+    # Catch-up: if the server was asleep during the last rollover (Render sleep),
+    # close any active orders from the PREVIOUS business day right now on startup.
+    try:
+        from app.core.business_day import get_business_day_range, get_business_day_start_hour, EAT_OFFSET
+        from datetime import timedelta
+        supabase_admin_inst = get_supabase_admin()
+        start_hour = get_business_day_start_hour(supabase_admin_inst)
+        now_utc = datetime.now(timezone.utc)
+        now_eat = now_utc + EAT_OFFSET
+        # Previous business day window
+        prev_day_eat = (now_eat - timedelta(days=1)).date()
+        from datetime import datetime as _dt2
+        prev_start_eat = _dt2(prev_day_eat.year, prev_day_eat.month, prev_day_eat.day, start_hour, 0, 0)
+        prev_start_utc = prev_start_eat - EAT_OFFSET
+        prev_end_utc   = prev_start_utc + timedelta(hours=24)
+        biz_start = prev_start_utc.strftime("%Y-%m-%dT%H:%M:%S")
+        biz_end   = prev_end_utc.strftime("%Y-%m-%dT%H:%M:%S")
+        ACTIVE = ["pending", "confirmed", "preparing", "in-progress", "ready"]
+        res = supabase_admin_inst.table("orders").select("id").in_("status", ACTIVE).gte("created_at", biz_start).lte("created_at", biz_end).execute()
+        ids = [o["id"] for o in (res.data or [])]
+        if ids:
+            supabase_admin_inst.table("orders").update({
+                "status": "served",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "notes": "[Auto-closed on startup catch-up]",
+            }).in_("id", ids).execute()
+            logger.info(f"[EOD-CATCHUP] Closed {len(ids)} missed orders from previous business day {prev_day_eat}")
+    except Exception as e:
+        logger.warning(f"[EOD-CATCHUP] Startup catch-up failed (non-fatal): {e}")
 
     try:
         # Start automatic email queue processor

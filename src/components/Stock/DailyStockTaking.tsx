@@ -880,11 +880,33 @@ ${mode === 'variance' ? `<div class="summary">
 
       {/* ── Submitted banner (bar/all only) ── */}
       {sessionType !== 'kitchen' && isSubmitted && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>
-            Stock take for <strong>{selectedDate}</strong> has been submitted. You can re-submit to update counts.
-          </span>
+        <div className={`flex items-center justify-between gap-3 p-3 rounded-lg border text-sm ${isEditMode ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+          <div className="flex items-center gap-2">
+            {isEditMode
+              ? <Pencil className="h-4 w-4 shrink-0 text-amber-600" />
+              : <CheckCircle2 className="h-4 w-4 shrink-0" />}
+            <span>
+              {isEditMode
+                ? <>Editing stock take for <strong>{selectedDate}</strong> — update the counts below and re-submit when done.</>
+                : <>Stock take for <strong>{selectedDate}</strong> has been submitted.{' '}
+                    {isManager ? 'Click Edit to correct any mistakes.' : 'Contact a manager or admin to make corrections.'}</>}
+            </span>
+          </div>
+          {isManager && (
+            <div className="flex items-center gap-2 shrink-0">
+              {isEditMode ? (
+                <Button variant="outline" size="sm" onClick={() => { setIsEditMode(false); fetchSheet(); }}
+                  className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-100">
+                  Cancel
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setIsEditMode(true)}
+                  className="h-7 text-xs border-green-400 text-green-800 hover:bg-green-100 gap-1">
+                  <Pencil className="h-3 w-3" /> Edit
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1106,10 +1128,34 @@ ${mode === 'variance' ? `<div class="summary">
           </Card>
         ) : (
           <div className="space-y-4">
-            {kitchenData.already_submitted && !kitchenEditMode && (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>Kitchen stock for <strong>{selectedDate}</strong> already saved. Click <strong>Edit</strong> to update.</span>
+            {kitchenData.already_submitted && (
+              <div className={`flex items-center justify-between gap-3 p-3 rounded-lg border text-sm ${kitchenEditMode ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+                <div className="flex items-center gap-2">
+                  {kitchenEditMode
+                    ? <Pencil className="h-4 w-4 shrink-0 text-amber-600" />
+                    : <CheckCircle2 className="h-4 w-4 shrink-0" />}
+                  <span>
+                    {kitchenEditMode
+                      ? <>Editing kitchen stock for <strong>{selectedDate}</strong> — update counts and save when done.</>
+                      : <>Kitchen stock for <strong>{selectedDate}</strong> already saved.{' '}
+                          {isManager ? 'Click Edit to correct any mistakes.' : 'Contact a manager or admin to make corrections.'}</>}
+                  </span>
+                </div>
+                {isManager && (
+                  <div className="shrink-0">
+                    {kitchenEditMode ? (
+                      <Button variant="outline" size="sm" onClick={() => { setKitchenEditMode(false); fetchKitchenSheet(); }}
+                        className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-100">
+                        Cancel
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => setKitchenEditMode(true)}
+                        className="h-7 text-xs border-green-400 text-green-800 hover:bg-green-100 gap-1">
+                        <Pencil className="h-3 w-3" /> Edit
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             <Card className="overflow-hidden">
@@ -1188,11 +1234,6 @@ ${mode === 'variance' ? `<div class="summary">
                       : 'Closing stock will automatically become tomorrow\'s opening stock.'}
                   </p>
                   <div className="flex items-center gap-2">
-                    {kitchenData.already_submitted && !kitchenEditMode && (
-                      <Button variant="outline" size="sm" onClick={() => setKitchenEditMode(true)} className="gap-1.5">
-                        <Pencil className="h-4 w-4" /> Edit
-                      </Button>
-                    )}
                     {kitchenEditMode && (
                       <Button variant="ghost" size="sm" onClick={() => { setKitchenEditMode(false); fetchKitchenSheet(); }}>
                         Cancel
@@ -1433,17 +1474,6 @@ ${mode === 'variance' ? `<div class="summary">
                 {isEditMode && ' · Editing submitted session'}
               </p>
               <div className="flex items-center gap-2 flex-wrap">
-                {isSubmitted && !isEditMode && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsEditMode(true)}
-                    className="flex items-center gap-1.5"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Edit Counts
-                  </Button>
-                )}
                 {isEditMode && (
                   <Button
                     variant="ghost"
@@ -1503,6 +1533,7 @@ ${mode === 'variance' ? `<div class="summary">
                       <th className="text-left py-2 px-3">Status</th>
                       <th className="text-left py-2 px-3">Notes</th>
                       <th className="text-left py-2 px-3">Submitted At</th>
+                      {isManager && <th className="py-2 px-3" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -1527,6 +1558,29 @@ ${mode === 'variance' ? `<div class="summary">
                         <td className="py-2 px-3 text-xs text-muted-foreground">
                           {new Date(s.updated_at).toLocaleString()}
                         </td>
+                        {isManager && (
+                          <td className="py-2 px-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-xs px-2 gap-1"
+                              onClick={() => {
+                                setSelectedDate(s.session_date);
+                                if (s.session_type === 'kitchen') {
+                                  setSessionType('kitchen');
+                                } else {
+                                  setViewMode('single');
+                                  setSessionType(s.session_type as any);
+                                }
+                                setHistoryOpen(false);
+                                // Scroll to top so the user sees the loaded sheet
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" /> Load
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

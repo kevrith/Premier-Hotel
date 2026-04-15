@@ -23,12 +23,14 @@ class PettyCashCreate(BaseModel):
     entry_date: str          # YYYY-MM-DD
     cash_at_hand: float
     expenses: float
+    capital_injection: Optional[float] = 0.0
     notes: Optional[str] = None
 
 
 class PettyCashUpdate(BaseModel):
     cash_at_hand: Optional[float] = None
     expenses: Optional[float] = None
+    capital_injection: Optional[float] = None
     notes: Optional[str] = None
 
 
@@ -53,7 +55,8 @@ def _recalculate_cumulative(supabase: Client, branch_id: str, from_date: str):
 
     now_iso = datetime.now(timezone.utc).isoformat()
     for entry in (affected.data or []):
-        daily = float(entry["cash_at_hand"]) - float(entry["expenses"])
+        injection = float(entry.get("capital_injection") or 0)
+        daily = float(entry["cash_at_hand"]) + injection - float(entry["expenses"])
         running = round(running + daily, 2)
         supabase.table("petty_cash_entries").update({
             "daily_balance": round(daily, 2),
@@ -123,7 +126,8 @@ async def get_monthly_summary(
 
     total_cash = sum(float(e["cash_at_hand"]) for e in entries)
     total_expenses = sum(float(e["expenses"]) for e in entries)
-    net_month = round(total_cash - total_expenses, 2)
+    total_injection = sum(float(e.get("capital_injection") or 0) for e in entries)
+    net_month = round(total_cash + total_injection - total_expenses, 2)
 
     # Latest cumulative (most recent entry for this branch overall)
     latest_res = supabase.table("petty_cash_entries").select(
@@ -133,15 +137,23 @@ async def get_monthly_summary(
     current_cumulative = float(latest_res.data[0]["cumulative_balance"]) if latest_res.data else 0.0
     latest_date = latest_res.data[0]["entry_date"] if latest_res.data else None
 
+    # All-time total injections for this branch
+    all_inject_res = supabase.table("petty_cash_entries").select(
+        "capital_injection"
+    ).eq("branch_id", branch_id).gt("capital_injection", 0).execute()
+    total_injected_all_time = round(sum(float(e.get("capital_injection") or 0) for e in (all_inject_res.data or [])), 2)
+
     return {
         "branch_id": branch_id,
         "month": month,
         "entry_count": len(entries),
         "total_cash_at_hand": round(total_cash, 2),
         "total_expenses": round(total_expenses, 2),
+        "total_capital_injection": round(total_injection, 2),
         "net_month": net_month,
         "current_cumulative": current_cumulative,
         "latest_entry_date": latest_date,
+        "total_injected_all_time": total_injected_all_time,
     }
 
 
@@ -226,7 +238,8 @@ async def create_entry(
     if existing.data:
         raise HTTPException(status_code=409, detail="An entry for this date already exists. Edit the existing entry instead.")
 
-    daily_balance = round(body.cash_at_hand - body.expenses, 2)
+    injection = float(body.capital_injection or 0)
+    daily_balance = round(body.cash_at_hand + injection - body.expenses, 2)
 
     # Get previous cumulative
     prev = supabase.table("petty_cash_entries").select("cumulative_balance").eq(
@@ -240,6 +253,7 @@ async def create_entry(
         "branch_id": body.branch_id,
         "entry_date": body.entry_date,
         "cash_at_hand": body.cash_at_hand,
+        "capital_injection": injection,
         "expenses": body.expenses,
         "daily_balance": daily_balance,
         "cumulative_balance": cumulative_balance,
@@ -284,6 +298,8 @@ async def update_entry(
         payload["cash_at_hand"] = body.cash_at_hand
     if body.expenses is not None:
         payload["expenses"] = body.expenses
+    if body.capital_injection is not None:
+        payload["capital_injection"] = body.capital_injection
     if body.notes is not None:
         payload["notes"] = body.notes
 

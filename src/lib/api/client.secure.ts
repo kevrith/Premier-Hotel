@@ -7,7 +7,7 @@
  */
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-import { toast } from 'react-hot-toast';
+import { toastManager as toast } from '@/lib/toastManager';
 import type { ApiResponse } from '@/types';
 
 /**

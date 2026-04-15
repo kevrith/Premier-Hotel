@@ -17,11 +17,8 @@ const useOfflineStore = create((set, get) => ({
   // Actions
   setOnlineStatus: (status: boolean) => {
     set({ isOnline: status });
-
-    // Automatically trigger sync when coming online
-    if (status && !get().isOfflineMode && get().syncQueue.length > 0) {
-      get().syncData();
-    }
+    // NOTE: sync on coming-online is intentionally triggered by OfflineContext
+    // (after a token refresh), not here, to avoid syncing with an expired JWT.
   },
 
   toggleOfflineMode: () => {
@@ -127,17 +124,9 @@ const useOfflineStore = create((set, get) => ({
   }
 }));
 
-// Initialize online/offline listeners
+// Initialize on startup — OfflineContext owns the online/offline listeners
+// so we don't register duplicate handlers here (double-sync bug).
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    useOfflineStore.getState().setOnlineStatus(true);
-  });
-
-  window.addEventListener('offline', () => {
-    useOfflineStore.getState().setOnlineStatus(false);
-  });
-
-  // Load queue on init
   useOfflineStore.getState().loadQueueFromStorage();
 }
 

@@ -23,6 +23,7 @@ import {
   LineChart, Cog, ClipboardList, UserSquare2, HeartHandshake, Bell, Download, Package, LogOut, Home, Wallet
 } from 'lucide-react';
 import api from '@/lib/api/client';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import { PettyCash } from '@/components/Admin/PettyCash';
 import { formatKES } from '@/lib/utils/format';
 import { toast } from 'react-hot-toast';
@@ -803,14 +804,14 @@ const BranchesPage = ({ isOwner }: { isOwner: boolean }) => {
   };
 
   const purgeBranch = async (id: string, name: string) => {
-    const input = window.prompt(
-      `⚠️ PERMANENT DATA PURGE\n\n` +
-      `This will PERMANENTLY DELETE everything for "${name}":\n` +
-      `rooms, orders, bookings, staff accounts, budgets.\n\n` +
-      `This is irreversible and may violate accounting compliance rules.\n\n` +
-      `Type the branch name exactly to confirm:`
-    );
-    if (input === null) return; // cancelled
+    const input = await confirmDialog.prompt({
+      title: '⚠️ Permanent Data Purge',
+      description: `This will PERMANENTLY DELETE everything for "${name}": rooms, orders, bookings, staff accounts, budgets. This is irreversible and may violate accounting compliance rules.`,
+      label: `Type the branch name "${name}" exactly to confirm`,
+      placeholder: name,
+      confirmLabel: 'Permanently Delete',
+    });
+    if (input === null) return;
     if (input.trim() !== name.trim()) {
       toast.error('Branch name did not match. Purge cancelled.');
       return;

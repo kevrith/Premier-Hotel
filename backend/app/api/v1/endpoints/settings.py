@@ -352,6 +352,42 @@ async def update_localization_config(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Business Day config ────────────────────────────────────────────────────
+
+_BUSINESS_DAY_DEFAULTS = {"start_hour": 6}  # 06:00 EAT
+
+
+class BusinessDayConfig(BaseModel):
+    start_hour: int  # 0–23 — hour in EAT when a new business day begins
+
+
+@router.get("/business-day-config")
+async def get_business_day_config(
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Public — all roles need to know the business day boundary."""
+    try:
+        return _get_setting(supabase_admin, "business_day_config", _BUSINESS_DAY_DEFAULTS.copy())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/business-day-config")
+async def update_business_day_config(
+    config: BusinessDayConfig,
+    current_user: dict = Depends(require_admin_or_manager),
+    supabase_admin: Client = Depends(get_supabase_admin),
+):
+    """Update the hour (EAT) at which a new business day starts. Admin/Manager only."""
+    if not 0 <= config.start_hour <= 23:
+        raise HTTPException(status_code=400, detail="start_hour must be 0–23")
+    try:
+        _put_setting(supabase_admin, "business_day_config", config.model_dump(), current_user["id"])
+        return {"success": True, "message": f"Business day now starts at {config.start_hour:02d}:00 EAT"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Receipt config ────────────────────────────────────────────────────────────
 
 _RECEIPT_DEFAULTS = {

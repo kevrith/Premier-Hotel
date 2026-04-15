@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import api from '@/lib/api/client';
 import { Trash2, ChevronDown, ChevronRight, ArrowRight, Search, Shuffle, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -253,9 +254,13 @@ export function StockTransfer() {
   }
 
   async function handleReverse(transferNumber: string) {
-    if (!window.confirm(
-      `Reverse transfer ${transferNumber}?\n\nThis will move all transferred stock back to the source location.`
-    )) return;
+    const ok = await confirmDialog.confirm({
+      title: `Reverse Transfer ${transferNumber}`,
+      description: 'This will move all transferred stock back to the source location.',
+      confirmLabel: 'Reverse',
+      variant: 'warning',
+    });
+    if (!ok) return;
     setReversingGroup(transferNumber);
     try {
       const res = await api.post(`/location-stock/transfer/${transferNumber}/reverse`);

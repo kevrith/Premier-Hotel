@@ -65,6 +65,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Smartphone, Banknote, Printer } from 'lucide-react';
 import { printBill } from '@/lib/print';
 import { tablesAPI, RestaurantTable } from '@/lib/api/tables';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAcceptedPaymentMethods } from '@/hooks/useAcceptedPaymentMethods';
 import { paymentService } from '@/lib/api/payments';
 
@@ -867,7 +868,13 @@ export default function WaiterDashboard() {
                   onClick={async () => {
                     const active = orders.filter(o => ['pending','confirmed','preparing','in-progress','ready'].includes(o.status));
                     if (active.length === 0) { toast('No active orders to close.'); return; }
-                    if (!window.confirm(`Close ${active.length} active order(s) for today?\n\nThis marks them all as served and clears the active view.`)) return;
+                    const ok = await confirmDialog.confirm({
+                      title: `Close ${active.length} Active Order(s)`,
+                      description: 'This marks them all as served and clears the active view.',
+                      confirmLabel: 'Close Day',
+                      variant: 'warning',
+                    });
+                    if (!ok) return;
                     try {
                       const res = await api.post('/orders/end-of-day');
                       toast.success(res.data?.message || 'Day closed successfully');

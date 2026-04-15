@@ -9,7 +9,7 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
-import { toast } from 'react-hot-toast';
+import { toastManager as toast } from '@/lib/toastManager';
 import type { ApiResponse } from '@/types';
 import { db, dbHelpers } from '@/db/schema';
 
@@ -238,7 +238,7 @@ apiClient.interceptors.response.use(
           window.dispatchEvent(new CustomEvent('offline:queued', { detail: { url, method } }));
 
           if (!navigator.onLine) {
-            toast(`Saved offline — will sync when connected`, { icon: '📶' });
+            toast.info(`Saved offline — will sync when connected`, { id: 'offline-queued', icon: '📶' });
           }
 
           // Return a synthetic Axios-like response
@@ -289,7 +289,7 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      toast.error('Network error. Please check your connection.');
+      toast.error('Network error. Please check your connection.', { id: 'network-error' });
       return Promise.reject(error);
     }
 
@@ -334,7 +334,7 @@ apiClient.interceptors.response.use(
             // Only fire session-expired if refresh also got a real 401/403
             if (refreshError.response?.status === 401 || refreshError.response?.status === 403) {
               window.dispatchEvent(new CustomEvent('auth:session-expired'));
-              toast.error('Session expired. Please login again.');
+              toast.error('Session expired. Please login again.', { id: 'session-expired' });
             }
             return Promise.reject(refreshError);
           }
@@ -342,7 +342,7 @@ apiClient.interceptors.response.use(
         break;
 
       case 403:
-        toast.error('You do not have permission to perform this action.');
+        toast.error('You do not have permission to perform this action.', { id: 'forbidden' });
         break;
 
       case 404:
@@ -360,11 +360,11 @@ apiClient.interceptors.response.use(
         break;
 
       case 429:
-        toast.error('Too many requests. Please try again later.');
+        toast.error('Too many requests. Please try again later.', { id: 'rate-limit' });
         break;
 
       case 500: case 502: case 503: case 504:
-        toast.error('Server error. Please try again later.');
+        toast.error('Server error. Please try again later.', { id: 'server-error' });
         break;
 
       default:

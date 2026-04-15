@@ -1,7 +1,8 @@
 // @ts-nocheck
 /**
- * PettyCash — daily cash-at-hand & expenses ledger per branch.
- * Input: cash at hand + expenses → auto-calculates daily balance + cumulative running total.
+ * PettyCash — daily cash-at-hand, capital injections & expenses ledger per branch.
+ * Formula: daily_balance = cash_at_hand + capital_injection - expenses
+ * Capital Injection: owner/investor money put INTO the business (separate from operating cash).
  * Edit: admin/owner only. View: admin/manager/owner.
  */
 import { useState, useEffect, useCallback } from 'react';
@@ -14,9 +15,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import api from '@/lib/api/client';
-import { Pencil, Trash2, Plus, RefreshCw, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
-import { format } from 'date-fns';
+import { Pencil, Trash2, Plus, RefreshCw, TrendingUp, Wallet, ArrowDownToLine } from 'lucide-react';
 
 interface Branch { id: string; name: string; }
 
@@ -25,6 +26,7 @@ interface PettyCashEntry {
   branch_id: string;
   entry_date: string;
   cash_at_hand: number;
+  capital_injection: number;
   expenses: number;
   daily_balance: number;
   cumulative_balance: number;
@@ -54,13 +56,16 @@ export function PettyCash() {
   const [showForm, setShowForm] = useState(false);
   const [formDate, setFormDate] = useState(todayISO());
   const [formCash, setFormCash] = useState('');
+  const [formInjection, setFormInjection] = useState('');
   const [formExpenses, setFormExpenses] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [showInjectionField, setShowInjectionField] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Edit dialog
   const [editEntry, setEditEntry] = useState<PettyCashEntry | null>(null);
   const [editCash, setEditCash] = useState('');
+  const [editInjection, setEditInjection] = useState('');
   const [editExpenses, setEditExpenses] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editSaving, setEditSaving] = useState(false);
@@ -72,7 +77,6 @@ export function PettyCash() {
       setBranches(b);
       if (b.length > 0) setSelectedBranch(b[0].id);
     }).catch(() => {
-      // fallback: try /settings/branches
       api.get('/settings/hotel').then(r => {
         const br = r.data?.branch || r.data;
         if (br?.id) { setBranches([{ id: br.id, name: br.name }]); setSelectedBranch(br.id); }
@@ -104,12 +108,14 @@ export function PettyCash() {
         branch_id: selectedBranch,
         entry_date: formDate,
         cash_at_hand: parseFloat(formCash),
+        capital_injection: parseFloat(formInjection || '0'),
         expenses: parseFloat(formExpenses),
         notes: formNotes || null,
       });
       toast.success('Entry recorded');
       setShowForm(false);
-      setFormCash(''); setFormExpenses(''); setFormNotes('');
+      setFormCash(''); setFormInjection(''); setFormExpenses(''); setFormNotes('');
+      setShowInjectionField(false);
       loadEntries();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to save');
@@ -121,6 +127,7 @@ export function PettyCash() {
   const openEdit = (entry: PettyCashEntry) => {
     setEditEntry(entry);
     setEditCash(String(entry.cash_at_hand));
+    setEditInjection(entry.capital_injection > 0 ? String(entry.capital_injection) : '');
     setEditExpenses(String(entry.expenses));
     setEditNotes(entry.notes || '');
   };
@@ -131,6 +138,7 @@ export function PettyCash() {
     try {
       await api.patch(`/petty-cash/${editEntry.id}`, {
         cash_at_hand: parseFloat(editCash),
+        capital_injection: parseFloat(editInjection || '0'),
         expenses: parseFloat(editExpenses),
         notes: editNotes || null,
       });
@@ -145,7 +153,13 @@ export function PettyCash() {
   };
 
   const handleDelete = async (entry: PettyCashEntry) => {
-    if (!window.confirm(`Delete entry for ${entry.entry_date}? This will recalculate all subsequent balances.`)) return;
+    const ok = await confirmDialog.confirm({
+      title: 'Delete Entry',
+      description: `Delete entry for ${entry.entry_date}? This will recalculate all subsequent balances.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/petty-cash/${entry.id}`);
       toast.success('Entry deleted');
@@ -156,9 +170,16 @@ export function PettyCash() {
   };
 
   const latest = entries[0]; // newest first
-  const liveDailyBalance = formCash && formExpenses
-    ? (parseFloat(formCash) || 0) - (parseFloat(formExpenses) || 0)
-    : null;
+
+  // Live daily balance preview
+  const liveCash = parseFloat(formCash) || 0;
+  const liveInj = parseFloat(formInjection || '0') || 0;
+  const liveExp = parseFloat(formExpenses) || 0;
+  const liveDailyBalance = (formCash && formExpenses) ? liveCash + liveInj - liveExp : null;
+
+  // Summary stats
+  const totalInjectedAllTime = entries.reduce((s, e) => s + (e.capital_injection || 0), 0);
+  const hasAnyInjection = entries.some(e => (e.capital_injection || 0) > 0);
 
   if (!canView) return null;
 
@@ -171,7 +192,9 @@ export function PettyCash() {
             <Wallet className="h-5 w-5 text-indigo-600" />
             Petty Cash Ledger
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Daily cash-at-hand minus expenses = balance</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Daily balance = Cash at Hand + Capital Injection − Expenses
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {branches.length > 1 && (
@@ -195,7 +218,7 @@ export function PettyCash() {
 
       {/* Summary cards */}
       {latest && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Card className="border-0 shadow-sm">
             <CardContent className="pt-4 pb-3">
               <p className="text-xs text-muted-foreground">Running Balance</p>
@@ -214,11 +237,24 @@ export function PettyCash() {
               <p className="text-xs text-muted-foreground mt-0.5">{latest.entry_date}</p>
             </CardContent>
           </Card>
-          <Card className="border-0 shadow-sm col-span-2 sm:col-span-1">
+          <Card className="border-0 shadow-sm">
             <CardContent className="pt-4 pb-3">
               <p className="text-xs text-muted-foreground">Last Cash at Hand</p>
               <p className="text-xl font-bold mt-0.5">{fmt(latest.cash_at_hand)}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Expenses: {fmt(latest.expenses)}</p>
+            </CardContent>
+          </Card>
+          {/* Capital Injection summary — always shown so owners know it exists */}
+          <Card className={`border-0 shadow-sm ${totalInjectedAllTime > 0 ? 'border-l-4 border-l-emerald-500' : ''}`}>
+            <CardContent className="pt-4 pb-3">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <ArrowDownToLine className="h-3 w-3 text-emerald-600" />
+                Total Capital Injected
+              </p>
+              <p className={`text-xl font-bold mt-0.5 ${totalInjectedAllTime > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                {totalInjectedAllTime > 0 ? fmt(totalInjectedAllTime) : '—'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">all-time (last 60 entries)</p>
             </CardContent>
           </Card>
         </div>
@@ -253,13 +289,46 @@ export function PettyCash() {
                 </div>
               </div>
             </div>
+
+            {/* Capital Injection — optional, toggled */}
+            {!showInjectionField ? (
+              <button
+                type="button"
+                onClick={() => setShowInjectionField(true)}
+                className="flex items-center gap-1.5 text-xs text-emerald-700 hover:text-emerald-800 font-medium"
+              >
+                <ArrowDownToLine className="h-3.5 w-3.5" />
+                + Add Capital Injection (owner/investor funds)
+              </button>
+            ) : (
+              <div className="space-y-1 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+                <Label className="text-xs text-emerald-800 flex items-center gap-1">
+                  <ArrowDownToLine className="h-3 w-3" />
+                  Capital Injection (KES)
+                </Label>
+                <p className="text-xs text-emerald-700/70 mb-1.5">
+                  Money injected into the business by the owner or investor — tracked separately from daily cash.
+                </p>
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="number" min="0" step="0.01" placeholder="e.g. 50000"
+                    value={formInjection}
+                    onChange={e => setFormInjection(e.target.value)}
+                    className="h-8 text-sm border-emerald-300 focus:ring-emerald-400"
+                  />
+                  <button type="button" onClick={() => { setShowInjectionField(false); setFormInjection(''); }}
+                    className="text-xs text-muted-foreground hover:text-destructive">Remove</button>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1">
               <Label className="text-xs">Notes (optional)</Label>
               <Input placeholder="e.g. Collected from waiters + morning float" value={formNotes}
                 onChange={e => setFormNotes(e.target.value)} className="h-8 text-sm" />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button variant="outline" size="sm" onClick={() => { setShowForm(false); setShowInjectionField(false); setFormInjection(''); }}>Cancel</Button>
               <Button size="sm" onClick={handleCreate} disabled={saving}>
                 {saving ? 'Saving…' : 'Save Entry'}
               </Button>
@@ -285,6 +354,9 @@ export function PettyCash() {
                   <tr className="border-b text-xs text-muted-foreground">
                     <th className="px-4 py-2 text-left font-medium">Date</th>
                     <th className="px-4 py-2 text-right font-medium">Cash at Hand</th>
+                    {hasAnyInjection && (
+                      <th className="px-4 py-2 text-right font-medium text-emerald-700">Capital Injection</th>
+                    )}
                     <th className="px-4 py-2 text-right font-medium">Expenses</th>
                     <th className="px-4 py-2 text-right font-medium">Daily Balance</th>
                     <th className="px-4 py-2 text-right font-medium">Running Total</th>
@@ -293,36 +365,54 @@ export function PettyCash() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {entries.map(entry => (
-                    <tr key={entry.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-2.5 font-medium tabular-nums">{entry.entry_date}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{fmt(entry.cash_at_hand)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-red-600">{fmt(entry.expenses)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">
-                        <span className={entry.daily_balance >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                          {entry.daily_balance >= 0 ? '+' : ''}{fmt(entry.daily_balance)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums font-semibold">
-                        <span className={entry.cumulative_balance >= 0 ? 'text-indigo-700' : 'text-red-600'}>
-                          {fmt(entry.cumulative_balance)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-muted-foreground text-xs max-w-[180px] truncate">{entry.notes || '—'}</td>
-                      {canEdit && (
-                        <td className="px-4 py-2.5">
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={() => openEdit(entry)} className="p-1 rounded hover:bg-muted transition-colors">
-                              <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                            </button>
-                            <button onClick={() => handleDelete(entry)} className="p-1 rounded hover:bg-destructive/10 transition-colors">
-                              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                            </button>
-                          </div>
+                  {entries.map(entry => {
+                    const injection = entry.capital_injection || 0;
+                    return (
+                      <tr key={entry.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-2.5 font-medium tabular-nums">
+                          {entry.entry_date}
+                          {injection > 0 && (
+                            <Badge className="ml-2 bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px] px-1.5 py-0">
+                              + Injection
+                            </Badge>
+                          )}
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        <td className="px-4 py-2.5 text-right tabular-nums">{fmt(entry.cash_at_hand)}</td>
+                        {hasAnyInjection && (
+                          <td className="px-4 py-2.5 text-right tabular-nums">
+                            {injection > 0
+                              ? <span className="text-emerald-700 font-semibold">{fmt(injection)}</span>
+                              : <span className="text-muted-foreground">—</span>
+                            }
+                          </td>
+                        )}
+                        <td className="px-4 py-2.5 text-right tabular-nums text-red-600">{fmt(entry.expenses)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          <span className={entry.daily_balance >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                            {entry.daily_balance >= 0 ? '+' : ''}{fmt(entry.daily_balance)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold">
+                          <span className={entry.cumulative_balance >= 0 ? 'text-indigo-700' : 'text-red-600'}>
+                            {fmt(entry.cumulative_balance)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground text-xs max-w-[180px] truncate">{entry.notes || '—'}</td>
+                        {canEdit && (
+                          <td className="px-4 py-2.5">
+                            <div className="flex gap-1 justify-end">
+                              <button onClick={() => openEdit(entry)} className="p-1 rounded hover:bg-muted transition-colors">
+                                <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                              </button>
+                              <button onClick={() => handleDelete(entry)} className="p-1 rounded hover:bg-destructive/10 transition-colors">
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -341,14 +431,23 @@ export function PettyCash() {
               <Label className="text-xs">Cash at Hand (KES)</Label>
               <Input type="number" min="0" step="0.01" value={editCash} onChange={e => setEditCash(e.target.value)} className="h-8 text-sm" />
             </div>
+            <div className="space-y-1 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+              <Label className="text-xs text-emerald-800 flex items-center gap-1">
+                <ArrowDownToLine className="h-3 w-3" />
+                Capital Injection (KES) — leave 0 if none
+              </Label>
+              <Input type="number" min="0" step="0.01" placeholder="0" value={editInjection}
+                onChange={e => setEditInjection(e.target.value)} className="h-8 text-sm border-emerald-300 focus:ring-emerald-400" />
+            </div>
             <div className="space-y-1">
               <Label className="text-xs">Expenses (KES)</Label>
               <Input type="number" min="0" step="0.01" value={editExpenses} onChange={e => setEditExpenses(e.target.value)} className="h-8 text-sm" />
             </div>
             {editCash && editExpenses && (
               <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-                Daily balance: <span className={`font-semibold ${(parseFloat(editCash)-parseFloat(editExpenses))>=0?'text-green-700':'text-red-600'}`}>
-                  {fmt((parseFloat(editCash)||0)-(parseFloat(editExpenses)||0))}
+                Daily balance:{' '}
+                <span className={`font-semibold ${((parseFloat(editCash)||0) + (parseFloat(editInjection||'0')||0) - (parseFloat(editExpenses)||0)) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                  {fmt((parseFloat(editCash)||0) + (parseFloat(editInjection||'0')||0) - (parseFloat(editExpenses)||0))}
                 </span>
               </div>
             )}

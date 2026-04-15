@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer, ShieldCheck, KeyRound, MapPin, Navigation, FileText } from 'lucide-react';
+import { Settings, CreditCard, Bell, Globe, Zap, Receipt, Loader2, Monitor, Printer, ShieldCheck, KeyRound, MapPin, Navigation, FileText, Clock } from 'lucide-react';
 import { GEO_DEFAULTS } from '@/hooks/useGeoGate';
 import { useToast } from '@/hooks/use-toast';
 import { toast as hotToast } from 'react-hot-toast';
@@ -100,6 +100,7 @@ export function SystemConfiguration() {
   const [notification, setNotification] = useState<NotificationConfig>(DEFAULT_NOTIFICATION);
   const [system,       setSystem]       = useState<SystemConfig>(DEFAULT_SYSTEM);
   const [localization, setLocalization] = useState<LocalizationConfig>(DEFAULT_LOCALIZATION);
+  const [bizDayHour,   setBizDayHour]   = useState<number>(6);
 
   // POS settings — stored in localStorage (device-level settings)
   const [posAutoLogout, setPosAutoLogout] = useState<boolean>(
@@ -212,18 +213,20 @@ export function SystemConfiguration() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [p, n, s, l, r] = await Promise.allSettled([
+        const [p, n, s, l, r, bd] = await Promise.allSettled([
           apiClient.get('/settings/payment-config'),
           apiClient.get('/settings/notification-config'),
           apiClient.get('/settings/system-config'),
           apiClient.get('/settings/localization-config'),
           apiClient.get('/settings/receipt-config'),
+          apiClient.get('/settings/business-day-config'),
         ]);
 
         if (p.status === 'fulfilled') setPayment({ ...DEFAULT_PAYMENT, ...p.value.data });
         if (n.status === 'fulfilled') setNotification({ ...DEFAULT_NOTIFICATION, ...n.value.data });
         if (s.status === 'fulfilled') setSystem({ ...DEFAULT_SYSTEM, ...s.value.data });
         if (l.status === 'fulfilled') setLocalization({ ...DEFAULT_LOCALIZATION, ...l.value.data });
+        if (bd.status === 'fulfilled') setBizDayHour(bd.value.data?.start_hour ?? 6);
         if (r.status === 'fulfilled') {
           const dbReceipt = r.value.data;
           // Merge DB values into state and also sync to localStorage
@@ -288,6 +291,7 @@ export function SystemConfiguration() {
                 <TabsTrigger value="localization" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><Globe className="h-3.5 w-3.5 mr-1" />Locale</TabsTrigger>
                 <TabsTrigger value="pos" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><Monitor className="h-3.5 w-3.5 mr-1" />POS</TabsTrigger>
                 <TabsTrigger value="receipt" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><FileText className="h-3.5 w-3.5 mr-1" />Receipt</TabsTrigger>
+                <TabsTrigger value="business-day" className="text-xs sm:text-sm px-2 sm:px-3 py-2"><Clock className="h-3.5 w-3.5 mr-1" />Business Day</TabsTrigger>
               </TabsList>
             </div>
 
@@ -596,6 +600,54 @@ export function SystemConfiguration() {
                 >
                   {saving === 'Localization' && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Save Localization Settings
+                </Button>
+              </div>
+            </TabsContent>
+
+            {/* ── Business Day ── */}
+            <TabsContent value="business-day" className="space-y-4">
+              <div className="space-y-4">
+                <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Business Day Start Hour (EAT)</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Orders placed before this hour are attributed to the <strong>previous</strong> business day.
+                      E.g. with 06:00, a 2am order belongs to yesterday's shift.
+                      Affects kitchen queues, waiter dashboards, daily sales reports, and the automatic end-of-day rollover.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Select
+                      value={String(bizDayHour)}
+                      onValueChange={(v) => setBizDayHour(Number(v))}
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 12 }, (_, i) => i).map(h => (
+                          <SelectItem key={h} value={String(h)}>
+                            {String(h).padStart(2, '0')}:00 EAT{h === 0 ? ' (midnight — calendar day)' : h === 6 ? ' (recommended)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-sm text-muted-foreground">
+                      New day starts at <strong>{String(bizDayHour).padStart(2, '0')}:00 EAT</strong>
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground p-3 bg-blue-50 rounded border border-blue-100">
+                    <strong>Current setting:</strong> Orders from <strong>{String(bizDayHour).padStart(2, '0')}:00 EAT today</strong> to{' '}
+                    <strong>{String(bizDayHour).padStart(2, '0')}:00 EAT tomorrow</strong> count as today’s business.
+                    The automatic end-of-day rollover fires at <strong>{String(bizDayHour).padStart(2, '0')}:00 EAT</strong> each day.
+                  </div>
+                </div>
+                <Button
+                  onClick={() => save('Business Day', '/settings/business-day-config', { start_hour: bizDayHour })}
+                  disabled={saving === 'Business Day'}
+                >
+                  {saving === 'Business Day' && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Save Business Day Settings
                 </Button>
               </div>
             </TabsContent>

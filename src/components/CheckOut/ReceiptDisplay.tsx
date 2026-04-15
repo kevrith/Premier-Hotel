@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { bookingService } from '@/lib/api/services/bookingService';
 import apiClient from '@/lib/api/client';
 import toast from 'react-hot-toast';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface ReceiptItem {
   description: string;
@@ -131,7 +132,12 @@ export function ReceiptDisplay({ receiptData, showActions = true, guestEmail }: 
   };
 
   const handleEmailReceipt = async () => {
-    const email = guestEmail || window.prompt('Enter email address to send receipt:');
+    const email = guestEmail || await confirmDialog.prompt({
+      title: 'Email Receipt',
+      label: 'Email address',
+      placeholder: 'guest@example.com',
+      confirmLabel: 'Send',
+    });
     if (!email) return;
     try {
       await apiClient.post('/emails/queue', {
