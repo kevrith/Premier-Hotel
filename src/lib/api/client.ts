@@ -289,7 +289,7 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      toast.error('Network error. Please check your connection.', { id: 'network-error' });
+      toast.error('Network unavailable. Please check your connection and try again.', { id: 'network-error' });
       return Promise.reject(error);
     }
 
@@ -334,7 +334,7 @@ apiClient.interceptors.response.use(
             // Only fire session-expired if refresh also got a real 401/403
             if (refreshError.response?.status === 401 || refreshError.response?.status === 403) {
               window.dispatchEvent(new CustomEvent('auth:session-expired'));
-              toast.error('Session expired. Please login again.', { id: 'session-expired' });
+              toast.error('Your session has expired. Please sign in to continue.', { id: 'session-expired' });
             }
             return Promise.reject(refreshError);
           }
@@ -342,11 +342,11 @@ apiClient.interceptors.response.use(
         break;
 
       case 403:
-        toast.error('You do not have permission to perform this action.', { id: 'forbidden' });
+        toast.error('Access denied. You don\'t have permission to perform this action.', { id: 'forbidden' });
         break;
 
       case 404:
-        toast.error(data?.message || 'Resource not found.');
+        toast.error(data?.message || 'The requested resource was not found.');
         break;
 
       case 422:
@@ -355,20 +355,20 @@ apiClient.interceptors.response.use(
             arr.forEach(msg => toast.error(msg))
           );
         } else {
-          toast.error(data?.message || 'Validation error.');
+          toast.error(data?.message || 'Validation failed. Please review your input.');
         }
         break;
 
       case 429:
-        toast.error('Too many requests. Please try again later.', { id: 'rate-limit' });
+        toast.error('Request limit reached. Please wait a moment before trying again.', { id: 'rate-limit' });
         break;
 
       case 500: case 502: case 503: case 504:
-        toast.error('Server error. Please try again later.', { id: 'server-error' });
+        toast.error('A server error occurred. Please try again.', { id: 'server-error' });
         break;
 
       default:
-        toast.error(data?.message || 'An error occurred. Please try again.');
+        toast.error(data?.message || 'An unexpected error occurred. Please try again.');
     }
 
     return Promise.reject(error);

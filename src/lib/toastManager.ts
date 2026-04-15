@@ -5,7 +5,7 @@
  * simultaneously (e.g. going offline fires many 401s / network errors at once).
  *
  * Usage:  import { toastManager as toast } from '@/lib/toastManager';
- *         toast.error('Session expired');   // fires once, even if called 10×
+ *         toast.error('Your session has expired. Please sign in to continue.');   // fires once, even if called 10×
  */
 
 import { toast, type ToastOptions } from 'react-hot-toast';

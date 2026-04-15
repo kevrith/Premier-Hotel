@@ -78,18 +78,15 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config as RequestConfigWithMetadata;
 
-    // Handle network errors
     if (!error.response) {
-      toast.error('Network error. Please check your connection.');
+      toast.error('Network unavailable. Please check your connection and try again.', { id: 'network-error' });
       return Promise.reject(error);
     }
 
     const { status, data } = error.response;
 
-    // Handle different error status codes
     switch (status) {
       case 401: {
-        // Skip refresh logic for auth-check endpoints — let them fail silently
         const skipRefreshEndpoints = ['/auth/me', '/auth/refresh', '/auth/login', '/auth/register'];
         const requestUrl = originalRequest?.url || '';
         const shouldSkipRefresh = skipRefreshEndpoints.some(ep => requestUrl.includes(ep));
@@ -98,77 +95,61 @@ apiClient.interceptors.response.use(
           return Promise.reject(error);
         }
 
-        // Unauthorized - Token expired or invalid
         if (!originalRequest._retry) {
           originalRequest._retry = true;
 
           try {
-            // Try to refresh token using refresh cookie
             await axios.post(
               `${API_BASE_URL}/auth/refresh`,
               {},
-              {
-                withCredentials: true, // Send refresh token cookie
-              }
+              { withCredentials: true }
             );
-
-            // SECURITY: New access token set in httpOnly cookie by backend
-            // No localStorage manipulation needed
-
-            // Retry original request (with refreshed cookie)
             return apiClient(originalRequest);
           } catch (refreshError) {
-            // Refresh failed, redirect to login
-            window.location.href = '/login';
-            toast.error('Session expired. Please login again.');
+            // Let AuthContext handle the redirect and cleanup
+            window.dispatchEvent(new CustomEvent('auth:session-expired'));
+            toast.error('Your session has expired. Please sign in to continue.', { id: 'session-expired' });
             return Promise.reject(refreshError);
           }
         }
 
-        // If retry failed or already retried, redirect to login
-        window.location.href = '/login';
-        toast.error('Session expired. Please login again.');
+        // Already retried — session cannot be recovered
+        window.dispatchEvent(new CustomEvent('auth:session-expired'));
+        toast.error('Your session has expired. Please sign in to continue.', { id: 'session-expired' });
         break;
       }
 
       case 403:
-        // Forbidden - User doesn't have permission
-        toast.error('You do not have permission to perform this action.');
+        toast.error('Access denied. You don\'t have permission to perform this action.', { id: 'forbidden' });
         break;
 
       case 404:
-        // Not found
-        toast.error(data?.message || 'Resource not found.');
+        toast.error(data?.message || 'The requested resource was not found.');
         break;
 
       case 422:
-        // Validation error
         if (data?.errors) {
-          // Display validation errors
           Object.values<string[]>(data.errors).forEach((errorArray) => {
             errorArray.forEach((msg) => toast.error(msg));
           });
         } else {
-          toast.error(data?.message || 'Validation error.');
+          toast.error(data?.message || 'Validation failed. Please review your input.');
         }
         break;
 
       case 429:
-        // Too many requests
-        toast.error('Too many requests. Please try again later.');
+        toast.error('Request limit reached. Please wait a moment before trying again.', { id: 'rate-limit' });
         break;
 
       case 500:
       case 502:
       case 503:
       case 504:
-        // Server errors
-        toast.error('Server error. Please try again later.');
+        toast.error('A server error occurred. Please try again.', { id: 'server-error' });
         break;
 
       default:
-        // Generic error
-        toast.error(data?.message || 'An error occurred. Please try again.');
+        toast.error(data?.message || 'An unexpected error occurred. Please try again.');
     }
 
     return Promise.reject(error);

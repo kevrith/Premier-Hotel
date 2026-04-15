@@ -369,7 +369,10 @@ export function DailyStockTaking({ defaultSessionType = 'all' }: { defaultSessio
       setPhysicalCounts(pc);
       setLostCounts(lc);
       setReasonCodes(rc);
-      setIsEditMode(false);
+      // Stay in edit mode when switching locations if the new session is also submitted
+      if (data.existing_session?.status !== 'submitted') {
+        setIsEditMode(false);
+      }
       if (data.existing_session?.status === 'submitted') {
         setSessionNotes('');
       }
