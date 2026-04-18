@@ -37,7 +37,7 @@ export function DiscountManager() {
 
   useEffect(() => {
     fetchConfigs();
-    menuApi.getMenuItems().then(items => setAllMenuItems(items)).catch(() => {});
+    menuApi.listMenuItems().then(items => setAllMenuItems(items)).catch(() => {});
   }, []);
 
   const fetchConfigs = async () => {
