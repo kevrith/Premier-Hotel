@@ -286,6 +286,7 @@ export default function ShoppingCartTray({
         onClose={() => setDiscountModal(d => ({ ...d, open: false }))}
         baseAmount={discountModal.baseAmount}
         itemName={discountModal.itemName}
+        itemId={discountModal.itemId}
         scope={discountModal.scope}
         onApply={handleDiscountApply}
       />

@@ -21,6 +21,7 @@ export interface DiscountConfig {
   discount_value: number;
   requires_pin: boolean;
   is_active: boolean;
+  applicable_item_ids?: string[] | null; // null/undefined = general (all items)
   created_by?: string;
   created_at: string;
 }
@@ -30,6 +31,7 @@ export interface DiscountConfigCreate {
   discount_type: 'percentage' | 'fixed';
   discount_value: number;
   requires_pin?: boolean;
+  applicable_item_ids?: string[] | null;
 }
 
 export interface PinVerifyResult {

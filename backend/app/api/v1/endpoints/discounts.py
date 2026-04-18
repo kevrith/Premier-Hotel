@@ -26,6 +26,7 @@ class DiscountConfigCreate(BaseModel):
     discount_type: str = Field(..., pattern="^(percentage|fixed)$")
     discount_value: Decimal = Field(..., gt=0)
     requires_pin: bool = False
+    applicable_item_ids: Optional[List[str]] = None  # None = general (all items)
 
 
 class DiscountConfigUpdate(BaseModel):
@@ -34,6 +35,7 @@ class DiscountConfigUpdate(BaseModel):
     discount_value: Optional[Decimal] = Field(None, gt=0)
     requires_pin: Optional[bool] = None
     is_active: Optional[bool] = None
+    applicable_item_ids: Optional[List[str]] = None
 
 
 class PinVerifyRequest(BaseModel):
@@ -84,14 +86,18 @@ async def create_discount_config(
     if body.discount_type == "percentage" and float(body.discount_value) > 100:
         raise HTTPException(status_code=400, detail="Percentage discount cannot exceed 100%.")
 
-    result = supabase_admin.table("discount_configs").insert({
+    insert_data = {
         "name": body.name,
         "discount_type": body.discount_type,
         "discount_value": float(body.discount_value),
         "requires_pin": body.requires_pin,
         "is_active": True,
         "created_by": current_user["id"],
-    }).execute()
+    }
+    if body.applicable_item_ids is not None:
+        insert_data["applicable_item_ids"] = body.applicable_item_ids
+
+    result = supabase_admin.table("discount_configs").insert(insert_data).execute()
 
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create discount config.")
@@ -112,6 +118,9 @@ async def update_discount_config(
     update_data = {k: v for k, v in body.dict().items() if v is not None}
     if "discount_value" in update_data:
         update_data["discount_value"] = float(update_data["discount_value"])
+    # Allow explicitly clearing item links (empty list = all items, None = unchanged)
+    if body.applicable_item_ids is not None:
+        update_data["applicable_item_ids"] = body.applicable_item_ids
 
     result = supabase_admin.table("discount_configs").update(update_data).eq("id", config_id).execute()
     if not result.data:

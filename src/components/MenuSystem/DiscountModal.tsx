@@ -18,6 +18,7 @@ interface DiscountModalProps {
   /** The subtotal (price × qty) the discount applies to */
   baseAmount: number;
   itemName?: string;
+  itemId?: string;   // cart item's menu item ID — used to filter applicable presets
   scope: 'order' | 'item';
   onApply: (discountAmount: number, reason: string, approvedBy?: string) => void;
 }
@@ -29,6 +30,7 @@ export default function DiscountModal({
   onClose,
   baseAmount,
   itemName,
+  itemId,
   scope,
   onApply,
 }: DiscountModalProps) {
@@ -79,9 +81,16 @@ export default function DiscountModal({
     setActiveTab('preset');
   }, [open]);
 
+  // Filter presets: show general (no item links) + ones that include this specific item
+  const visibleConfigs = configs.filter(cfg => {
+    if (!cfg.applicable_item_ids?.length) return true; // general discount
+    if (scope === 'order') return !cfg.applicable_item_ids?.length; // order-level: only generals
+    return itemId ? cfg.applicable_item_ids.includes(itemId) : !cfg.applicable_item_ids?.length;
+  });
+
   const previewAmount = (): number => {
     if (activeTab === 'preset') {
-      const cfg = configs.find(c => c.id === selectedConfigId);
+      const cfg = visibleConfigs.find(c => c.id === selectedConfigId);
       if (!cfg) return 0;
       return discountsApi.calculateDiscount(cfg, baseAmount);
     }
@@ -93,7 +102,7 @@ export default function DiscountModal({
   const needsPin = (): boolean => {
     if (isManager) return false;
     if (activeTab === 'preset') {
-      const cfg = configs.find(c => c.id === selectedConfigId);
+      const cfg = visibleConfigs.find(c => c.id === selectedConfigId);
       return cfg ? cfg.requires_pin : false;
     }
     // Custom discounts always need manager PIN for non-managers
@@ -131,7 +140,7 @@ export default function DiscountModal({
 
     let reason = '';
     if (activeTab === 'preset') {
-      const cfg = configs.find(c => c.id === selectedConfigId);
+      const cfg = visibleConfigs.find(c => c.id === selectedConfigId);
       reason = cfg ? cfg.name : 'Preset discount';
     } else {
       reason = customReason || 'Custom discount';
@@ -169,14 +178,15 @@ export default function DiscountModal({
 
               {/* Preset Discounts */}
               <TabsContent value="preset" className="mt-3 space-y-2">
-                {configs.length === 0 ? (
+                {visibleConfigs.length === 0 ? (
                   <p className="text-sm text-center text-muted-foreground py-4">
-                    No preset discounts configured.
+                    No preset discounts available for this {scope === 'item' ? 'item' : 'order'}.
                   </p>
                 ) : (
                   <div className="grid gap-2">
-                    {configs.map(cfg => {
+                    {visibleConfigs.map(cfg => {
                       const amt = discountsApi.calculateDiscount(cfg, baseAmount);
+                      const isItemSpecific = cfg.applicable_item_ids?.length > 0;
                       return (
                         <button
                           key={cfg.id}
@@ -188,7 +198,12 @@ export default function DiscountModal({
                           }`}
                         >
                           <div>
-                            <p className="text-sm font-medium">{cfg.name}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-medium">{cfg.name}</p>
+                              {isItemSpecific && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0">item</Badge>
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground">
                               {cfg.discount_type === 'percentage'
                                 ? `${cfg.discount_value}% off`

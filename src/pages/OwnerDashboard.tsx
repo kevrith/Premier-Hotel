@@ -541,6 +541,74 @@ const PeakHoursSection = () => {
   );
 };
 
+// ─── Revenue Snapshot (Today + MTD) ──────────────────────────────────────────
+
+const RevenueSnapshot = () => {
+  const [snap, setSnap] = useState<{ today: number; mtd: number; yesterday: number; lastMonth: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      const now = new Date();
+      const today = now.toISOString().slice(0, 10);
+      const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+      try {
+        const [todayRes, yesterdayRes, mtdRes, lastMonthRes] = await Promise.all([
+          api.get('/owner/overview', { params: { start_date: today, end_date: today } }),
+          api.get('/owner/overview', { params: { start_date: yesterday, end_date: yesterday } }),
+          api.get('/owner/overview', { params: { start_date: monthStart, end_date: today } }),
+          api.get('/owner/overview', { params: {
+            start_date: lastMonthStart.toISOString().slice(0, 10),
+            end_date: lastMonthEnd.toISOString().slice(0, 10),
+          }}),
+        ]);
+        setSnap({
+          today: todayRes.data.consolidated?.total_revenue || 0,
+          yesterday: yesterdayRes.data.consolidated?.total_revenue || 0,
+          mtd: mtdRes.data.consolidated?.total_revenue || 0,
+          lastMonth: lastMonthRes.data.consolidated?.total_revenue || 0,
+        });
+      } catch {
+        // non-critical
+      }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const pctChange = (current: number, previous: number) => {
+    if (!previous) return undefined;
+    return Math.round(((current - previous) / previous) * 100);
+  };
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+      <KpiCard
+        icon={DollarSign}
+        label="Today's Revenue"
+        value={fmtShort(snap?.today || 0)}
+        sub={snap ? `Yesterday: ${fmtShort(snap.yesterday)}` : undefined}
+        change={snap ? pctChange(snap.today, snap.yesterday) : undefined}
+        accent="emerald"
+        loading={loading}
+      />
+      <KpiCard
+        icon={TrendingUp}
+        label="This Month"
+        value={fmtShort(snap?.mtd || 0)}
+        sub={snap ? `Last month: ${fmtShort(snap.lastMonth)}` : undefined}
+        change={snap ? pctChange(snap.mtd, snap.lastMonth) : undefined}
+        accent="indigo"
+        loading={loading}
+      />
+    </div>
+  );
+};
+
 // ─── Overview Page ────────────────────────────────────────────────────────────
 
 const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, customEnd, onCustomRange }: {
@@ -585,6 +653,9 @@ const OverviewPage = ({ overview, loading, period, onPeriodChange, customStart, 
 
   return (
     <div className="space-y-6">
+      {/* Always-visible revenue snapshot */}
+      <RevenueSnapshot />
+
       {/* Period controls */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
