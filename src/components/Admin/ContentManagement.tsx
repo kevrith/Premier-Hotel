@@ -16,6 +16,7 @@ import MenuItemForm from './MenuItemForm';
 import RoomForm from './RoomForm';
 import { PricingManager } from './PricingManager';
 import { PromotionsManager } from './PromotionsManager';
+import { DiscountManager } from './DiscountManager';
 
 export function ContentManagement() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -245,6 +246,10 @@ export function ContentManagement() {
               <TabsTrigger value="promotions">
                 <Tag className="h-4 w-4 mr-2" />
                 Promotions
+              </TabsTrigger>
+              <TabsTrigger value="discounts">
+                <Tag className="h-4 w-4 mr-2" />
+                Discounts
               </TabsTrigger>
             </TabsList>
 
@@ -502,6 +507,10 @@ export function ContentManagement() {
 
             <TabsContent value="promotions" className="space-y-4">
               <PromotionsManager />
+            </TabsContent>
+
+            <TabsContent value="discounts" className="space-y-4">
+              <DiscountManager />
             </TabsContent>
           </Tabs>
         </CardContent>
