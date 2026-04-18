@@ -34,7 +34,7 @@ const categories = [
 export default function EnhancedMenu() {
   const navigate = useNavigate();
   const { user, isAuthenticated, role } = useAuth();
-  const { addItem, items: cartItems, removeItem, updateQuantity, clearCart, getTotal } = useCartStore();
+  const { addItem, items: cartItems, removeItem, updateQuantity, clearCart, getTotal, orderDiscount, orderDiscountReason, orderDiscountApprovedBy } = useCartStore();
 
   // Check if user is staff (should stay on menu after order)
   const isStaff = role && ['waiter', 'chef', 'manager', 'admin'].includes(role);
@@ -272,14 +272,16 @@ export default function EnhancedMenu() {
       const orderItems = validCartItems.map(item => ({
         menu_item_id: item.itemId,
         name: item.name,
-        quantity: Math.max(1, item.quantity), // Ensure quantity is at least 1
-        price: item.basePrice, // Backend expects Decimal, will be converted by API
+        quantity: Math.max(1, item.quantity),
+        price: item.basePrice,
         customizations: item.customizations ?
           item.customizations.reduce((acc, cust) => {
             acc[cust.name] = cust.value;
             return acc;
           }, {} as Record<string, any>) : {},
-        special_instructions: item.specialInstructions || ''
+        special_instructions: item.specialInstructions || '',
+        discount_amount: item.discountAmount || 0,
+        discount_reason: item.discountReason || null,
       }));
 
       // Determine location and location_type based on order type
@@ -304,10 +306,15 @@ export default function EnhancedMenu() {
         location_type: locationType,
         items: orderItems,
         special_instructions: `Customer: ${customerInfo.customerName}, Phone: ${customerInfo.customerPhone}`,
-        // Only include customer fields if they have values
         ...(customerInfo.customerName && { customer_name: customerInfo.customerName }),
         ...(customerInfo.customerPhone && { customer_phone: customerInfo.customerPhone }),
-        order_type: customerInfo.orderType
+        order_type: customerInfo.orderType,
+        // Order-level discount from cart store
+        ...(orderDiscount > 0 && {
+          discount_amount: orderDiscount,
+          discount_reason: orderDiscountReason || undefined,
+          discount_approved_by: orderDiscountApprovedBy || undefined,
+        }),
       };
 
       console.log('Creating order:', orderData);

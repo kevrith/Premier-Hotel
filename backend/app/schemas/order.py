@@ -15,6 +15,8 @@ class OrderItem(BaseModel):
     price: Optional[Decimal] = None  # Will be fetched from menu_items table
     customizations: Optional[Dict[str, Any]] = None
     special_instructions: Optional[str] = None
+    discount_amount: Optional[Decimal] = Field(None, ge=0)   # per-item KES discount
+    discount_reason: Optional[str] = None                     # reason for item discount
 
 
 class OrderCreate(BaseModel):
@@ -27,6 +29,10 @@ class OrderCreate(BaseModel):
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     order_type: Optional[str] = Field(None, pattern="^(room_service|walk_in|dine_in)$")
+    # Order-level discount
+    discount_amount: Optional[Decimal] = Field(None, ge=0)   # order-level KES discount
+    discount_reason: Optional[str] = None
+    discount_approved_by: Optional[str] = None               # manager user_id who approved
     # NOTE: payment_method removed - payment happens at bill settlement, not order creation
 
 
@@ -53,6 +59,8 @@ class OrderResponse(BaseModel):
     subtotal: Optional[Decimal] = None
     tax: Optional[Decimal] = None
     total_amount: Optional[Decimal] = None
+    discount_amount: Optional[Decimal] = None
+    discount_reason: Optional[str] = None
     assigned_waiter_id: Optional[str] = None
     assigned_chef_id: Optional[str] = None
     # Staff information (populated from users table)

@@ -545,7 +545,11 @@ async def create_order(
                 continue
 
             item_price = Decimal(str(menu_item["base_price"]))
-            item_total = item_price * order_item.quantity
+            item_discount = Decimal(str(order_item.discount_amount or 0))
+            # Cap item discount at the item total (cannot discount more than price × qty)
+            item_total_before_discount = item_price * order_item.quantity
+            item_discount = min(item_discount, item_total_before_discount)
+            item_total = item_total_before_discount - item_discount
             subtotal += item_total
 
             order_items.append({
@@ -555,9 +559,16 @@ async def create_order(
                 "price": float(order_item.price) if order_item.price else float(item_price),
                 "customizations": order_item.customizations,
                 "special_instructions": order_item.special_instructions,
+                "discount_amount": float(item_discount),
+                "discount_reason": order_item.discount_reason,
                 "total": float(item_total),
                 "category": menu_item.get("category") or "",
             })
+
+        # Apply order-level discount (after per-item discounts are already in subtotal)
+        order_discount = Decimal(str(order_data.discount_amount or 0))
+        order_discount = min(order_discount, subtotal)  # cannot exceed subtotal
+        taxable_subtotal = subtotal - order_discount
 
         # Get tax configuration
         tax_config_response = supabase_admin.table("hotel_settings").select("setting_value").eq("setting_key", "tax_config").execute()
@@ -574,7 +585,7 @@ async def create_order(
         if tax_config_response.data:
             tax_config = tax_config_response.data[0]["setting_value"]
         
-        # Calculate taxes based on configuration
+        # Calculate taxes based on configuration (applied on taxable_subtotal after discounts)
         if tax_config["tax_inclusive"]:
             # Prices include tax - extract tax from total
             total_tax_rate = 0
@@ -582,37 +593,37 @@ async def create_order(
                 total_tax_rate += Decimal(str(tax_config["vat_rate"]))
             if tax_config["tourism_levy_enabled"]:
                 total_tax_rate += Decimal(str(tax_config["tourism_levy_rate"]))
-            
-            # Total amount is the subtotal (which already includes tax)
-            total_amount = subtotal
-            
+
+            # Total amount is taxable_subtotal (which already includes tax)
+            total_amount = taxable_subtotal
+
             # Extract base amount and taxes from inclusive price
-            base_amount = subtotal / (1 + total_tax_rate)
-            
+            base_amount = taxable_subtotal / (1 + total_tax_rate)
+
             if tax_config["vat_enabled"]:
                 vat = base_amount * Decimal(str(tax_config["vat_rate"]))
             else:
                 vat = Decimal(0)
-            
+
             if tax_config["tourism_levy_enabled"]:
                 tourism_levy = base_amount * Decimal(str(tax_config["tourism_levy_rate"]))
             else:
                 tourism_levy = Decimal(0)
         else:
             # Tax is added on top of prices
-            base_amount = subtotal
-            
+            base_amount = taxable_subtotal
+
             if tax_config["vat_enabled"]:
-                vat = subtotal * Decimal(str(tax_config["vat_rate"]))
+                vat = taxable_subtotal * Decimal(str(tax_config["vat_rate"]))
             else:
                 vat = Decimal(0)
-            
+
             if tax_config["tourism_levy_enabled"]:
-                tourism_levy = subtotal * Decimal(str(tax_config["tourism_levy_rate"]))
+                tourism_levy = taxable_subtotal * Decimal(str(tax_config["tourism_levy_rate"]))
             else:
                 tourism_levy = Decimal(0)
-            
-            total_amount = subtotal + vat + tourism_levy
+
+            total_amount = taxable_subtotal + vat + tourism_levy
         
         # Legacy tax field for backward compatibility
         tax = vat + tourism_levy
@@ -671,6 +682,9 @@ async def create_order(
             "vat_amount": float(vat),
             "tourism_levy_amount": float(tourism_levy),
             "tax_inclusive": tax_config["tax_inclusive"],
+            "discount_amount": float(order_discount),
+            "discount_reason": order_data.discount_reason,
+            "discount_approved_by": order_data.discount_approved_by,
             "special_instructions": order_data.special_instructions,
             "priority": priority,
             "estimated_ready_time": estimated_ready_time.isoformat(),
@@ -735,17 +749,17 @@ async def create_order(
                 if not mid or mid not in tracked_map:
                     continue
                 item_data = tracked_map[mid]
-                if not item_data.get("track_inventory") and float(item_data.get("stock_quantity") or 0) <= 0:
-                    continue
+                if not item_data.get("track_inventory"):
+                    continue  # untracked items (tea, samosa, etc.) — never touch availability
                 qty_sold = float(oi.get("quantity", 1))
 
-                # Deduct from global menu_items
+                # Deduct from global menu_items and mark unavailable when stock runs out
                 current = float(item_data.get("stock_quantity") or 0)
                 new_qty = max(0, current - qty_sold)
-                supabase_admin.table("menu_items").update({
-                    "stock_quantity": new_qty,
-                    "is_available": new_qty > 0,
-                }).eq("id", mid).execute()
+                update_data = {"stock_quantity": new_qty}
+                if new_qty == 0:
+                    update_data["is_available"] = False
+                supabase_admin.table("menu_items").update(update_data).eq("id", mid).execute()
 
                 # Also deduct from bar location_stock when order belongs to a specific bar
                 if bar_location_id and mid in loc_stock_map:
