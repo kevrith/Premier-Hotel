@@ -179,11 +179,11 @@ async def list_managers_for_pin(
     Only returns id and name — no sensitive fields.
     """
     result = supabase_admin.table("users").select(
-        "id, full_name, first_name, last_name, role"
+        "id, full_name, role"
     ).in_("role", list(MANAGER_ROLES)).execute()
     managers = []
     for u in (result.data or []):
-        name = u.get("full_name") or f"{u.get('first_name', '')} {u.get('last_name', '')}".strip() or "Manager"
+        name = u.get("full_name") or "Manager"
         managers.append({"id": u["id"], "full_name": name, "role": u.get("role", "")})
     return managers
 
