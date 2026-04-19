@@ -62,10 +62,10 @@ class DiscountAuditCreate(BaseModel):
 async def list_discount_configs(
     active_only: bool = True,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """List all preset discount configurations. Available to all staff."""
-    query = supabase.table("discount_configs").select("*").order("name")
+    query = supabase_admin.table("discount_configs").select("*").order("name")
     if active_only:
         query = query.eq("is_active", True)
     result = query.execute()
@@ -76,7 +76,6 @@ async def list_discount_configs(
 async def create_discount_config(
     body: DiscountConfigCreate,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Create a new preset discount. Manager/admin only."""

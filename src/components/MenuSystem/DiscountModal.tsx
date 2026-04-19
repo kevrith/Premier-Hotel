@@ -81,11 +81,15 @@ export default function DiscountModal({
     setActiveTab('preset');
   }, [open]);
 
+  // Cart itemId has a timestamp suffix (menuItemUUID-timestamp) — strip it to get the real menu item UUID
+  const menuItemId = itemId ? itemId.split('-').slice(0, 5).join('-') : undefined;
+
   // Filter presets: show general (no item links) + ones that include this specific item
   const visibleConfigs = configs.filter(cfg => {
-    if (!cfg.applicable_item_ids?.length) return true; // general discount
-    if (scope === 'order') return !cfg.applicable_item_ids?.length; // order-level: only generals
-    return itemId ? cfg.applicable_item_ids.includes(itemId) : !cfg.applicable_item_ids?.length;
+    const isGeneral = !cfg.applicable_item_ids?.length;
+    if (scope === 'order') return isGeneral;
+    if (isGeneral) return true;
+    return menuItemId ? cfg.applicable_item_ids!.includes(menuItemId) : false;
   });
 
   const previewAmount = (): number => {
