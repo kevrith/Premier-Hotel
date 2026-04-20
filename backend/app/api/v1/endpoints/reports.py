@@ -26,6 +26,20 @@ def _start(date_str: str) -> str:
 def _end(date_str: str) -> str:
     return date_str if 'T' in date_str else date_str + 'T23:59:59'
 
+
+def _fetch_all(supabase: Client, table: str, columns: str, start: str, end: str) -> list:
+    PAGE = 1000
+    results, offset = [], 0
+    while True:
+        res = supabase.table(table).select(columns).gte("created_at", start).lte("created_at", end).range(offset, offset + PAGE - 1).execute()
+        batch = res.data or []
+        results.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
+    return results
+
+
 router = APIRouter()
 
 
@@ -46,23 +60,11 @@ async def get_reports_overview(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        def _fetch_all(table, columns, start, end):
-            PAGE = 1000
-            results, offset = [], 0
-            while True:
-                res = supabase.table(table).select(columns).gte("created_at", start).lte("created_at", end).range(offset, offset + PAGE - 1).execute()
-                batch = res.data or []
-                results.extend(batch)
-                if len(batch) < PAGE:
-                    break
-                offset += PAGE
-            return results
-
         def _bookings():
-            return _fetch_all("bookings", "status, paid_amount, total_amount, customer_id", start_date, end_date)
+            return _fetch_all(supabase, "bookings", "status, paid_amount, total_amount, customer_id", start_date, end_date)
 
         def _orders():
-            return _fetch_all("orders", "status, items, total_amount, customer_id, payment_status", start_date, end_date)
+            return _fetch_all(supabase, "orders", "status, items, total_amount, customer_id, payment_status", start_date, end_date)
 
         bookings_data, orders_data = await _par(_bookings, _orders)
 
@@ -150,7 +152,7 @@ async def get_revenue_analytics(
         revenue_by_date: Dict[str, Dict[str, Any]] = {}
 
         # Process bookings
-        for booking in bookings.data:
+        for booking in bookings_data_raw:
             created_at = datetime.fromisoformat(booking["created_at"].replace('Z', '+00:00'))
 
             if group_by == "day":
@@ -190,7 +192,7 @@ async def get_revenue_analytics(
         # Process orders — count all non-voided/cancelled orders
         # (matches employee-sales endpoint which correctly shows sales data)
         EXCLUDED_ORDER_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
-        for order in orders.data:
+        for order in orders_raw:
             if (order.get("status") or "").lower() in EXCLUDED_ORDER_STATUSES:
                 continue
 
@@ -279,21 +281,19 @@ async def get_bookings_statistics(
         end_date   = _end(end_date)
 
         # Get all bookings in period
-        bookings = supabase.table("bookings").select(
-            "id, status, total_amount, room_id, check_in_date, check_out_date, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
+        bookings_data_raw = _fetch_all(supabase, "bookings", "id, status, total_amount, room_id, check_in_date, check_out_date, created_at", start_date, end_date)
 
         # Get rooms to map room_id -> room type
         rooms = supabase.table("rooms").select("id, type").execute()
         room_type_map = {r["id"]: r.get("type", "unknown") for r in rooms.data}
 
         # Calculate statistics
-        total_bookings = len(bookings.data)
+        total_bookings = len(bookings_data_raw)
         status_counts = {}
         room_type_counts = {}
         total_revenue = 0
 
-        for booking in bookings.data:
+        for booking in bookings_data_raw:
             # Count by status
             booking_status = booking.get("status", "unknown")
             status_counts[booking_status] = status_counts.get(booking_status, 0) + 1
@@ -308,7 +308,7 @@ async def get_bookings_statistics(
 
         # Calculate average stay duration (columns are check_in_date/check_out_date)
         durations = []
-        for booking in bookings.data:
+        for booking in bookings_data_raw:
             if booking.get("check_in_date") and booking.get("check_out_date"):
                 check_in = datetime.fromisoformat(booking["check_in_date"].replace('Z', '+00:00'))
                 check_out = datetime.fromisoformat(booking["check_out_date"].replace('Z', '+00:00'))
@@ -357,18 +357,16 @@ async def get_orders_statistics(
         start_date = _start(start_date)
         end_date   = _end(end_date)
 
-        # Get all orders in period (select only needed fields — avoids fetching heavy JSON blobs)
-        orders = supabase.table("orders").select(
-            "id, status, total_amount, location, location_type, items, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
+        # Get all orders in period
+        orders_raw = _fetch_all(supabase, "orders", "id, status, total_amount, location, location_type, items, created_at", start_date, end_date)
 
         # Calculate statistics
-        total_orders = len(orders.data)
+        total_orders = len(orders_raw)
         status_counts = {}
         total_revenue = 0
         delivery_location_counts = {}
 
-        for order in orders.data:
+        for order in orders_raw:
             # Count by status
             order_status = order.get("status", "unknown")
             status_counts[order_status] = status_counts.get(order_status, 0) + 1
@@ -383,7 +381,7 @@ async def get_orders_statistics(
 
         # Get order items from the JSON items field in each order
         item_quantities: Dict[str, Dict[str, Any]] = {}
-        for order in orders.data:
+        for order in orders_raw:
             order_items_list = order.get("items") or []
             if isinstance(order_items_list, list):
                 for item in order_items_list:
@@ -446,14 +444,10 @@ async def get_top_customers(
         end_date   = _end(end_date)
 
         def _orders():
-            return supabase.table("orders").select(
-                "customer_id, total_amount, status"
-            ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
+            return _fetch_all(supabase, "orders", "customer_id, total_amount, status", start_date, end_date)
 
         def _bookings():
-            return supabase.table("bookings").select(
-                "customer_id, total_amount, status"
-            ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
+            return _fetch_all(supabase, "bookings", "customer_id, total_amount, status", start_date, end_date)
 
         orders_res, bookings_res = await _par(_orders, _bookings)
 
@@ -461,7 +455,7 @@ async def get_top_customers(
 
         user_spending: Dict[str, Dict[str, Any]] = {}
 
-        for order in (orders_res.data or []):
+        for order in (orders_res or []):
             cid = order.get("customer_id")
             if not cid:
                 continue
@@ -475,7 +469,7 @@ async def get_top_customers(
             user_spending[cid]["total"] += amount
             user_spending[cid]["count"] += 1
 
-        for booking in (bookings_res.data or []):
+        for booking in (bookings_res or []):
             cid = booking.get("customer_id")
             if not cid:
                 continue
@@ -543,12 +537,9 @@ async def get_employee_sales_report(
         # ── Step 1: Fetch all orders in the period ────────────────────
         VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
 
-        orders_res = supabase.table("orders").select(
-            "id, total_amount, status, created_at, items, bill_id, "
-            "assigned_waiter_id, created_by_staff_id"
-        ).gte("created_at", start_date).lte("created_at", end_date).execute()
+        orders_fetched = _fetch_all(supabase, "orders", "id, total_amount, status, created_at, items, bill_id, assigned_waiter_id, created_by_staff_id", start_date, end_date)
         # Exclude voided/cancelled — must match item-summary exclusion list exactly
-        all_orders = [o for o in (orders_res.data or []) if o.get("status") not in VOID_STATUSES]
+        all_orders = [o for o in orders_fetched if o.get("status") not in VOID_STATUSES]
 
         # ── Step 2: Collect staff IDs who have orders ─────────────────
         staff_order_map: Dict[str, list] = {}
@@ -1112,16 +1103,24 @@ async def get_category_breakdown(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
-        orders = supabase.table("orders").select("id, created_at, items, status").gte(
-            "created_at", start_date
-        ).lte("created_at", end_date).in_("status", ["completed", "delivered", "served"]).execute()
+        PAGE = 1000
+        orders_raw, offset = [], 0
+        while True:
+            res = supabase.table("orders").select("id, created_at, items, status").gte(
+                "created_at", start_date
+            ).lte("created_at", end_date).in_("status", ["completed", "delivered", "served"]).range(offset, offset + PAGE - 1).execute()
+            batch = res.data or []
+            orders_raw.extend(batch)
+            if len(batch) < PAGE:
+                break
+            offset += PAGE
 
-        if not orders.data:
+        if not orders_raw:
             return []
 
         # Extract items from JSON field
         all_items = []
-        for order in orders.data:
+        for order in orders_raw:
             items_list = order.get("items") or []
             if isinstance(items_list, list):
                 all_items.extend(items_list)
@@ -1513,10 +1512,8 @@ async def get_item_summary_report(
         # Get all orders in date range then exclude voided/cancelled in Python
         # (matches employee-sales exclusion list so figures stay consistent)
         VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
-        orders_result = supabase.table("orders").select(
-            "id, items, total_amount, status, created_at, created_by_staff_id, assigned_waiter_id"
-        ).gte("created_at", start_date).lte("created_at", end_date).execute()
-        orders = [o for o in (orders_result.data or []) if o.get("status") not in VOID_STATUSES]
+        orders_all = _fetch_all(supabase, "orders", "id, items, total_amount, status, created_at, created_by_staff_id, assigned_waiter_id", start_date, end_date)
+        orders = [o for o in orders_all if o.get("status") not in VOID_STATUSES]
 
         # Collect menu_item_ids to fetch categories
         all_item_ids = set()
