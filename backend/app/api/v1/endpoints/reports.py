@@ -46,24 +46,30 @@ async def get_reports_overview(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).isoformat()
 
+        def _fetch_all(table, columns, start, end):
+            PAGE = 1000
+            results, offset = [], 0
+            while True:
+                res = supabase.table(table).select(columns).gte("created_at", start).lte("created_at", end).range(offset, offset + PAGE - 1).execute()
+                batch = res.data or []
+                results.extend(batch)
+                if len(batch) < PAGE:
+                    break
+                offset += PAGE
+            return results
+
         def _bookings():
-            return supabase.table("bookings").select(
-                "status, paid_amount, total_amount, customer_id"
-            ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
+            return _fetch_all("bookings", "status, paid_amount, total_amount, customer_id", start_date, end_date)
 
         def _orders():
-            return supabase.table("orders").select(
-                "status, items, total_amount, customer_id, payment_status"
-            ).gte("created_at", start_date).lte("created_at", end_date).limit(2000).execute()
+            return _fetch_all("orders", "status, items, total_amount, customer_id, payment_status", start_date, end_date)
 
-        bookings_res, orders_res = await _par(_bookings, _orders)
-        bookings_data = bookings_res.data or []
-        orders_data   = orders_res.data or []
+        bookings_data, orders_data = await _par(_bookings, _orders)
 
         # All non-voided/cancelled orders count as revenue (matches item-summary reports section)
         VOID_STATUSES_RPT = {"voided", "void", "cancelled", "canceled", "void_requested"}
         non_void_orders = [o for o in orders_data if o.get("status") not in VOID_STATUSES_RPT]
-        booking_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings_data)
+        booking_revenue = sum(float(b.get("total_amount") or 0) for b in bookings_data)
         order_revenue   = sum(
             sum(float(i.get("price", 0)) * int(i.get("quantity", 0))
                 for i in (o.get("items") or []) if isinstance(i, dict) and not i.get("voided"))
