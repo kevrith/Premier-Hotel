@@ -310,21 +310,69 @@ export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdat
 
           {/* Revenue Trends */}
           <Card>
-            <CardHeader>
-              <CardTitle>Revenue Trends (Last 6 Months)</CardTitle>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-semibold">Revenue Trends (Last 6 Months)</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Monthly F&amp;B + room revenue</p>
+                </div>
+                {revenueData.length > 0 && (
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">Total</p>
+                    <p className="text-sm font-bold text-primary">
+                      KES {revenueData.reduce((s: number, d: any) => s + d.revenue, 0).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {revenueData.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No revenue data yet</p>
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={revenueData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(v: any) => `KES ${Number(v).toLocaleString()}`} />
-                    <Area type="monotone" dataKey="revenue" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
-                  </AreaChart>
+                  <BarChart data={revenueData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} barCategoryGap="30%">
+                    <defs>
+                      <linearGradient id="revBarGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#6366f1" stopOpacity={1} />
+                        <stop offset="100%" stopColor="#818cf8" stopOpacity={0.8} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`}
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={45}
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'hsl(var(--muted))', radius: 4 }}
+                      content={({ active, payload, label }: any) => {
+                        if (!active || !payload?.length) return null;
+                        return (
+                          <div className="bg-background border border-border rounded-lg shadow-lg p-3 text-sm">
+                            <p className="font-semibold mb-1">{label}</p>
+                            <p className="text-primary">KES {Number(payload[0]?.value || 0).toLocaleString()}</p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar dataKey="revenue" fill="url(#revBarGrad)" radius={[6, 6, 0, 0]} maxBarSize={60}
+                      label={revenueData.length <= 3 ? {
+                        position: 'top' as const,
+                        formatter: (v: any) => Number(v) > 0 ? `KES ${(Number(v) / 1000).toFixed(0)}K` : '',
+                        fontSize: 11,
+                        fill: 'hsl(var(--muted-foreground))',
+                      } : false}
+                    />
+                  </BarChart>
                 </ResponsiveContainer>
               )}
             </CardContent>

@@ -301,8 +301,8 @@ async def startup():
     _eod_task = asyncio.create_task(_midnight_eod_closer())
     logger.info("✅ Business-day EOD order-closer task started")
 
-    # Catch-up: if the server was asleep during the last rollover (Render sleep),
-    # close any active orders from the PREVIOUS business day right now on startup.
+    # Catch-up: close ALL stale active orders from any past business day.
+    # This handles Render sleep gaps where multiple rollovers were missed.
     try:
         from app.core.business_day import get_business_day_range, get_business_day_start_hour, EAT_OFFSET
         from datetime import timedelta
@@ -310,15 +310,21 @@ async def startup():
         start_hour = get_business_day_start_hour(supabase_admin_inst)
         now_utc = datetime.now(timezone.utc)
         now_eat = now_utc + EAT_OFFSET
-        # Previous business day window
-        prev_day_eat = (now_eat - timedelta(days=1)).date()
-        prev_start_eat = datetime(prev_day_eat.year, prev_day_eat.month, prev_day_eat.day, start_hour, 0, 0)
-        prev_start_utc = prev_start_eat - EAT_OFFSET
-        prev_end_utc   = prev_start_utc + timedelta(hours=24)
-        biz_start = prev_start_utc.strftime("%Y-%m-%dT%H:%M:%S")
-        biz_end   = prev_end_utc.strftime("%Y-%m-%dT%H:%M:%S")
+
+        # Current business day start in UTC — anything before this is a past day
+        if now_eat.hour < start_hour:
+            cur_biz_day_eat = now_eat.date() - timedelta(days=1)
+        else:
+            cur_biz_day_eat = now_eat.date()
+        cur_biz_start_utc = datetime(
+            cur_biz_day_eat.year, cur_biz_day_eat.month, cur_biz_day_eat.day,
+            start_hour, 0, 0
+        ) - EAT_OFFSET
+        cutoff = cur_biz_start_utc.strftime("%Y-%m-%dT%H:%M:%S")
+
         ACTIVE = ["pending", "confirmed", "preparing", "in-progress", "ready"]
-        res = supabase_admin_inst.table("orders").select("id").in_("status", ACTIVE).gte("created_at", biz_start).lte("created_at", biz_end).execute()
+        # All active orders created BEFORE the current business day started
+        res = supabase_admin_inst.table("orders").select("id").in_("status", ACTIVE).lt("created_at", cutoff).execute()
         ids = [o["id"] for o in (res.data or [])]
         if ids:
             supabase_admin_inst.table("orders").update({
@@ -326,7 +332,9 @@ async def startup():
                 "updated_at": datetime.now(timezone.utc).isoformat(),
                 "notes": "[Auto-closed on startup catch-up]",
             }).in_("id", ids).execute()
-            logger.info(f"[EOD-CATCHUP] Closed {len(ids)} missed orders from previous business day {prev_day_eat}")
+            logger.info(f"[EOD-CATCHUP] Closed {len(ids)} stale orders from previous business days")
+        else:
+            logger.info("[EOD-CATCHUP] No stale orders to close")
     except Exception as e:
         logger.warning(f"[EOD-CATCHUP] Startup catch-up failed (non-fatal): {e}")
 

@@ -208,11 +208,16 @@ async def get_kitchen_orders(
     - Includes orders with status: pending, confirmed, preparing, ready
     """
     try:
-        # Use admin client to bypass RLS
+        from app.core.business_day import get_business_day_range
+        biz_start, biz_end = get_business_day_range(supabase_admin)
+
+        # Use admin client to bypass RLS — only current business day's active orders
         response = (
             supabase_admin.table("orders")
             .select("*")
             .in_("status", ["pending", "confirmed", "preparing", "in-progress", "ready"])
+            .gte("created_at", biz_start)
+            .lte("created_at", biz_end)
             .order("priority", desc=True)
             .order("created_at", desc=False)
             .execute()
