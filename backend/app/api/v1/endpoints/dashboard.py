@@ -13,6 +13,19 @@ from app.middleware.auth_secure import get_current_user
 router = APIRouter()
 
 
+def _fetch_all_orders(supabase: Client, columns: str, start: str, end: str) -> list:
+    PAGE = 1000
+    results, offset = [], 0
+    while True:
+        res = supabase.table("orders").select(columns).gte("created_at", start).lte("created_at", end).range(offset, offset + PAGE - 1).execute()
+        batch = res.data or []
+        results.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
+    return results
+
+
 @router.get("/manager/summary")
 async def get_manager_dashboard_summary(
     current_user: dict = Depends(get_current_user),
@@ -44,21 +57,18 @@ async def get_manager_dashboard_summary(
         return total
 
     def q_orders_today():
-        return supabase.table("orders").select("items, status, payment_status") \
-            .gte("created_at", today_start).lte("created_at", today_end).execute()
+        return type('R', (), {'data': _fetch_all_orders(supabase, "items, status, payment_status", today_start, today_end)})()
 
     def q_orders_week():
-        return supabase.table("orders").select("items, status") \
-            .gte("created_at", f"{week_ago}T00:00:00").lte("created_at", today_end).execute()
+        return type('R', (), {'data': _fetch_all_orders(supabase, "items, status", f"{week_ago}T00:00:00", today_end)})()
 
     def q_orders_month():
-        return supabase.table("orders").select("items, status") \
-            .gte("created_at", f"{month_ago}T00:00:00").lte("created_at", today_end).execute()
+        return type('R', (), {'data': _fetch_all_orders(supabase, "items, status", f"{month_ago}T00:00:00", today_end)})()
 
     def q_room_revenue():
-        return supabase.table("bookings").select("total_price") \
+        return supabase.table("bookings").select("total_amount") \
             .gte("created_at", f"{month_ago}T00:00:00").lte("created_at", today_end) \
-            .in_("status", ["confirmed", "completed"]).execute()
+            .in_("status", ["confirmed", "completed", "checked_in", "checked_out"]).execute()
 
     def q_staff():
         return supabase.table("users").select("id, role, status, created_at") \
@@ -139,7 +149,7 @@ async def get_manager_dashboard_summary(
 
     try:
         if not isinstance(r_room_rev, Exception):
-            result["revenue"]["room"] = sum(float(b.get("total_price", 0)) for b in (r_room_rev.data or []))
+            result["revenue"]["room"] = sum(float(b.get("total_amount") or 0) for b in (r_room_rev.data or []))
     except Exception as e:
         logging.warning(f"Room revenue error: {e}")
 

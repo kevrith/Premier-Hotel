@@ -135,24 +135,17 @@ async def get_revenue_analytics(
         start_date = _start(start_date)
         end_date   = _end(end_date)
 
-        # Fetch all sources in parallel
-        def _b(): return supabase.table("bookings").select(
-            "paid_amount, total_amount, payment_method, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
+        # Fetch all sources with pagination
+        def _b(): return _fetch_all(supabase, "bookings", "paid_amount, total_amount, payment_method, created_at", start_date, end_date)
+        def _o(): return _fetch_all(supabase, "orders", "total_amount, payment_method, payment_status, status, created_at", start_date, end_date)
 
-        def _o(): return supabase.table("orders").select(
-            "total_amount, payment_method, payment_status, status, created_at"
-        ).gte("created_at", start_date).lte("created_at", end_date).order("created_at").execute()
-
-        bookings_res, orders_res = await _par(_b, _o)
-        bookings = bookings_res
-        orders   = orders_res
+        bookings_list, orders_list = await _par(_b, _o)
 
         # Group revenue by date
         revenue_by_date: Dict[str, Dict[str, Any]] = {}
 
         # Process bookings
-        for booking in bookings_data_raw:
+        for booking in bookings_list:
             created_at = datetime.fromisoformat(booking["created_at"].replace('Z', '+00:00'))
 
             if group_by == "day":
@@ -192,7 +185,7 @@ async def get_revenue_analytics(
         # Process orders — count all non-voided/cancelled orders
         # (matches employee-sales endpoint which correctly shows sales data)
         EXCLUDED_ORDER_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
-        for order in orders_raw:
+        for order in orders_list:
             if (order.get("status") or "").lower() in EXCLUDED_ORDER_STATUSES:
                 continue
 
@@ -1618,12 +1611,14 @@ async def get_item_summary_report(
         result.sort(key=lambda x: x["total_revenue"], reverse=True)
 
         # ── Trends: hourly + daily with qty, revenue and order count ──────────
+        from datetime import timezone, timedelta as _td
+        EAT = timezone(_td(hours=3))  # Africa/Nairobi = UTC+3
         hourly: Dict[str, Any] = {}
         daily: Dict[str, Any] = {}
         for order in orders:
             ts = order.get("created_at") or ""
             try:
-                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(EAT)
                 h = dt.strftime("%I %p")
                 d = dt.strftime("%Y-%m-%d")
             except Exception:

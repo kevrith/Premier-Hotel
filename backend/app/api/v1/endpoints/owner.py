@@ -69,6 +69,20 @@ def _period(days: int = 30):
 
 _VOID_STATUSES = {"voided", "void", "cancelled", "canceled", "void_requested"}
 
+
+def _fetch_all(supabase: Client, table: str, columns: str, start: str, end: str) -> list:
+    PAGE = 1000
+    results, offset = [], 0
+    while True:
+        res = supabase.table(table).select(columns).gte("created_at", start).lte("created_at", end).range(offset, offset + PAGE - 1).execute()
+        batch = res.data or []
+        results.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
+    return results
+
+
 def _item_revenue(order: dict) -> float:
     """Revenue from total_amount — consistent with all other owner endpoints."""
     return float(order.get("total_amount") or 0)
@@ -84,20 +98,16 @@ def _stats_for_branch(supabase: Client, branch_id: Optional[str], start: str, en
     active_staff = sum(1 for s in staff if s.get("status") == "active")
 
     # Orders — all non-voided/cancelled (matches reports section calculation)
-    orders_q = supabase.table("orders").select("id, total_amount, status, created_at, customer_id") \
-        .gte("created_at", start).lte("created_at", end)
+    orders_raw = _fetch_all(supabase, "orders", "id, total_amount, status, created_at, customer_id", start, end)
     if branch_id:
-        orders_q = orders_q.eq("branch_id", branch_id)
-    all_orders = [o for o in (orders_q.execute().data or []) if o.get("status") not in _VOID_STATUSES]
+        orders_raw = [o for o in orders_raw if o.get("branch_id") == branch_id]
+    all_orders = [o for o in orders_raw if o.get("status") not in _VOID_STATUSES]
     fb_revenue = sum(_item_revenue(o) for o in all_orders)
 
     # Bookings — filter by branch_id directly
-    bookings_q = supabase.table("bookings").select("id, total_amount, paid_amount, status, created_at, customer_id") \
-        .gte("created_at", start).lte("created_at", end)
-    if branch_id:
-        bookings_q = bookings_q.eq("branch_id", branch_id)
-    bookings = bookings_q.execute().data or []
-    room_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings)
+    bookings_raw = _fetch_all(supabase, "bookings", "id, total_amount, paid_amount, status, created_at, customer_id", start, end)
+    bookings = [b for b in bookings_raw if not branch_id or b.get("branch_id") == branch_id]
+    room_revenue = sum(float(b.get("total_amount") or 0) for b in bookings)
 
     # Rooms — filter by branch_id directly
     rooms_q = supabase.table("rooms").select("id, status")
@@ -116,8 +126,8 @@ def _stats_for_branch(supabase: Client, branch_id: Optional[str], start: str, en
         "total_revenue": round(total_revenue, 2),
         "fb_revenue": round(fb_revenue, 2),
         "room_revenue": round(room_revenue, 2),
-        "total_orders": len(completed),
-        "completed_orders": len(completed),
+        "total_orders": len(all_orders),
+        "completed_orders": len(all_orders),
         "total_bookings": len(bookings),
         "unique_customers": unique_customers,
         "occupancy_rate": occupancy_rate,
@@ -140,12 +150,10 @@ def _revenue_trend(supabase: Client, branch_id: Optional[str], days: int = 30) -
     """Daily revenue for the last N days."""
     end = datetime.now()
     start = end - timedelta(days=days)
-    orders_q = supabase.table("orders").select("total_amount, status, created_at") \
-        .gte("created_at", start.isoformat()).lte("created_at", end.isoformat()) \
-        .not_.in_("status", list(_VOID_STATUSES))
+    orders = _fetch_all(supabase, "orders", "total_amount, status, created_at, branch_id", start.isoformat(), end.isoformat())
+    orders = [o for o in orders if o.get("status") not in _VOID_STATUSES]
     if branch_id:
-        orders_q = orders_q.eq("branch_id", branch_id)
-    orders = orders_q.execute().data or []
+        orders = [o for o in orders if o.get("branch_id") == branch_id]
     by_day: dict = {}
     for o in orders:
         day = (o.get("created_at") or "")[:10]
@@ -321,13 +329,14 @@ async def owner_overview(
         return cached
 
     # ── Parallel batch: 5 queries instead of N×4+1 ──────────────────────────
-    (branches, all_staff, all_orders, all_bookings, all_rooms) = await _par(
+    (branches, all_staff, all_orders_raw, all_bookings, all_rooms) = await _par(
         lambda: supabase.table("branches").select("*").eq("status", "active").execute().data or [],
         lambda: supabase.table("users").select("id, role, status, branch_id").neq("role", "customer").execute().data or [],
-        lambda: supabase.table("orders").select("id, total_amount, status, created_at, customer_id, branch_id").gte("created_at", start).lte("created_at", end).not_.in_("status", list(_VOID_STATUSES)).execute().data or [],
-        lambda: supabase.table("bookings").select("id, paid_amount, total_amount, status, created_at, branch_id").gte("created_at", start).lte("created_at", end).execute().data or [],
+        lambda: _fetch_all(supabase, "orders", "id, total_amount, status, created_at, customer_id, branch_id", start, end),
+        lambda: _fetch_all(supabase, "bookings", "id, paid_amount, total_amount, status, created_at, branch_id", start, end),
         lambda: supabase.table("rooms").select("id, status, branch_id").execute().data or [],
     )
+    all_orders = [o for o in all_orders_raw if o.get("status") not in _VOID_STATUSES]
 
     # ── Build lookup indexes in Python (O(n), not O(n²)) ─────────────────────
     staff_by_branch: dict = {}
@@ -363,7 +372,7 @@ async def owner_overview(
         b_rooms    = rooms_by_branch.get(bid, [])
 
         fb_rev   = sum(_item_revenue(o) for o in b_done)
-        room_rev = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in b_bookings)
+        room_rev = sum(float(b.get("total_amount") or 0) for b in b_bookings)
 
         total_rooms_n   = len(b_rooms)
         occupied_rooms_n = sum(1 for r in b_rooms if r.get("status") == "occupied")
@@ -392,7 +401,7 @@ async def owner_overview(
 
     # ── Consolidated totals — all orders/bookings regardless of branch_id ──
     total_fb       = sum(_item_revenue(o) for o in all_orders)
-    total_room_rev = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in all_bookings)
+    total_room_rev = sum(float(b.get("total_amount") or 0) for b in all_bookings)
     total_rooms_all   = len(all_rooms)
     occupied_all      = sum(1 for r in all_rooms if r.get("status") == "occupied")
     avg_occupancy_all = round(occupied_all / total_rooms_all * 100, 1) if total_rooms_all else 0
@@ -401,7 +410,7 @@ async def owner_overview(
     unassigned_orders   = all_orders_by_branch.get(None, [])
     unassigned_bookings = bookings_by_branch.get(None, [])
     unassigned_fb  = sum(_item_revenue(o) for o in unassigned_orders)
-    unassigned_room = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in unassigned_bookings)
+    unassigned_room = sum(float(b.get("total_amount") or 0) for b in unassigned_bookings)
     if unassigned_orders or unassigned_bookings:
         branch_stats.append({
             "id": None,
@@ -501,24 +510,21 @@ async def consolidated_financials(
     start_q = start_date + "T00:00:00"
     end_q = end_date + "T23:59:59"
 
-    # Run all 3 queries in parallel
-    orders_res, bookings_res, expenses_res = await _par(
-        lambda: supabase.table("orders").select("total_amount, status")
-            .gte("created_at", start_q).lte("created_at", end_q).execute(),
-        lambda: supabase.table("bookings").select("paid_amount, total_amount")
-            .gte("created_at", start_q).lte("created_at", end_q).execute(),
+    # Run all 3 queries in parallel with full pagination
+    VOID = {"voided", "void", "cancelled", "canceled", "void_requested"}
+    orders_all, bookings_all, expenses_res = await _par(
+        lambda: _fetch_all(supabase, "orders", "total_amount, status", start_q, end_q),
+        lambda: _fetch_all(supabase, "bookings", "total_amount", start_q, end_q),
         lambda: supabase.table("expenses").select("amount")
             .gte("expense_date", start_q).lte("expense_date", end_q).execute(),
     )
 
-    orders = orders_res.data or []
-    fb_revenue = sum(float(o.get("total_amount") or 0) for o in orders
-                     if o.get("status") in ("completed", "delivered", "served"))
+    orders = [o for o in orders_all if o.get("status") not in VOID]
+    fb_revenue = sum(float(o.get("total_amount") or 0) for o in orders)
 
-    bookings = bookings_res.data or []
-    room_revenue = sum(float(b.get("paid_amount") or b.get("total_amount") or 0) for b in bookings)
+    room_revenue = sum(float(b.get("total_amount") or 0) for b in bookings_all)
 
-    expenses = expenses_res.data or []
+    expenses = (expenses_res.data or []) if hasattr(expenses_res, 'data') else (expenses_res or [])
     total_expenses = sum(float(e.get("amount") or 0) for e in expenses)
 
     total_revenue = fb_revenue + room_revenue
@@ -589,21 +595,18 @@ async def seasonal_trend(
     start = end.replace(year=end.year - 1, day=1)
 
     def _orders():
-        q = supabase.table("orders").select("total_amount, status, created_at") \
-            .gte("created_at", start.isoformat()).lte("created_at", end.isoformat())
+        orders_raw = _fetch_all(supabase, "orders", "total_amount, status, created_at, branch_id", start.isoformat(), end.isoformat())
         if branch_id:
-            q = q.eq("branch_id", branch_id)
-        return q.execute().data or []
+            orders_raw = [o for o in orders_raw if o.get("branch_id") == branch_id]
+        return [o for o in orders_raw if o.get("status") not in _VOID_STATUSES]
 
     def _bookings():
-        q = supabase.table("bookings").select("paid_amount, total_amount, created_at") \
-            .gte("created_at", start.isoformat()).lte("created_at", end.isoformat())
+        bookings_raw = _fetch_all(supabase, "bookings", "total_amount, created_at, branch_id", start.isoformat(), end.isoformat())
         if branch_id:
-            q = q.eq("branch_id", branch_id)
-        return q.execute().data or []
+            bookings_raw = [b for b in bookings_raw if b.get("branch_id") == branch_id]
+        return bookings_raw
 
-    raw_orders, bookings = await _par(_orders, _bookings)
-    orders = [o for o in raw_orders if o.get("status") not in _VOID_STATUSES]
+    orders, bookings = await _par(_orders, _bookings)
 
     by_month: dict = {}
     for o in orders:
@@ -613,7 +616,7 @@ async def seasonal_trend(
     for b in bookings:
         m = (b.get("created_at") or "")[:7]
         by_month.setdefault(m, {"fb": 0, "rooms": 0})
-        by_month[m]["rooms"] += float(b.get("paid_amount") or b.get("total_amount") or 0)
+        by_month[m]["rooms"] += float(b.get("total_amount") or 0)
 
     result = []
     for i in range(13):
