@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import type { BillResponse } from '@/types/bills';
 import { Receipt, User, Calendar, DollarSign, QrCode } from 'lucide-react';
 import { BillQRCode } from './BillQRCode';
+import { useTaxSettings } from '@/hooks/useTaxSettings';
 
 interface BillDisplayProps {
   bill: BillResponse;
@@ -18,6 +19,7 @@ interface BillDisplayProps {
 
 export function BillDisplay({ bill }: BillDisplayProps) {
   const [showQRCode, setShowQRCode] = useState(false);
+  const { config } = useTaxSettings();
 
   // Group orders by waiter
   const ordersByWaiter = bill.orders.reduce((acc, order) => {
@@ -159,10 +161,16 @@ export function BillDisplay({ bill }: BillDisplayProps) {
             <span className="text-muted-foreground">Subtotal:</span>
             <span>{formatCurrency(bill.subtotal)}</span>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Tax (16%):</span>
-            <span>{formatCurrency(bill.tax)}</span>
-          </div>
+          {(config.vat_enabled || config.tourism_levy_enabled) && bill.tax > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">
+                Tax {config.vat_enabled ? `(${(config.vat_rate * 100).toFixed(0)}% VAT)` : ''}
+                {config.vat_enabled && config.tourism_levy_enabled ? ' + ' : ''}
+                {config.tourism_levy_enabled ? `(${(config.tourism_levy_rate * 100).toFixed(0)}% Levy)` : ''}:
+              </span>
+              <span>{formatCurrency(bill.tax)}</span>
+            </div>
+          )}
           <Separator />
           <div className="flex justify-between text-lg font-bold">
             <span className="flex items-center gap-2">

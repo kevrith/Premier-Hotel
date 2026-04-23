@@ -105,6 +105,9 @@ export default function CleanerDashboard() {
   const [flagForm, setFlagForm] = useState({ issue_type: 'other', title: '', description: '', priority: 'normal' });
   const [submittingFlag, setSubmittingFlag] = useState(false);
 
+  // Self-claim
+  const [claimingRoomId, setClaimingRoomId] = useState<string | null>(null);
+
   // Linen movement
   const [showLinenMove, setShowLinenMove] = useState(false);
   const [linenMoveForm, setLinenMoveForm] = useState({ linen_item_id: '', room_id: '', movement_type: 'issued', quantity: 1, notes: '' });
@@ -352,6 +355,20 @@ export default function CleanerDashboard() {
       setLostItems(updated);
     } catch { toast.error('Failed to report item'); }
     finally { setSubmittingLost(false); }
+  };
+
+  const handleClaimRoom = async (roomId: string) => {
+    setClaimingRoomId(roomId);
+    try {
+      await api.post(`/housekeeping/tasks/self-claim?room_id=${roomId}`);
+      toast.success(`Room ${getRoomNumber(roomId)} claimed — go start cleaning!`);
+      await loadData();
+      setActiveTab('assigned');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Could not claim room');
+    } finally {
+      setClaimingRoomId(null);
+    }
   };
 
   const openFlagForm = (roomId: string, taskId?: string) => {
@@ -871,8 +888,8 @@ export default function CleanerDashboard() {
           <TabsContent value="room-status" className="space-y-6">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h2 className="text-xl font-semibold">Room Status Overview</h2>
-                <p className="text-sm text-muted-foreground">Live status of all rooms — dirty rooms need cleaning</p>
+                <h2 className="text-xl font-semibold">Room Availability Board</h2>
+                <p className="text-sm text-muted-foreground">View all rooms and claim one to clean</p>
               </div>
               <Button variant="outline" size="sm" onClick={loadData}>
                 <RefreshCw className="h-4 w-4 mr-1" /> Refresh
@@ -894,69 +911,122 @@ export default function CleanerDashboard() {
               ))}
             </div>
 
-            {/* Dirty rooms — need cleaning */}
-            {rooms.filter(r => r.status === 'cleaning').length > 0 && (
-              <div>
-                <h3 className="font-semibold mb-3 flex items-center gap-2 text-red-600">
-                  <AlertTriangle className="h-4 w-4" /> Awaiting Cleaning ({rooms.filter(r => r.status === 'cleaning').length})
-                </h3>
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                  {rooms.filter(r => r.status === 'cleaning').map(room => {
-                    const existingTask = tasks.find(t => t.room_id === room.id && ['pending', 'assigned', 'in_progress'].includes(t.status));
-                    return (
-                      <Card key={room.id} className="border-red-300 border-2">
+            {/* Claimable rooms — cleaning or available with no task */}
+            {(() => {
+              const claimable = rooms.filter(r => {
+                if (!['available', 'cleaning'].includes(r.status)) return false;
+                const hasTask = tasks.some(t => t.room_id === r.id && ['pending', 'assigned', 'in_progress'].includes(t.status));
+                return !hasTask;
+              });
+              if (claimable.length === 0) return null;
+              return (
+                <div>
+                  <h3 className="font-semibold mb-3 flex items-center gap-2 text-orange-600">
+                    <AlertTriangle className="h-4 w-4" /> Ready to Clean — Claim a Room ({claimable.length})
+                  </h3>
+                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {claimable.map(room => (
+                      <Card key={room.id} className={`border-2 ${room.status === 'cleaning' ? 'border-red-300' : 'border-green-300'}`}>
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <BedDouble className="h-5 w-5 text-red-500" />
+                              <BedDouble className={`h-5 w-5 ${room.status === 'cleaning' ? 'text-red-500' : 'text-green-500'}`} />
                               <span className="font-bold text-lg">Room {room.room_number}</span>
                             </div>
-                            <Badge className="bg-red-100 text-red-700">Needs Cleaning</Badge>
+                            <Badge className={room.status === 'cleaning' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}>
+                              {room.status === 'cleaning' ? 'Needs Cleaning' : 'Available'}
+                            </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground capitalize mb-3">{room.type}</p>
-                          {existingTask ? (
-                            <div className="text-xs text-blue-600 font-medium flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              Task {existingTask.status === 'in_progress' ? 'in progress' : 'assigned'}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-orange-600 font-medium flex items-center gap-1">
-                              <AlertTriangle className="h-3 w-3" /> No task assigned yet
-                            </div>
-                          )}
+                          <Button
+                            className="w-full"
+                            size="sm"
+                            onClick={() => handleClaimRoom(room.id)}
+                            disabled={claimingRoomId === room.id}
+                          >
+                            {claimingRoomId === room.id
+                              ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Claiming...</>
+                              : <><PlayCircle className="h-4 w-4 mr-2" />Claim & Clean</>
+                            }
+                          </Button>
                         </CardContent>
                       </Card>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* All rooms grouped by status */}
-            {(['available', 'occupied', 'maintenance', 'reserved', 'inactive', 'cleaning'] as const).map(st => {
-              const group = rooms.filter(r => r.status === st);
-              if (group.length === 0) return null;
-              const colors: Record<string, string> = {
-                available: 'text-green-600', occupied: 'text-blue-600',
-                maintenance: 'text-orange-600', reserved: 'text-purple-600', inactive: 'text-gray-500',
-                cleaning: 'text-red-600',
-              };
-              return (
-                <div key={st}>
-                  <h3 className={`font-semibold mb-3 flex items-center gap-2 capitalize ${colors[st]}`}>
-                    <Home className="h-4 w-4" /> {st} ({group.length})
-                  </h3>
-                  <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                    {group.map(room => (
-                      <div key={room.id} className="p-3 border rounded-lg text-center hover:bg-muted transition-colors">
-                        <p className="font-bold">{room.room_number}</p>
-                        <p className="text-xs text-muted-foreground capitalize">{room.type}</p>
-                      </div>
                     ))}
                   </div>
                 </div>
               );
-            })}
+            })()}
+
+            {/* Rooms with active tasks */}
+            {(() => {
+              const active = rooms.filter(r =>
+                tasks.some(t => t.room_id === r.id && t.status === 'in_progress')
+              );
+              if (active.length === 0) return null;
+              return (
+                <div>
+                  <h3 className="font-semibold mb-3 flex items-center gap-2 text-blue-600">
+                    <Clock className="h-4 w-4" /> Being Cleaned Now ({active.length})
+                  </h3>
+                  <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4">
+                    {active.map(room => {
+                      const t = tasks.find(t2 => t2.room_id === room.id && t2.status === 'in_progress');
+                      const timer = t ? roomTimers[t.id] : undefined;
+                      return (
+                        <div key={room.id} className="p-3 border-2 border-blue-200 bg-blue-50 rounded-lg text-center">
+                          <p className="font-bold">{room.room_number}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{room.type}</p>
+                          {timer && <p className="text-xs font-mono text-blue-600 mt-1">{formatTime(timer.elapsed)}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* All rooms grid */}
+            <div>
+              <h3 className="font-semibold mb-3 flex items-center gap-2"><Home className="h-4 w-4" />All Rooms</h3>
+              <div className="grid gap-2 grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+                {rooms.map(room => {
+                  const statusColors: Record<string, string> = {
+                    available: 'bg-green-100 border-green-300 text-green-800',
+                    occupied: 'bg-blue-100 border-blue-300 text-blue-800',
+                    cleaning: 'bg-red-100 border-red-300 text-red-800',
+                    maintenance: 'bg-orange-100 border-orange-300 text-orange-800',
+                    reserved: 'bg-purple-100 border-purple-300 text-purple-800',
+                    inactive: 'bg-gray-100 border-gray-300 text-gray-600',
+                  };
+                  const hasActiveTask = tasks.some(t => t.room_id === room.id && t.status === 'in_progress');
+                  return (
+                    <div
+                      key={room.id}
+                      title={`Room ${room.room_number} — ${room.status}${hasActiveTask ? ' (being cleaned)' : ''}`}
+                      className={`p-2 border-2 rounded-lg text-center text-xs cursor-default ${statusColors[room.status] || 'bg-gray-100 border-gray-300'} ${hasActiveTask ? 'ring-2 ring-blue-400' : ''}`}
+                    >
+                      <p className="font-bold text-sm">{room.room_number}</p>
+                      <p className="capitalize truncate">{room.status}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Legend */}
+              <div className="flex flex-wrap gap-3 mt-3 text-xs">
+                {[
+                  { color: 'bg-green-100 border-green-300', label: 'Available' },
+                  { color: 'bg-blue-100 border-blue-300', label: 'Occupied' },
+                  { color: 'bg-red-100 border-red-300', label: 'Needs Cleaning' },
+                  { color: 'bg-orange-100 border-orange-300', label: 'Maintenance' },
+                  { color: 'bg-purple-100 border-purple-300', label: 'Reserved' },
+                ].map(({ color, label }) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <div className={`w-4 h-4 rounded border-2 ${color}`} />
+                    <span className="text-muted-foreground">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {rooms.length === 0 && (
               <Card><CardContent className="text-center py-12">
@@ -995,25 +1065,72 @@ export default function CleanerDashboard() {
               </CardContent>
             </Card>
 
+            {/* Shift Summary */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" />Recent Completions</CardTitle>
+                <CardTitle className="flex items-center gap-2"><ClipboardCheck className="h-5 w-5" />Today's Shift Summary</CardTitle>
+                <CardDescription>Rooms cleaned this shift with time taken per room</CardDescription>
               </CardHeader>
               <CardContent>
                 {completedTasks.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-6">No completed tasks yet today</p>
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Sparkles className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                    <p>No rooms cleaned yet today — get started!</p>
+                  </div>
                 ) : (
-                  <div className="space-y-3">
-                    {completedTasks.slice(0, 10).map(t => (
-                      <div key={t.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <>
+                    <div className="space-y-2 mb-4">
+                      {completedTasks.map(t => {
+                        const duration = t.actual_duration ?? 0;
+                        const maxTime = Math.max(...completedTasks.map(ct => ct.actual_duration ?? 0), 1);
+                        return (
+                          <div key={t.id} className="space-y-1">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium">Room {getRoomNumber(t.room_id)}</span>
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <span>{t.task_type.replace('_', ' ')}</span>
+                                <span className="font-semibold text-foreground">{duration ? `${duration}m` : '—'}</span>
+                                {t.completed_at && <span className="text-xs">{new Date(t.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                              </div>
+                            </div>
+                            {duration > 0 && (
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-primary rounded-full"
+                                  style={{ width: `${(duration / maxTime) * 100}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between items-center pt-3 text-sm font-medium">
+                      <span>Total rooms cleaned: <span className="text-primary font-bold">{completedTasks.length}</span></span>
+                      <span>Total time: <span className="text-primary font-bold">{completedTasks.reduce((s, t) => s + (t.actual_duration ?? 0), 0)}m</span></span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5" />Issues Reported Today</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {maintenanceFlags.filter(f => f.created_at.startsWith(new Date().toISOString().split('T')[0])).length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4 text-sm">No issues reported today</p>
+                ) : (
+                  <div className="space-y-2">
+                    {maintenanceFlags.filter(f => f.created_at.startsWith(new Date().toISOString().split('T')[0])).map(flag => (
+                      <div key={flag.id} className="flex items-center justify-between p-3 border rounded-lg text-sm">
                         <div>
-                          <p className="font-medium">Room {getRoomNumber(t.room_id)}</p>
-                          <p className="text-xs text-muted-foreground">{t.task_type.replace('_', ' ')} • {t.actual_duration ? `${t.actual_duration}m` : 'N/A'}</p>
+                          <p className="font-medium">{flag.title}</p>
+                          <p className="text-xs text-muted-foreground capitalize">Room {getRoomNumber(flag.room_id)} · {flag.issue_type.replace('_', ' ')}</p>
                         </div>
-                        <div className="text-right">
-                          <Badge variant="secondary">{t.priority}</Badge>
-                          {t.completed_at && <p className="text-xs text-muted-foreground mt-1">{new Date(t.completed_at).toLocaleTimeString()}</p>}
-                        </div>
+                        <Badge variant={flag.status === 'open' ? 'destructive' : 'secondary'} className="capitalize">{flag.status}</Badge>
                       </div>
                     ))}
                   </div>

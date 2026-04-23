@@ -80,6 +80,15 @@ async def report_maintenance_flag(
     supabase: Client = Depends(get_supabase_admin),
 ):
     """Cleaner reports a maintenance/repair issue in a room"""
+    # Resolve room number for notifications
+    room_num = data.room_id
+    try:
+        room_res = supabase.table("rooms").select("room_number").eq("id", data.room_id).execute()
+        if room_res.data:
+            room_num = room_res.data[0]["room_number"]
+    except Exception:
+        pass
+
     payload = {
         "room_id": data.room_id,
         "task_id": data.task_id,
@@ -93,7 +102,31 @@ async def report_maintenance_flag(
     result = supabase.table("maintenance_flags").insert(payload).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create flag")
-    return result.data[0]
+
+    flag = result.data[0]
+
+    # Notify managers, admins, and owners about the maintenance issue
+    try:
+        staff_res = supabase.table("users").select("id, role").in_("role", ["admin", "manager", "owner"]).execute()
+        reporter_name = current_user.get("full_name") or current_user.get("email", "A cleaner")
+        priority_label = {"urgent": "🚨 URGENT", "high": "⚠️ High", "normal": "Normal", "low": "Low"}.get(data.priority, data.priority)
+        notifications = [
+            {
+                "user_id": u["id"],
+                "type": "maintenance_flag",
+                "title": f"{priority_label} Maintenance Issue — Room {room_num}",
+                "message": f"{reporter_name} reported: {data.title} ({data.issue_type.replace('_', ' ').title()}). {data.description or ''}".strip(),
+                "data": {"flag_id": flag["id"], "room_id": data.room_id, "room_number": room_num, "priority": data.priority, "issue_type": data.issue_type},
+                "is_read": False,
+            }
+            for u in (staff_res.data or [])
+        ]
+        if notifications:
+            supabase.table("notifications").insert(notifications).execute()
+    except Exception:
+        pass  # notification failure is non-fatal
+
+    return flag
 
 
 @router.get("/flags")

@@ -96,9 +96,9 @@ async def get_tax_config(
         response = supabase_admin.table("hotel_settings").select("setting_value").eq("setting_key", "tax_config").execute()
         
         if not response.data:
-            # Return default config if not found
+            # Return default config if not found — disabled until explicitly configured
             return {
-                "vat_enabled": True,
+                "vat_enabled": False,
                 "vat_rate": 0.16,
                 "tourism_levy_enabled": False,
                 "tourism_levy_rate": 0.02,
