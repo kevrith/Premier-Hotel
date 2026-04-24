@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { InventoryManager } from '@/components/Chef/InventoryManager';
+import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
 import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { DailyReporting } from '@/components/Chef/DailyReporting';
 import { RecipeReference } from '@/components/Chef/RecipeReference';
@@ -932,7 +932,7 @@ export default function ChefDashboard() {
 
           {/* Inventory Tab */}
           <TabsContent value="inventory">
-            <InventoryManager />
+            <KitchenInventory readOnly={false} />
           </TabsContent>
 
           {/* Stock Take Tab */}

@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { RefreshCw, Save, CalendarDays, ChevronLeft, ChevronRight, Plus, Pencil, Briefcase } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { RefreshCw, Save, CalendarDays, ChevronLeft, ChevronRight, Plus, Pencil, Briefcase, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/api/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -322,7 +322,9 @@ function ItemsTab({ readOnly }: { readOnly: boolean }) {
   const [items, setItems] = useState<OfficeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editing, setEditing] = useState<OfficeItem | null>(null);
+  const [deleting, setDeleting] = useState<OfficeItem | null>(null);
   const [form, setForm] = useState({ name: '', unit: 'pieces', category: 'General', min_stock: 0, sort_order: 0 });
   const [saving, setSaving] = useState(false);
 
@@ -352,6 +354,11 @@ function ItemsTab({ readOnly }: { readOnly: boolean }) {
     setShowDialog(true);
   };
 
+  const openDelete = (item: OfficeItem) => {
+    setDeleting(item);
+    setShowDeleteConfirm(true);
+  };
+
   const handleSave = async () => {
     if (!form.name.trim()) { toast.error('Item name is required'); return; }
     setSaving(true);
@@ -372,11 +379,26 @@ function ItemsTab({ readOnly }: { readOnly: boolean }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleting) return;
+    setSaving(true);
+    try {
+      await api.delete(`/kitchen-stock/office/items/${deleting.id}`);
+      toast.success(`"${deleting.name}" removed`);
+      setShowDeleteConfirm(false);
+      load();
+    } catch {
+      toast.error('Delete failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {canEdit ? 'Add or edit items tracked in the office.' : 'View-only list of office stock items.'}
+          {canEdit ? 'Add, edit, or remove items tracked in the office.' : 'View-only list of office stock items.'}
         </p>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
@@ -420,9 +442,15 @@ function ItemsTab({ readOnly }: { readOnly: boolean }) {
                       <td className="px-4 py-2.5 text-center">{item.min_stock}</td>
                       {canEdit && (
                         <td className="px-4 py-2.5 text-right">
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(item)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(item)} title="Edit">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => openDelete(item)}
+                              className="text-muted-foreground hover:text-red-500" title="Remove">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -478,6 +506,27 @@ function ItemsTab({ readOnly }: { readOnly: boolean }) {
               <Button onClick={handleSave} disabled={saving}>
                 {saving && <RefreshCw className="h-4 w-4 animate-spin mr-2" />}
                 {editing ? 'Save Changes' : 'Add Item'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete confirmation */}
+      {canEdit && (
+        <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Remove "{deleting?.name}"?</DialogTitle>
+              <DialogDescription>
+                The item will be removed from the office stock catalogue. Existing stock records for this item are preserved.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={saving}>
+                {saving && <RefreshCw className="h-4 w-4 animate-spin mr-2" />}
+                Remove Item
               </Button>
             </DialogFooter>
           </DialogContent>

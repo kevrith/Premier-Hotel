@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import api from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
-import { KitchenInventoryManagement } from '@/components/Kitchen/KitchenInventoryManagement';
+import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
 import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
 
 interface LinenItem {
@@ -224,7 +224,7 @@ export const StockPage = () => (
     </TabsContent>
 
     <TabsContent value="kitchen-inventory">
-      <KitchenInventoryManagement readOnly={true} />
+      <KitchenInventory readOnly={true} />
     </TabsContent>
 
     <TabsContent value="office-stock">

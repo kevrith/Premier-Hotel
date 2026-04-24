@@ -31,23 +31,40 @@ def _require_role(user: dict, roles: set, label: str = "this action", extra_perm
 class KitchenItemCreate(BaseModel):
     name: str
     unit: str = "kg"
+    category: str = "General"
+    current_quantity: float = 0
+    min_stock: float = 0
     sort_order: int = 0
+    notes: Optional[str] = None
 
 
 class KitchenItemUpdate(BaseModel):
     name: Optional[str] = None
     unit: Optional[str] = None
+    category: Optional[str] = None
+    current_quantity: Optional[float] = None
+    min_stock: Optional[float] = None
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class KitchenItemAdjust(BaseModel):
+    delta: float          # positive = add, negative = subtract
+    reason: Optional[str] = None
 
 
 @router.get("/items")
 async def get_kitchen_items(
+    include_inactive: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     _require_role(current_user, ALLOWED_READ_ROLES, "kitchen inventory", KITCHEN_INV_PERMISSION)
     supabase = get_supabase_admin()
-    result = supabase.table("kitchen_stock_items").select("*").order("sort_order").execute()
+    q = supabase.table("kitchen_stock_items").select("*").order("sort_order")
+    if not include_inactive:
+        q = q.eq("is_active", True)
+    result = q.execute()
     return result.data or []
 
 
@@ -56,7 +73,7 @@ async def create_kitchen_item(
     body: KitchenItemCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    _require_role(current_user, ALLOWED_WRITE_ROLES, "kitchen inventory")
+    _require_role(current_user, {"admin", "manager"}, "kitchen inventory")
     supabase = get_supabase_admin()
     result = supabase.table("kitchen_stock_items").insert(body.dict()).execute()
     return result.data[0] if result.data else {}
@@ -68,11 +85,45 @@ async def update_kitchen_item(
     body: KitchenItemUpdate,
     current_user: dict = Depends(get_current_user)
 ):
-    _require_role(current_user, ALLOWED_WRITE_ROLES, "kitchen inventory")
+    _require_role(current_user, {"admin", "manager"}, "kitchen inventory")
     supabase = get_supabase_admin()
     payload = {k: v for k, v in body.dict().items() if v is not None}
     result = supabase.table("kitchen_stock_items").update(payload).eq("id", item_id).execute()
     return result.data[0] if result.data else {}
+
+
+@router.post("/items/{item_id}/adjust")
+async def adjust_kitchen_item_quantity(
+    item_id: str,
+    body: KitchenItemAdjust,
+    current_user: dict = Depends(get_current_user)
+):
+    """Add or subtract from an item's current_quantity."""
+    _require_role(current_user, ALLOWED_WRITE_ROLES, "kitchen inventory", KITCHEN_INV_PERMISSION)
+    supabase = get_supabase_admin()
+
+    # Fetch current qty
+    res = supabase.table("kitchen_stock_items").select("current_quantity").eq("id", item_id).single().execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Item not found")
+    before = float(res.data["current_quantity"] or 0)
+    after = before + body.delta
+    if after < 0:
+        raise HTTPException(status_code=400, detail="Quantity cannot go below zero")
+
+    supabase.table("kitchen_stock_items").update({"current_quantity": after}).eq("id", item_id).execute()
+
+    # Log the adjustment
+    supabase.table("kitchen_stock_adjustments").insert({
+        "item_id": item_id,
+        "adjusted_by": current_user["id"],
+        "before_qty": before,
+        "after_qty": after,
+        "delta": body.delta,
+        "reason": body.reason,
+    }).execute()
+
+    return {"item_id": item_id, "before": before, "after": after, "delta": body.delta}
 
 
 @router.delete("/items/{item_id}")
@@ -249,11 +300,15 @@ async def update_office_item(
 @router.delete("/office/items/{item_id}")
 async def delete_office_item(
     item_id: str,
+    permanent: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     _require_role(current_user, ALLOWED_OFFICE_WRITE, "office inventory")
     supabase = get_supabase_admin()
-    supabase.table("office_stock_items").update({"is_active": False}).eq("id", item_id).execute()
+    if permanent:
+        supabase.table("office_stock_items").delete().eq("id", item_id).execute()
+    else:
+        supabase.table("office_stock_items").update({"is_active": False}).eq("id", item_id).execute()
     return {"ok": True}
 
 

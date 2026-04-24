@@ -32,7 +32,7 @@ import { PermissionManagement } from '@/components/Permissions/PermissionManagem
 import { StockReceiving } from '@/components/Admin/StockReceiving';
 import { StockTransfer } from '@/components/Admin/StockTransfer';
 import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
-import { KitchenInventoryManagement } from '@/components/Kitchen/KitchenInventoryManagement';
+import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
 import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
 
 export default function AdminDashboard() {
@@ -160,7 +160,7 @@ export default function AdminDashboard() {
                 <KitchenStockTake readOnly={false} />
               </TabsContent>
               <TabsContent value="kitchen-inventory">
-                <KitchenInventoryManagement readOnly={false} />
+                <KitchenInventory readOnly={false} />
               </TabsContent>
               <TabsContent value="office-stock">
                 <OfficeStockTake readOnly={false} />

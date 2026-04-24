@@ -61,7 +61,7 @@ import { StockTransfer } from '@/components/Admin/StockTransfer';
 import { OfflineGate } from '@/components/shared/OfflineGate';
 import { PettyCash } from '@/components/Admin/PettyCash';
 import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
-import { KitchenInventoryManagement } from '@/components/Kitchen/KitchenInventoryManagement';
+import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
 import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
@@ -570,7 +570,7 @@ export default function ManagerDashboard() {
           {/* Kitchen Inventory Tab */}
           <TabsContent value="kitchen-inventory" className="space-y-6">
             <LazyTab active={activeTab === 'kitchen-inventory'}>
-              <KitchenInventoryManagement readOnly={false} />
+              <KitchenInventory readOnly={false} />
             </LazyTab>
           </TabsContent>
 
