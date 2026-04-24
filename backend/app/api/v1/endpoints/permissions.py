@@ -29,6 +29,7 @@ AVAILABLE_PERMISSIONS = [
     {"key": "can_assign_tasks", "label": "Assign Tasks", "description": "Assign tasks to staff members", "category": "Tasks"},
     {"key": "can_manage_permissions", "label": "Manage Permissions", "description": "Grant or revoke permissions", "category": "Permissions"},
     {"key": "can_manage_kitchen_inventory", "label": "Manage Kitchen Inventory", "description": "View and take stock of the kitchen inventory (for non-kitchen staff)", "category": "Inventory"},
+    {"key": "can_manage_ingredients", "label": "Manage Ingredients Stock", "description": "View and take daily stock of raw kitchen ingredients — spinach, onions, tomatoes, etc. (for non-kitchen staff)", "category": "Inventory"},
 ]
 
 

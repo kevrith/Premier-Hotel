@@ -11,6 +11,8 @@ import { toast } from 'react-hot-toast';
 import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
 import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
 import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
+import { IngredientsStockTake } from '@/components/Kitchen/IngredientsStockTake';
+import { IngredientsManagement } from '@/components/Kitchen/IngredientsManagement';
 
 interface LinenItem {
   id: string;
@@ -208,6 +210,14 @@ export const StockPage = () => (
           <Briefcase className="h-4 w-4 mr-1.5" />
           Office Stock
         </TabsTrigger>
+        <TabsTrigger value="ingredients-stock" className="text-xs sm:text-sm">
+          <Package className="h-4 w-4 mr-1.5" />
+          Ingredients
+        </TabsTrigger>
+        <TabsTrigger value="ingredients-mgmt" className="text-xs sm:text-sm">
+          <Package className="h-4 w-4 mr-1.5" />
+          Ingr. Catalogue
+        </TabsTrigger>
         <TabsTrigger value="linen" className="text-xs sm:text-sm">
           <BedDouble className="h-4 w-4 mr-1.5" />
           Housekeeping
@@ -229,6 +239,14 @@ export const StockPage = () => (
 
     <TabsContent value="office-stock">
       <OfficeStockTake readOnly={true} />
+    </TabsContent>
+
+    <TabsContent value="ingredients-stock">
+      <IngredientsStockTake readOnly={true} />
+    </TabsContent>
+
+    <TabsContent value="ingredients-mgmt">
+      <IngredientsManagement readOnly={true} />
     </TabsContent>
 
     <TabsContent value="linen">

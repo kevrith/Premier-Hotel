@@ -43,6 +43,7 @@ export const PERMISSIONS = {
   ASSIGN_TASKS:           'can_assign_tasks',
   MANAGE_PERMISSIONS:     'can_manage_permissions',
   MANAGE_KITCHEN_INVENTORY: 'can_manage_kitchen_inventory',
+  MANAGE_INGREDIENTS: 'can_manage_ingredients',
 } as const;
 
 // ── Hook ──────────────────────────────────────────────────────────────────────

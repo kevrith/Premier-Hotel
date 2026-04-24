@@ -62,6 +62,8 @@ import { OfflineGate } from '@/components/shared/OfflineGate';
 import { PettyCash } from '@/components/Admin/PettyCash';
 import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
 import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
+import { IngredientsStockTake } from '@/components/Kitchen/IngredientsStockTake';
+import { IngredientsManagement } from '@/components/Kitchen/IngredientsManagement';
 import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
@@ -197,6 +199,8 @@ export default function ManagerDashboard() {
             <TabsTrigger value="kitchen-stock" className="text-xs sm:text-sm px-1 sm:px-3">Kitchen Stock</TabsTrigger>
             <TabsTrigger value="kitchen-inventory" className="text-xs sm:text-sm px-1 sm:px-3">Kitchen Inv.</TabsTrigger>
             <TabsTrigger value="office-stock" className="text-xs sm:text-sm px-1 sm:px-3">Office Stock</TabsTrigger>
+            <TabsTrigger value="ingredients-stock" className="text-xs sm:text-sm px-1 sm:px-3">Ingredients</TabsTrigger>
+            <TabsTrigger value="ingredients-mgmt" className="text-xs sm:text-sm px-1 sm:px-3">Ingr. Mgmt</TabsTrigger>
             <TabsTrigger value="locations" className="text-xs sm:text-sm px-1 sm:px-3">Locations</TabsTrigger>
             <TabsTrigger value="system-health" className="text-xs sm:text-sm px-1 sm:px-3">Health</TabsTrigger>
             <TabsTrigger value="content-management" className="text-xs sm:text-sm px-1 sm:px-3">Content</TabsTrigger>
@@ -578,6 +582,20 @@ export default function ManagerDashboard() {
           <TabsContent value="office-stock" className="space-y-6">
             <LazyTab active={activeTab === 'office-stock'}>
               <OfficeStockTake readOnly={false} />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Ingredients Stock Take Tab */}
+          <TabsContent value="ingredients-stock" className="space-y-6">
+            <LazyTab active={activeTab === 'ingredients-stock'}>
+              <IngredientsStockTake readOnly={false} />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Ingredients Management Tab */}
+          <TabsContent value="ingredients-mgmt" className="space-y-6">
+            <LazyTab active={activeTab === 'ingredients-mgmt'}>
+              <IngredientsManagement readOnly={false} />
             </LazyTab>
           </TabsContent>
 

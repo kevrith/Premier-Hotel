@@ -34,6 +34,8 @@ import { StockTransfer } from '@/components/Admin/StockTransfer';
 import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
 import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
 import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
+import { IngredientsStockTake } from '@/components/Kitchen/IngredientsStockTake';
+import { IngredientsManagement } from '@/components/Kitchen/IngredientsManagement';
 
 export default function AdminDashboard() {
   const { isLoading } = useAuth();
@@ -139,6 +141,8 @@ export default function AdminDashboard() {
                   <TabsTrigger value="kitchen-stock-take" className="text-xs sm:text-sm">Kitchen Stock Take</TabsTrigger>
                   <TabsTrigger value="kitchen-inventory" className="text-xs sm:text-sm">Kitchen Inventory</TabsTrigger>
                   <TabsTrigger value="office-stock" className="text-xs sm:text-sm">Office Stock</TabsTrigger>
+                  <TabsTrigger value="ingredients-stock" className="text-xs sm:text-sm">Ingredients Stock</TabsTrigger>
+                  <TabsTrigger value="ingredients-mgmt" className="text-xs sm:text-sm">Ingredients Mgmt</TabsTrigger>
                 </TabsList>
               </div>
               <TabsContent value="stock-management">
@@ -164,6 +168,12 @@ export default function AdminDashboard() {
               </TabsContent>
               <TabsContent value="office-stock">
                 <OfficeStockTake readOnly={false} />
+              </TabsContent>
+              <TabsContent value="ingredients-stock">
+                <IngredientsStockTake readOnly={false} />
+              </TabsContent>
+              <TabsContent value="ingredients-mgmt">
+                <IngredientsManagement readOnly={false} />
               </TabsContent>
             </Tabs>
           </TabsContent>

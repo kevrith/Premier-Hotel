@@ -417,3 +417,191 @@ async def get_office_stock_dates(
             seen.add(d)
             dates.append(d)
     return dates
+
+
+# ─── Kitchen Ingredients (raw materials catalogue) ────────────────────────────
+
+INGREDIENTS_PERMISSION = "can_manage_ingredients"
+ALLOWED_INGREDIENTS_READ = {"admin", "manager", "owner", "chef"}
+ALLOWED_INGREDIENTS_WRITE = {"admin", "manager", "chef"}
+
+
+class IngredientCreate(BaseModel):
+    name: str
+    unit: str = "kg"
+    category: str = "General"
+    current_stock: float = 0
+    min_stock: float = 0
+    sort_order: int = 0
+    notes: Optional[str] = None
+
+
+class IngredientUpdate(BaseModel):
+    name: Optional[str] = None
+    unit: Optional[str] = None
+    category: Optional[str] = None
+    current_stock: Optional[float] = None
+    min_stock: Optional[float] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class IngredientStockUpsert(BaseModel):
+    ingredient_id: str
+    opening_stock: float = 0
+    purchases: float = 0
+    used: float = 0
+    waste: float = 0
+    closing_stock: float = 0
+    notes: Optional[str] = None
+
+
+@router.get("/ingredients")
+async def get_ingredients(
+    include_inactive: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, ALLOWED_INGREDIENTS_READ, "ingredients", INGREDIENTS_PERMISSION)
+    supabase = get_supabase_admin()
+    q = supabase.table("kitchen_ingredients").select("*").order("sort_order")
+    if not include_inactive:
+        q = q.eq("is_active", True)
+    result = q.execute()
+    return result.data or []
+
+
+@router.post("/ingredients")
+async def create_ingredient(
+    body: IngredientCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, {"admin", "manager"}, "ingredients")
+    supabase = get_supabase_admin()
+    result = supabase.table("kitchen_ingredients").insert(body.dict()).execute()
+    return result.data[0] if result.data else {}
+
+
+@router.put("/ingredients/{ingredient_id}")
+async def update_ingredient(
+    ingredient_id: str,
+    body: IngredientUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, {"admin", "manager"}, "ingredients")
+    supabase = get_supabase_admin()
+    payload = {k: v for k, v in body.dict().items() if v is not None}
+    result = supabase.table("kitchen_ingredients").update(payload).eq("id", ingredient_id).execute()
+    return result.data[0] if result.data else {}
+
+
+@router.delete("/ingredients/{ingredient_id}")
+async def delete_ingredient(
+    ingredient_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, {"admin", "manager"}, "ingredients")
+    supabase = get_supabase_admin()
+    supabase.table("kitchen_ingredients").update({"is_active": False}).eq("id", ingredient_id).execute()
+    return {"ok": True}
+
+
+# ─── Ingredient Daily Stock Takes ─────────────────────────────────────────────
+
+@router.get("/ingredients/daily")
+async def get_ingredient_daily_stock(
+    stock_date: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get ingredient stock take for a given date (defaults to today)."""
+    _require_role(current_user, ALLOWED_INGREDIENTS_READ, "ingredients stock", INGREDIENTS_PERMISSION)
+    supabase = get_supabase_admin()
+    target_date = stock_date or date.today().isoformat()
+
+    ingredients_res = supabase.table("kitchen_ingredients").select("*").eq("is_active", True).order("sort_order").execute()
+    ingredients = ingredients_res.data or []
+
+    q = supabase.table("kitchen_ingredient_stock_takes").select("*").eq("stock_date", target_date)
+    if branch_id:
+        q = q.eq("branch_id", branch_id)
+    logs_res = q.execute()
+    logs_by_item = {r["ingredient_id"]: r for r in (logs_res.data or [])}
+
+    merged = []
+    for ing in ingredients:
+        log = logs_by_item.get(ing["id"], {})
+        merged.append({
+            "ingredient_id": ing["id"],
+            "name": ing["name"],
+            "unit": ing["unit"],
+            "category": ing["category"],
+            "sort_order": ing["sort_order"],
+            "stock_date": target_date,
+            "opening_stock": log.get("opening_stock", 0),
+            "purchases": log.get("purchases", 0),
+            "used": log.get("used", 0),
+            "waste": log.get("waste", 0),
+            "closing_stock": log.get("closing_stock", 0),
+            "notes": log.get("notes", ""),
+            "log_id": log.get("id"),
+            "submitted_by": log.get("submitted_by"),
+        })
+    return {"date": target_date, "items": merged}
+
+
+@router.post("/ingredients/daily")
+async def upsert_ingredient_daily_stock(
+    stock_date: str,
+    items: List[IngredientStockUpsert],
+    branch_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Save ingredient stock take for a given date."""
+    _require_role(current_user, ALLOWED_INGREDIENTS_WRITE, "ingredients stock", INGREDIENTS_PERMISSION)
+    supabase = get_supabase_admin()
+    user_id = current_user["id"]
+
+    rows = []
+    for it in items:
+        rows.append({
+            "ingredient_id": it.ingredient_id,
+            "stock_date": stock_date,
+            "branch_id": branch_id,
+            "opening_stock": it.opening_stock,
+            "purchases": it.purchases,
+            "used": it.used,
+            "waste": it.waste,
+            "closing_stock": it.closing_stock,
+            "notes": it.notes,
+            "submitted_by": user_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    result = supabase.table("kitchen_ingredient_stock_takes").upsert(
+        rows, on_conflict="ingredient_id,stock_date,branch_id"
+    ).execute()
+    return {"saved": len(result.data or []), "date": stock_date}
+
+
+@router.get("/ingredients/daily/dates")
+async def get_ingredient_stock_dates(
+    branch_id: Optional[str] = None,
+    limit: int = 30,
+    current_user: dict = Depends(get_current_user)
+):
+    """Return list of dates that have ingredient stock take records."""
+    _require_role(current_user, ALLOWED_INGREDIENTS_READ, "ingredients stock", INGREDIENTS_PERMISSION)
+    supabase = get_supabase_admin()
+    q = supabase.table("kitchen_ingredient_stock_takes").select("stock_date").order("stock_date", desc=True).limit(limit)
+    if branch_id:
+        q = q.eq("branch_id", branch_id)
+    res = q.execute()
+    seen = set()
+    dates = []
+    for r in (res.data or []):
+        d = r["stock_date"]
+        if d not in seen:
+            seen.add(d)
+            dates.append(d)
+    return dates
