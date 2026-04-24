@@ -28,6 +28,7 @@ AVAILABLE_PERMISSIONS = [
     {"key": "can_manage_housekeeping", "label": "Manage Housekeeping", "description": "Assign and track cleaning tasks", "category": "Housekeeping"},
     {"key": "can_assign_tasks", "label": "Assign Tasks", "description": "Assign tasks to staff members", "category": "Tasks"},
     {"key": "can_manage_permissions", "label": "Manage Permissions", "description": "Grant or revoke permissions", "category": "Permissions"},
+    {"key": "can_manage_kitchen_inventory", "label": "Manage Kitchen Inventory", "description": "View and take stock of the kitchen inventory (for non-kitchen staff)", "category": "Inventory"},
 ]
 
 

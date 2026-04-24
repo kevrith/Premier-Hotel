@@ -76,12 +76,7 @@ export function PettyCash() {
       const b: Branch[] = (res.data || []).map((br: any) => ({ id: br.id, name: br.name }));
       setBranches(b);
       if (b.length > 0) setSelectedBranch(b[0].id);
-    }).catch(() => {
-      api.get('/settings/hotel').then(r => {
-        const br = r.data?.branch || r.data;
-        if (br?.id) { setBranches([{ id: br.id, name: br.name }]); setSelectedBranch(br.id); }
-      }).catch(() => {});
-    });
+    }).catch(() => {});
   }, []);
 
   const loadEntries = useCallback(async () => {

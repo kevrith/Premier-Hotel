@@ -60,6 +60,9 @@ import { StockReceiving } from '@/components/Admin/StockReceiving';
 import { StockTransfer } from '@/components/Admin/StockTransfer';
 import { OfflineGate } from '@/components/shared/OfflineGate';
 import { PettyCash } from '@/components/Admin/PettyCash';
+import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
+import { KitchenInventoryManagement } from '@/components/Kitchen/KitchenInventoryManagement';
+import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
 function LazyTab({ active, children }: { active: boolean; children: React.ReactNode }) {
@@ -191,6 +194,9 @@ export default function ManagerDashboard() {
             <TabsTrigger value="stock" className="text-xs sm:text-sm px-1 sm:px-3">Stock</TabsTrigger>
             <TabsTrigger value="purchases" className="text-xs sm:text-sm px-1 sm:px-3">Purchases</TabsTrigger>
             <TabsTrigger value="stock-take" className="text-xs sm:text-sm px-1 sm:px-3">Stock Take</TabsTrigger>
+            <TabsTrigger value="kitchen-stock" className="text-xs sm:text-sm px-1 sm:px-3">Kitchen Stock</TabsTrigger>
+            <TabsTrigger value="kitchen-inventory" className="text-xs sm:text-sm px-1 sm:px-3">Kitchen Inv.</TabsTrigger>
+            <TabsTrigger value="office-stock" className="text-xs sm:text-sm px-1 sm:px-3">Office Stock</TabsTrigger>
             <TabsTrigger value="locations" className="text-xs sm:text-sm px-1 sm:px-3">Locations</TabsTrigger>
             <TabsTrigger value="system-health" className="text-xs sm:text-sm px-1 sm:px-3">Health</TabsTrigger>
             <TabsTrigger value="content-management" className="text-xs sm:text-sm px-1 sm:px-3">Content</TabsTrigger>
@@ -551,6 +557,27 @@ export default function ManagerDashboard() {
           <TabsContent value="stock-take" className="space-y-6">
             <LazyTab active={activeTab === 'stock-take'}>
               <DailyStockTaking />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Kitchen Stock Take Tab */}
+          <TabsContent value="kitchen-stock" className="space-y-6">
+            <LazyTab active={activeTab === 'kitchen-stock'}>
+              <KitchenStockTake readOnly={false} />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Kitchen Inventory Tab */}
+          <TabsContent value="kitchen-inventory" className="space-y-6">
+            <LazyTab active={activeTab === 'kitchen-inventory'}>
+              <KitchenInventoryManagement readOnly={false} />
+            </LazyTab>
+          </TabsContent>
+
+          {/* Office Stock Take Tab */}
+          <TabsContent value="office-stock" className="space-y-6">
+            <LazyTab active={activeTab === 'office-stock'}>
+              <OfficeStockTake readOnly={false} />
             </LazyTab>
           </TabsContent>
 

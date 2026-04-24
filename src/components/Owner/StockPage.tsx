@@ -4,10 +4,13 @@ import { UnifiedStockDashboard } from '@/components/Stock/UnifiedStockDashboard'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Package, BedDouble, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Package, BedDouble, AlertTriangle, RefreshCw, UtensilsCrossed, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
+import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
+import { KitchenInventoryManagement } from '@/components/Kitchen/KitchenInventoryManagement';
+import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
 
 interface LinenItem {
   id: string;
@@ -187,20 +190,45 @@ function LinenInventoryView() {
 
 export const StockPage = () => (
   <Tabs defaultValue="inventory" className="space-y-4">
-    <TabsList>
-      <TabsTrigger value="inventory">
-        <Package className="h-4 w-4 mr-2" />
-        Kitchen & Bar Inventory
-      </TabsTrigger>
-      <TabsTrigger value="linen">
-        <BedDouble className="h-4 w-4 mr-2" />
-        Housekeeping
-      </TabsTrigger>
-    </TabsList>
+    <div className="overflow-x-auto pb-1">
+      <TabsList className="flex gap-1 w-max min-w-full h-auto">
+        <TabsTrigger value="inventory" className="text-xs sm:text-sm">
+          <Package className="h-4 w-4 mr-1.5" />
+          Kitchen & Bar
+        </TabsTrigger>
+        <TabsTrigger value="kitchen-stock-take" className="text-xs sm:text-sm">
+          <UtensilsCrossed className="h-4 w-4 mr-1.5" />
+          Kitchen Stock Take
+        </TabsTrigger>
+        <TabsTrigger value="kitchen-inventory" className="text-xs sm:text-sm">
+          <Package className="h-4 w-4 mr-1.5" />
+          Kitchen Inventory
+        </TabsTrigger>
+        <TabsTrigger value="office-stock" className="text-xs sm:text-sm">
+          <Briefcase className="h-4 w-4 mr-1.5" />
+          Office Stock
+        </TabsTrigger>
+        <TabsTrigger value="linen" className="text-xs sm:text-sm">
+          <BedDouble className="h-4 w-4 mr-1.5" />
+          Housekeeping
+        </TabsTrigger>
+      </TabsList>
+    </div>
 
     <TabsContent value="inventory">
-      {/* No department filter — shows all tracked menu items */}
       <UnifiedStockDashboard mode="owner" />
+    </TabsContent>
+
+    <TabsContent value="kitchen-stock-take">
+      <KitchenStockTake readOnly={true} />
+    </TabsContent>
+
+    <TabsContent value="kitchen-inventory">
+      <KitchenInventoryManagement readOnly={true} />
+    </TabsContent>
+
+    <TabsContent value="office-stock">
+      <OfficeStockTake readOnly={true} />
     </TabsContent>
 
     <TabsContent value="linen">
