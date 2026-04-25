@@ -234,6 +234,7 @@ db.open().then(async () => {
     '/location-stock/transfer', '/location-stock/adjust',
     '/purchase-orders/direct-receive', '/purchase-orders/',
     '/stock/receive', '/orders/end-of-day',
+    '/housekeeping/tasks/self-claim',
   ];
   try {
     const stuck = await db.pendingSync

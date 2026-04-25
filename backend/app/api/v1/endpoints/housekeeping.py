@@ -360,9 +360,15 @@ async def self_claim_room(
             raise HTTPException(status_code=400, detail=f"Room is {room['status']} — only available/cleaning rooms can be claimed")
 
         # Check for an existing active task for this room
-        existing = supabase.table("housekeeping_tasks").select("id, status").eq("room_id", room_id).in_("status", ["pending", "assigned", "in_progress"]).execute()
+        existing = supabase.table("housekeeping_tasks").select("id, status, assigned_to").eq("room_id", room_id).in_("status", ["pending", "assigned", "in_progress"]).execute()
         if existing.data:
-            raise HTTPException(status_code=400, detail="Room already has an active task assigned")
+            # Idempotent: if this user already claimed the room, return their existing task
+            my_task = next((t for t in existing.data if t.get("assigned_to") == current_user["id"]), None)
+            if my_task:
+                task_res = supabase.table("housekeeping_tasks").select("*").eq("id", my_task["id"]).execute()
+                if task_res.data:
+                    return HousekeepingTaskResponse(**task_res.data[0])
+            raise HTTPException(status_code=400, detail="Room already has an active task assigned to another cleaner")
 
         task_data = {
             "room_id": room_id,

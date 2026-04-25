@@ -80,6 +80,7 @@ const NO_OFFLINE_QUEUE_PATTERNS = [
   '/purchase-orders/',           // PO approval, send, cancel, receive — all real-time
   '/stock/receive',              // unified stock receive — real-time
   '/orders/end-of-day',          // EOD close — real-time only
+  '/housekeeping/tasks/self-claim', // room claiming must be real-time — replay causes duplicate/stale tasks
 ];
 
 function shouldQueueOffline(url: string): boolean {
