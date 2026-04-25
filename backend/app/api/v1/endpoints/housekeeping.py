@@ -350,36 +350,41 @@ async def self_claim_room(
     supabase: Client = Depends(get_supabase_admin)
 ):
     """Cleaner claims an available/dirty room to clean, creating their own task."""
-    # Verify the room exists and is in a claimable state
-    room_res = supabase.table("rooms").select("id, room_number, status, type").eq("id", room_id).execute()
-    if not room_res.data:
-        raise HTTPException(status_code=404, detail="Room not found")
-    room = room_res.data[0]
-    if room["status"] not in ("available", "cleaning"):
-        raise HTTPException(status_code=400, detail=f"Room is {room['status']} — only available/cleaning rooms can be claimed")
+    try:
+        # Verify the room exists and is in a claimable state
+        room_res = supabase.table("rooms").select("id, room_number, status, type").eq("id", room_id).execute()
+        if not room_res.data:
+            raise HTTPException(status_code=404, detail="Room not found")
+        room = room_res.data[0]
+        if room["status"] not in ("available", "cleaning", "dirty"):
+            raise HTTPException(status_code=400, detail=f"Room is {room['status']} — only available/cleaning rooms can be claimed")
 
-    # Check for an existing active task for this room
-    existing = supabase.table("housekeeping_tasks").select("id, status").eq("room_id", room_id).in_("status", ["pending", "assigned", "in_progress"]).execute()
-    if existing.data:
-        raise HTTPException(status_code=400, detail="Room already has an active task assigned")
+        # Check for an existing active task for this room
+        existing = supabase.table("housekeeping_tasks").select("id, status").eq("room_id", room_id).in_("status", ["pending", "assigned", "in_progress"]).execute()
+        if existing.data:
+            raise HTTPException(status_code=400, detail="Room already has an active task assigned")
 
-    task_data = {
-        "room_id": room_id,
-        "task_type": "cleaning",
-        "status": "assigned",
-        "priority": "normal",
-        "assigned_to": current_user["id"],
-        "scheduled_time": datetime.now(timezone.utc).isoformat(),
-        "notes": f"Self-claimed by {current_user.get('full_name') or current_user.get('email', 'cleaner')}",
-    }
-    result = supabase.table("housekeeping_tasks").insert(task_data).execute()
-    if not result.data:
-        raise HTTPException(status_code=500, detail="Failed to create task")
+        task_data = {
+            "room_id": room_id,
+            "task_type": "cleaning",
+            "status": "assigned",
+            "priority": "normal",
+            "assigned_to": current_user["id"],
+            "scheduled_time": datetime.now(timezone.utc).isoformat(),
+            "notes": f"Self-claimed by {current_user.get('full_name') or current_user.get('email', 'cleaner')}",
+        }
+        result = supabase.table("housekeeping_tasks").insert(task_data).execute()
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to create task")
 
-    # Mark room as cleaning so it shows correctly
-    supabase.table("rooms").update({"status": "cleaning"}).eq("id", room_id).execute()
+        # Mark room as cleaning so it shows correctly
+        supabase.table("rooms").update({"status": "cleaning"}).eq("id", room_id).execute()
 
-    return HousekeepingTaskResponse(**result.data[0])
+        return HousekeepingTaskResponse(**result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error claiming room: {str(e)}")
 
 
 @router.delete("/tasks/{task_id}")
