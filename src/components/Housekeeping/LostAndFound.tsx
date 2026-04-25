@@ -61,7 +61,12 @@ interface LostItem {
   updated_at: string;
 }
 
-export function LostAndFound() {
+interface LostAndFoundProps {
+  readOnly?: boolean;
+  canManage?: boolean;
+}
+
+export function LostAndFound({ readOnly = false, canManage = false }: LostAndFoundProps) {
   const { t } = useTranslation('common');
   const [items, setItems] = useState<LostItem[]>([]);
   const [filteredItems, setFilteredItems] = useState<LostItem[]>([]);
@@ -205,10 +210,12 @@ export function LostAndFound() {
           <h2 className="text-3xl font-bold tracking-tight">Lost & Found</h2>
           <p className="text-muted-foreground">Manage items found throughout the hotel</p>
         </div>
-        <Button onClick={handleAddNew}>
-          <Plus className="h-4 w-4 mr-2" />
-          Register Item
-        </Button>
+        {!readOnly && canManage && (
+          <Button onClick={handleAddNew}>
+            <Plus className="h-4 w-4 mr-2" />
+            Register Item
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -347,16 +354,29 @@ export function LostAndFound() {
                         <Button size="sm" variant="ghost" onClick={() => handleView(item)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleEdit(item)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        {item.status === 'unclaimed' && (
+                        {!readOnly && canManage && (
+                          <Button size="sm" variant="ghost" onClick={() => handleEdit(item)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {!readOnly && canManage && item.status === 'unclaimed' && (
                           <Button
                             size="sm"
                             variant="ghost"
+                            title="Mark as claimed"
                             onClick={() => handleStatusChange(item.id, 'claimed')}
                           >
                             <Check className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {!readOnly && canManage && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDelete(item.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
                       </div>
@@ -376,7 +396,7 @@ export function LostAndFound() {
           setShowDialog(false);
           setSelectedItem(null);
         }}
-        mode={viewMode}
+        mode={readOnly ? 'view' : viewMode}
         item={selectedItem}
         onSave={() => {
           setShowDialog(false);

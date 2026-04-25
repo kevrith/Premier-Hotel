@@ -50,6 +50,7 @@ import { RecentActivityFeed } from '@/components/Dashboard/RecentActivityFeed';
 import { NotificationCenter } from '@/components/Dashboard/NotificationCenter';
 import { DashboardCustomization, useWidgetVisibility } from '@/components/Dashboard/DashboardCustomization';
 import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagement';
+import { LostAndFound } from '@/components/Housekeeping/LostAndFound';
 import { StockManagement } from '@/components/Manager/StockManagement';
 import { InventoryManagement } from '@/components/Manager/InventoryManagement';
 import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
@@ -511,7 +512,18 @@ export default function ManagerDashboard() {
           {/* Housekeeping Management Tab */}
           <TabsContent value="housekeeping" className="space-y-6">
             <LazyTab active={activeTab === 'housekeeping'}>
-              <HousekeepingManagement />
+              <Tabs defaultValue="room-management">
+                <TabsList>
+                  <TabsTrigger value="room-management">Room Management</TabsTrigger>
+                  <TabsTrigger value="lost-found">Lost & Found</TabsTrigger>
+                </TabsList>
+                <TabsContent value="room-management" className="mt-4">
+                  <HousekeepingManagement />
+                </TabsContent>
+                <TabsContent value="lost-found" className="mt-4">
+                  <LostAndFound canManage />
+                </TabsContent>
+              </Tabs>
             </LazyTab>
           </TabsContent>
 

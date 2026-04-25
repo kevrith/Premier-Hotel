@@ -20,6 +20,7 @@ import { StockManagement } from '@/components/Manager/StockManagement';
 import { DailyStockTaking } from '@/components/Stock/DailyStockTaking';
 import { InventoryManagement } from '@/components/Admin/InventoryManagement';
 import { HousekeepingManagement } from '@/components/Manager/HousekeepingManagement';
+import { LostAndFound } from '@/components/Housekeeping/LostAndFound';
 import { ImportCenter } from '@/components/Admin/ImportCenter';
 import { DataExportCenter } from '@/components/Admin/DataExportCenter';
 import { LocationManagement } from '@/components/Admin/LocationManagement';
@@ -181,7 +182,18 @@ export default function AdminDashboard() {
 
           {/* Housekeeping Tab */}
           <TabsContent value="housekeeping" className="space-y-4 sm:space-y-6">
-            <HousekeepingManagement />
+            <Tabs defaultValue="room-management">
+              <TabsList>
+                <TabsTrigger value="room-management">Room Management</TabsTrigger>
+                <TabsTrigger value="lost-found">Lost & Found</TabsTrigger>
+              </TabsList>
+              <TabsContent value="room-management" className="mt-4">
+                <HousekeepingManagement />
+              </TabsContent>
+              <TabsContent value="lost-found" className="mt-4">
+                <LostAndFound canManage />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           {/* Tables Tab - Restaurant table management */}
