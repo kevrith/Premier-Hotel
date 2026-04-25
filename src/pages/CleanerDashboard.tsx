@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
+import { IngredientsStockTake } from '@/components/Kitchen/IngredientsStockTake';
+import { UtensilsStockTake } from '@/components/Kitchen/UtensilsStockTake';
 import { Navbar } from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -67,6 +70,9 @@ const CHECKLIST_ITEMS = [
 export default function CleanerDashboard() {
   const navigate = useNavigate();
   const { user, isAuthenticated, role } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canManageIngredients = hasPermission('can_manage_ingredients');
+  const canManageUtensils = hasPermission('can_manage_utensils_stock');
 
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
   const [supplies, setSupplies] = useState<HousekeepingSupply[]>([]);
@@ -628,6 +634,16 @@ export default function CleanerDashboard() {
             <TabsTrigger value="performance" className="h-10 text-xs sm:text-sm">
               My Stats
             </TabsTrigger>
+            {canManageIngredients && (
+              <TabsTrigger value="ingredients" className="h-10 text-xs sm:text-sm">
+                Ingredients
+              </TabsTrigger>
+            )}
+            {canManageUtensils && (
+              <TabsTrigger value="utensils" className="h-10 text-xs sm:text-sm">
+                Utensils
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Tasks Tab */}
@@ -1138,6 +1154,20 @@ export default function CleanerDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Ingredients Stock Tab — only shown when permission granted */}
+          {canManageIngredients && (
+            <TabsContent value="ingredients" className="space-y-4">
+              <IngredientsStockTake readOnly={false} />
+            </TabsContent>
+          )}
+
+          {/* Utensils Stock Tab — only shown when permission granted */}
+          {canManageUtensils && (
+            <TabsContent value="utensils" className="space-y-4">
+              <UtensilsStockTake readOnly={false} />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 

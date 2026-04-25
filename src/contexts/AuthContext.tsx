@@ -13,6 +13,7 @@ interface User {
   email_verified?: boolean;
   phone_verified?: boolean;
   profile_picture?: string;
+  permissions?: string[];
 }
 
 interface AuthContextType {
@@ -87,6 +88,10 @@ export function AuthProvider({ children }: { children: any }) {
           const hoursSince = (Date.now() - new Date(state.lastAuthenticatedAt).getTime()) / (1000 * 60 * 60);
           if (hoursSince < 168) { // 7 days
             setIsLoading(false);
+            // Background refresh to pick up permission/role changes without blocking the UI
+            if (navigator.onLine) {
+              checkAuth().catch(() => {});
+            }
             return;
           }
         }

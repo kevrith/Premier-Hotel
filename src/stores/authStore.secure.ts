@@ -61,6 +61,7 @@ interface User {
   email_verified?: boolean;
   phone_verified?: boolean;
   profile_picture?: string;
+  permissions?: string[];
 }
 
 interface AuthState {

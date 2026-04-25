@@ -703,7 +703,7 @@ async def create_lost_item(
     Register a lost and found item.
     """
     try:
-        item_data = item.model_dump()
+        item_data = item.model_dump(exclude_none=True)
 
         # Set found_by to current user if not specified
         if not item_data.get("found_by"):

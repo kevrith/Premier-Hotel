@@ -54,8 +54,11 @@ export function BranchManagement() {
       setLoading(true);
       const res = await api.get('/owner/branches');
       setBranches(res.data.branches || []);
-    } catch {
-      toast.error('Failed to load branches');
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status !== 401 && status !== 403) {
+        toast.error('Failed to load branches');
+      }
     } finally {
       setLoading(false);
     }

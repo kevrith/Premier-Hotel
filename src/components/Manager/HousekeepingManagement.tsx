@@ -92,6 +92,7 @@ export function HousekeepingManagement() {
   const [roomStatus, setRoomStatus] = useState<RoomStatusSummary | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [userNameMap, setUserNameMap] = useState<Record<string, string>>({});
   const [maintenanceFlags, setMaintenanceFlags] = useState<MaintenanceFlag[]>([]);
   const [linenItems, setLinenItems] = useState<LinenItem[]>([]);
   const [activeSection, setActiveSection] = useState<'tasks' | 'maintenance' | 'linen'>('tasks');
@@ -139,16 +140,26 @@ export function HousekeepingManagement() {
       setMaintenanceFlags(flagsData as MaintenanceFlag[]);
       setLinenItems(linenData as LinenItem[]);
 
-      // Fetch staff - try to get all and filter for housekeeping roles
+      // Fetch staff for name lookups — also load users directly as fallback
+      // (cleaners may have a users record but no staff record)
       try {
-        const allStaff = await staffService.getAllStaff({ status: 'active' });
+        const [allStaff, usersRes] = await Promise.all([
+          staffService.getAllStaff({ status: 'active' }),
+          api.get('/permissions/staff').then(r => (r.data as unknown) as any[]).catch(() => [] as any[]),
+        ]);
         const hkStaff = allStaff.filter((s: Staff) =>
           /housekeep|clean/i.test(s.department || '') ||
           /housekeep|clean/i.test(s.position || '')
         );
         setStaffList(hkStaff.length > 0 ? hkStaff : allStaff);
+
+        // Build a userId → full_name map from the users/permissions endpoint
+        const nameMap: Record<string, string> = {};
+        for (const u of (usersRes || [])) {
+          if (u.id && u.full_name) nameMap[u.id] = u.full_name;
+        }
+        setUserNameMap(nameMap);
       } catch {
-        // Staff endpoint might fail, that's ok
         setStaffList([]);
       }
     } catch (error: any) {
@@ -166,8 +177,12 @@ export function HousekeepingManagement() {
 
   const getStaffName = (staffId: string | undefined) => {
     if (!staffId) return 'Unassigned';
+    // Try staff table (has first_name/last_name via HR record)
     const staff = staffList.find(s => s.id === staffId || s.user_id === staffId);
-    return staff ? `${staff.first_name} ${staff.last_name}` : 'Unknown';
+    if (staff) return `${staff.first_name} ${staff.last_name}`;
+    // Fallback: look up by users.id from the permissions/staff endpoint
+    if (userNameMap[staffId]) return userNameMap[staffId];
+    return staffId.substring(0, 8) + '…';
   };
 
   const filteredTasks = tasks.filter(task => {
@@ -411,7 +426,15 @@ export function HousekeepingManagement() {
                     </CardHeader>
                     <CardContent className="pt-0 space-y-3">
                       {flag.description && <p className="text-sm text-muted-foreground">{flag.description}</p>}
-                      <p className="text-xs text-muted-foreground">{new Date(flag.created_at).toLocaleString()}</p>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>{new Date(flag.created_at).toLocaleString()}</span>
+                        {flag.reported_by && (
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            Reported by <span className="font-medium text-foreground ml-0.5">{getStaffName(flag.reported_by)}</span>
+                          </span>
+                        )}
+                      </div>
                       {flag.status !== 'resolved' && (
                         <div className="flex gap-2">
                           <Button size="sm" variant="outline" onClick={async () => {
@@ -551,7 +574,14 @@ export function HousekeepingManagement() {
                       </p>
                       <p className="flex items-center gap-1.5">
                         <Users className="h-3.5 w-3.5" />
-                        {getStaffName(task.assigned_to)}
+                        <span className="font-medium text-foreground">
+                          {task.assigned_to ? getStaffName(task.assigned_to) : 'Unassigned'}
+                        </span>
+                        {task.assigned_to && (
+                          <span className="text-xs">
+                            {task.status === 'completed' ? '— cleaned' : task.status === 'in_progress' ? '— cleaning' : '— claimed'}
+                          </span>
+                        )}
                       </p>
                       {task.scheduled_time && (
                         <p className="flex items-center gap-1.5">
@@ -559,7 +589,29 @@ export function HousekeepingManagement() {
                           {new Date(task.scheduled_time).toLocaleString()}
                         </p>
                       )}
+                      {task.completed_at && (
+                        <p className="flex items-center gap-1.5 text-green-600">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Done {new Date(task.completed_at).toLocaleString()}
+                          {task.actual_duration ? ` · ${task.actual_duration}m` : ''}
+                        </p>
+                      )}
                     </div>
+
+                    {task.issues_found && (
+                      <div className="text-sm bg-red-50 border border-red-200 text-red-700 p-2 rounded mb-3">
+                        <span className="font-semibold">Issue reported: </span>{task.issues_found}
+                      </div>
+                    )}
+
+                    {task.supplies_used && Object.keys(task.supplies_used).length > 0 && (
+                      <div className="text-xs bg-blue-50 border border-blue-100 text-blue-700 p-2 rounded mb-3">
+                        <span className="font-semibold block mb-1">Supplies used:</span>
+                        {Object.entries(task.supplies_used).map(([name, qty]) => (
+                          <span key={name} className="mr-2">{name}: {String(qty)}</span>
+                        ))}
+                      </div>
+                    )}
 
                     {task.notes && (
                       <p className="text-sm text-muted-foreground bg-muted p-2 rounded mb-3 line-clamp-2">
