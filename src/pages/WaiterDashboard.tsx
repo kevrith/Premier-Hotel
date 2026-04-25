@@ -949,31 +949,32 @@ export default function WaiterDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto gap-1">
-            <TabsTrigger value="tables" className="text-xs sm:text-sm py-2">
-              Tables ({tableOrders.length})
-            </TabsTrigger>
-            <TabsTrigger value="room-service" className="text-xs sm:text-sm py-2">
-              Room ({roomOrders.length})
-            </TabsTrigger>
-            <TabsTrigger value="bills" className="text-xs sm:text-sm py-2">
-              <Receipt className="h-3.5 w-3.5 mr-1" />
-              Bills
-            </TabsTrigger>
-            <TabsTrigger value="stock-take" className="text-xs sm:text-sm py-2">
-              Stock
-            </TabsTrigger>
-            {hasPermission(PERMISSIONS.MANAGE_ORDERS) && (
-              <TabsTrigger value="orders" className="text-xs sm:text-sm py-2">
-                Orders
+          <div className="overflow-x-auto pb-1">
+            <TabsList className="flex gap-1 w-max min-w-full h-auto">
+              <TabsTrigger value="tables" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                Tables ({tableOrders.length})
               </TabsTrigger>
-            )}
-            {(hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS) || hasPermission(PERMISSIONS.PRINT_ITEM_SUMMARY)) && (
-              <TabsTrigger value="my-report" className="text-xs sm:text-sm py-2">
-                My Report
+              <TabsTrigger value="room-service" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                Room Service ({roomOrders.length})
               </TabsTrigger>
-            )}
-          </TabsList>
+              <TabsTrigger value="bills" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                Bills
+              </TabsTrigger>
+              <TabsTrigger value="stock-take" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                Bar Stock Take
+              </TabsTrigger>
+              {hasPermission(PERMISSIONS.MANAGE_ORDERS) && (
+                <TabsTrigger value="orders" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                  Orders
+                </TabsTrigger>
+              )}
+              {(hasPermission(PERMISSIONS.VIEW_EMPLOYEE_REPORTS) || hasPermission(PERMISSIONS.PRINT_ITEM_SUMMARY)) && (
+                <TabsTrigger value="my-report" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                  My Report
+                </TabsTrigger>
+              )}
+            </TabsList>
+          </div>
 
           {/* Tables Tab */}
           <TabsContent value="tables" className="space-y-6">

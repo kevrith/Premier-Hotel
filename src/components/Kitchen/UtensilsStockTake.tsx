@@ -4,22 +4,20 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, ChevronRight, Save, RefreshCw, Leaf } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, RefreshCw, UtensilsCrossed } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 
-interface IngredientRow {
-  ingredient_id: string;
+interface UtensilRow {
+  utensil_id: string;
   name: string;
-  unit: string;
   category: string;
-  sort_order: number;
-  opening_stock: number;
-  purchases: number;
-  waste: number;
-  closing_stock: number;
+  opening_count: number;
+  closing_count: number;
+  broken: number;
+  lost: number;
   notes: string;
   log_id?: string;
 }
@@ -28,27 +26,23 @@ interface Props {
   readOnly?: boolean;
 }
 
-function calcUsed(row: IngredientRow) {
-  return Math.max(0, row.opening_stock + row.purchases - row.waste - row.closing_stock);
-}
-
-export function IngredientsStockTake({ readOnly = false }: Props) {
+export function UtensilsStockTake({ readOnly = false }: Props) {
   const { role } = useAuth();
   const { hasPermission } = usePermissions();
 
   const canEdit = !readOnly && (
-    ['admin', 'manager', 'chef'].includes(role || '') ||
-    hasPermission('can_manage_ingredients')
+    ['admin', 'manager', 'chef', 'waiter'].includes(role || '') ||
+    hasPermission('can_manage_utensils_stock')
   );
 
   const today = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState(today);
   const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [rows, setRows] = useState<IngredientRow[]>([]);
+  const [rows, setRows] = useState<UtensilRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const grouped = rows.reduce<Record<string, IngredientRow[]>>((acc, row) => {
+  const grouped = rows.reduce<Record<string, UtensilRow[]>>((acc, row) => {
     const cat = row.category || 'General';
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(row);
@@ -57,7 +51,7 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
 
   const loadDates = useCallback(async () => {
     try {
-      const res = await api.get('/kitchen-stock/ingredients/daily/dates');
+      const res = await api.get('/kitchen-stock/utensils/daily/dates');
       const dates: string[] = res.data || [];
       if (!dates.includes(today)) dates.unshift(today);
       setAvailableDates(dates);
@@ -69,22 +63,20 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
   const loadStock = useCallback(async (d: string) => {
     setLoading(true);
     try {
-      const res = await api.get('/kitchen-stock/ingredients/daily', { params: { stock_date: d } });
+      const res = await api.get('/kitchen-stock/utensils/daily', { params: { stock_date: d } });
       setRows((res.data.items || []).map((it: any) => ({
-        ingredient_id: it.ingredient_id,
+        utensil_id: it.utensil_id,
         name: it.name,
-        unit: it.unit,
         category: it.category,
-        sort_order: it.sort_order,
-        opening_stock: it.opening_stock ?? 0,
-        purchases: it.purchases ?? 0,
-        waste: it.waste ?? 0,
-        closing_stock: it.closing_stock ?? 0,
+        opening_count: it.opening_count ?? 0,
+        closing_count: it.closing_count ?? 0,
+        broken: it.broken ?? 0,
+        lost: it.lost ?? 0,
         notes: it.notes ?? '',
         log_id: it.log_id,
       })));
     } catch {
-      toast.error('Failed to load ingredients stock');
+      toast.error('Failed to load utensil stock');
     } finally {
       setLoading(false);
     }
@@ -93,10 +85,16 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
   useEffect(() => { loadDates(); }, [loadDates]);
   useEffect(() => { loadStock(selectedDate); }, [selectedDate, loadStock]);
 
-  const update = (idx: number, field: keyof IngredientRow, value: string) => {
-    setRows(prev => prev.map((r, i) => i !== idx ? r : {
-      ...r,
-      [field]: field === 'notes' ? value : parseFloat(value) || 0,
+  const update = (idx: number, field: keyof UtensilRow, value: string) => {
+    setRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r;
+      const updated = {
+        ...r,
+        [field]: field === 'notes' ? value : parseInt(value) || 0,
+      };
+      // Recompute lost whenever opening, closing, or broken changes
+      updated.lost = Math.max(0, updated.opening_count - updated.closing_count - updated.broken);
+      return updated;
     }));
   };
 
@@ -104,17 +102,16 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
     setSaving(true);
     try {
       await api.post(
-        `/kitchen-stock/ingredients/daily?stock_date=${selectedDate}`,
+        `/kitchen-stock/utensils/daily?stock_date=${selectedDate}`,
         rows.map(r => ({
-          ingredient_id: r.ingredient_id,
-          opening_stock: r.opening_stock,
-          purchases: r.purchases,
-          waste: r.waste,
-          closing_stock: r.closing_stock,
+          utensil_id: r.utensil_id,
+          opening_count: r.opening_count,
+          closing_count: r.closing_count,
+          broken: r.broken,
           notes: r.notes || null,
         }))
       );
-      toast.success('Ingredients stock saved');
+      toast.success('Utensil count saved');
       await loadDates();
     } catch {
       toast.error('Failed to save');
@@ -129,8 +126,8 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
     if (next >= 0 && next < availableDates.length) setSelectedDate(availableDates[next]);
   };
 
-  const totalUsed = rows.reduce((s, r) => s + calcUsed(r), 0);
-  const totalWaste = rows.reduce((s, r) => s + (r.waste || 0), 0);
+  const totalLost = rows.reduce((s, r) => s + (r.lost || 0), 0);
+  const totalBroken = rows.reduce((s, r) => s + (r.broken || 0), 0);
   const idx = availableDates.indexOf(selectedDate);
 
   return (
@@ -139,11 +136,11 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
         <CardHeader className="pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Leaf className="h-5 w-5 text-green-600" />
+              <UtensilsCrossed className="h-5 w-5 text-blue-600" />
               <div>
-                <CardTitle className="text-lg">Ingredients Stock Take</CardTitle>
+                <CardTitle className="text-lg">Utensils & Cutlery Count</CardTitle>
                 <CardDescription>
-                  Opening auto-fills from previous day. Used = Opening + Purchases − Waste − Closing.
+                  Opening auto-fills from previous day. Lost = Opening − Closing − Broken (auto-calculated).
                 </CardDescription>
               </div>
             </div>
@@ -176,11 +173,12 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="flex flex-wrap gap-2 text-sm">
+          <div className="flex flex-wrap gap-2">
             {selectedDate === today && <Badge className="bg-green-500/10 text-green-700 border-green-300">Today</Badge>}
-            <Badge variant="outline">{rows.length} ingredients</Badge>
-            <Badge variant="outline" className="text-orange-600 border-orange-300">Total Used: {totalUsed.toFixed(2)}</Badge>
-            <Badge variant="outline" className="text-red-600 border-red-300">Total Waste: {totalWaste.toFixed(2)}</Badge>
+            <Badge variant="outline">{rows.length} items</Badge>
+            {totalBroken > 0 && <Badge variant="outline" className="text-orange-600 border-orange-300">Broken: {totalBroken}</Badge>}
+            {totalLost > 0 && <Badge variant="destructive">Lost: {totalLost}</Badge>}
+            {totalLost === 0 && totalBroken === 0 && !loading && <Badge variant="outline" className="text-green-600 border-green-300">No losses today</Badge>}
           </div>
         </CardContent>
       </Card>
@@ -200,29 +198,25 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/30">
-                      <th className="text-left px-3 py-2 font-medium min-w-[130px]">Ingredient</th>
-                      <th className="text-center px-2 py-2 font-medium w-14">Unit</th>
-                      <th className="text-center px-2 py-2 font-medium w-24">Opening</th>
-                      <th className="text-center px-2 py-2 font-medium w-24">Purchases</th>
-                      <th className="text-center px-2 py-2 font-medium w-24">Waste</th>
-                      <th className="text-center px-2 py-2 font-medium w-24">Closing</th>
-                      <th className="text-center px-2 py-2 font-medium w-24 bg-orange-50 dark:bg-orange-950/20">Used ✦</th>
+                      <th className="text-left px-3 py-2 font-medium min-w-[150px]">Item</th>
+                      <th className="text-center px-2 py-2 font-medium w-28">Opening</th>
+                      <th className="text-center px-2 py-2 font-medium w-28">Closing</th>
+                      <th className="text-center px-2 py-2 font-medium w-24">Broken</th>
+                      <th className="text-center px-2 py-2 font-medium w-24 bg-red-50 dark:bg-red-950/20">Lost ✦</th>
                       <th className="text-left px-2 py-2 font-medium min-w-[120px]">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {catRows.map((row) => {
-                      const globalIdx = rows.findIndex(r => r.ingredient_id === row.ingredient_id);
-                      const used = calcUsed(row);
+                      const globalIdx = rows.findIndex(r => r.utensil_id === row.utensil_id);
                       return (
-                        <tr key={row.ingredient_id} className="border-b last:border-0 hover:bg-muted/20">
+                        <tr key={row.utensil_id} className="border-b last:border-0 hover:bg-muted/20">
                           <td className="px-3 py-2 font-medium">{row.name}</td>
-                          <td className="px-2 py-2 text-center text-muted-foreground text-xs">{row.unit}</td>
-                          {(['opening_stock', 'purchases', 'waste', 'closing_stock'] as const).map(field => (
+                          {(['opening_count', 'closing_count', 'broken'] as const).map(field => (
                             <td key={field} className="px-2 py-1 text-center">
                               {canEdit ? (
                                 <Input
-                                  type="number" min="0" step="0.001"
+                                  type="number" min="0" step="1"
                                   className="h-7 text-center text-sm w-20 mx-auto"
                                   value={row[field] || ''}
                                   onChange={e => update(globalIdx, field, e.target.value)}
@@ -232,10 +226,10 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
                               )}
                             </td>
                           ))}
-                          {/* Used — auto-computed, read-only */}
-                          <td className="px-2 py-2 text-center bg-orange-50 dark:bg-orange-950/20">
-                            <span className={`font-semibold text-sm ${used > 0 ? 'text-orange-600' : 'text-muted-foreground'}`}>
-                              {used.toFixed(2)}
+                          {/* Lost — auto-computed */}
+                          <td className="px-2 py-2 text-center bg-red-50 dark:bg-red-950/20">
+                            <span className={`font-semibold text-sm ${row.lost > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                              {row.lost}
                             </span>
                           </td>
                           <td className="px-2 py-1">
@@ -261,7 +255,6 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
         ))
       )}
 
-      {/* Date history */}
       {availableDates.length > 1 && (
         <div className="flex flex-wrap gap-2 pt-1">
           <span className="text-xs text-muted-foreground pt-1">Recent dates:</span>

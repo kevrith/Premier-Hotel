@@ -192,12 +192,14 @@ export function KitchenStockTake({ readOnly = false, branchId }: Props) {
                     <th className="text-center px-3 py-3 font-semibold min-w-[100px]">Purchases</th>
                     <th className="text-center px-3 py-3 font-semibold min-w-[100px]">Total</th>
                     <th className="text-center px-3 py-3 font-semibold min-w-[110px]">Closing</th>
+                    <th className="text-center px-3 py-3 font-semibold min-w-[90px] bg-orange-50 dark:bg-orange-950/20">Used ✦</th>
                     <th className="text-left px-3 py-3 font-semibold">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row, i) => {
                     const total = row.opening_stock + row.purchases;
+                    const used = Math.max(0, total - row.closing_stock);
                     return (
                       <tr key={row.item_id} className={`border-b last:border-0 ${i % 2 === 0 ? '' : 'bg-muted/20'}`}>
                         <td className="px-4 py-2 text-muted-foreground">{i + 1}</td>
@@ -243,6 +245,11 @@ export function KitchenStockTake({ readOnly = false, branchId }: Props) {
                               }`}
                             />
                           ) : <span>{row.closing_stock}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-center bg-orange-50 dark:bg-orange-950/20">
+                          <span className={`font-semibold text-sm ${used > 0 ? 'text-orange-600' : 'text-muted-foreground'}`}>
+                            {used.toFixed(2)}
+                          </span>
                         </td>
                         <td className="px-3 py-2">
                           {canEdit ? (

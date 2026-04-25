@@ -8,11 +8,7 @@ import { Package, BedDouble, AlertTriangle, RefreshCw, UtensilsCrossed, Briefcas
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
-import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
-import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
-import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
-import { IngredientsStockTake } from '@/components/Kitchen/IngredientsStockTake';
-import { IngredientsManagement } from '@/components/Kitchen/IngredientsManagement';
+import { StockHub } from '@/components/Stock/StockHub';
 
 interface LinenItem {
   id: string;
@@ -191,32 +187,12 @@ function LinenInventoryView() {
 }
 
 export const StockPage = () => (
-  <Tabs defaultValue="inventory" className="space-y-4">
+  <Tabs defaultValue="stock" className="space-y-4">
     <div className="overflow-x-auto pb-1">
       <TabsList className="flex gap-1 w-max min-w-full h-auto">
-        <TabsTrigger value="inventory" className="text-xs sm:text-sm">
+        <TabsTrigger value="stock" className="text-xs sm:text-sm">
           <Package className="h-4 w-4 mr-1.5" />
-          Kitchen & Bar
-        </TabsTrigger>
-        <TabsTrigger value="kitchen-stock-take" className="text-xs sm:text-sm">
-          <UtensilsCrossed className="h-4 w-4 mr-1.5" />
-          Kitchen Stock Take
-        </TabsTrigger>
-        <TabsTrigger value="kitchen-inventory" className="text-xs sm:text-sm">
-          <Package className="h-4 w-4 mr-1.5" />
-          Kitchen Inventory
-        </TabsTrigger>
-        <TabsTrigger value="office-stock" className="text-xs sm:text-sm">
-          <Briefcase className="h-4 w-4 mr-1.5" />
-          Office Stock
-        </TabsTrigger>
-        <TabsTrigger value="ingredients-stock" className="text-xs sm:text-sm">
-          <Package className="h-4 w-4 mr-1.5" />
-          Ingredients
-        </TabsTrigger>
-        <TabsTrigger value="ingredients-mgmt" className="text-xs sm:text-sm">
-          <Package className="h-4 w-4 mr-1.5" />
-          Ingr. Catalogue
+          Stock Overview
         </TabsTrigger>
         <TabsTrigger value="linen" className="text-xs sm:text-sm">
           <BedDouble className="h-4 w-4 mr-1.5" />
@@ -225,28 +201,9 @@ export const StockPage = () => (
       </TabsList>
     </div>
 
-    <TabsContent value="inventory">
+    <TabsContent value="stock" className="space-y-4">
       <UnifiedStockDashboard mode="owner" />
-    </TabsContent>
-
-    <TabsContent value="kitchen-stock-take">
-      <KitchenStockTake readOnly={true} />
-    </TabsContent>
-
-    <TabsContent value="kitchen-inventory">
-      <KitchenInventory readOnly={true} />
-    </TabsContent>
-
-    <TabsContent value="office-stock">
-      <OfficeStockTake readOnly={true} />
-    </TabsContent>
-
-    <TabsContent value="ingredients-stock">
-      <IngredientsStockTake readOnly={true} />
-    </TabsContent>
-
-    <TabsContent value="ingredients-mgmt">
-      <IngredientsManagement readOnly={true} />
+      <StockHub readOnly={true} />
     </TabsContent>
 
     <TabsContent value="linen">

@@ -31,11 +31,7 @@ import OrderManagement from '@/components/Manager/OrderManagement';
 import { PermissionManagement } from '@/components/Permissions/PermissionManagement';
 import { StockReceiving } from '@/components/Admin/StockReceiving';
 import { StockTransfer } from '@/components/Admin/StockTransfer';
-import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
-import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
-import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
-import { IngredientsStockTake } from '@/components/Kitchen/IngredientsStockTake';
-import { IngredientsManagement } from '@/components/Kitchen/IngredientsManagement';
+import { StockHub } from '@/components/Stock/StockHub';
 
 export default function AdminDashboard() {
   const { isLoading } = useAuth();
@@ -128,54 +124,29 @@ export default function AdminDashboard() {
             <ContentManagement />
           </TabsContent>
 
-          {/* Inventory Tab - Stock management, purchases, and tracking */}
+          {/* Inventory Tab */}
           <TabsContent value="inventory" className="space-y-4 sm:space-y-6">
-            <Tabs defaultValue="stock-management" className="w-full">
-              <div className="overflow-x-auto pb-1">
-                <TabsList className="flex gap-1 w-max min-w-full h-auto mb-4">
-                  <TabsTrigger value="stock-management" className="text-xs sm:text-sm">Stock Management</TabsTrigger>
-                  <TabsTrigger value="receiving" className="text-xs sm:text-sm">Receive Stock</TabsTrigger>
-                  <TabsTrigger value="transfer" className="text-xs sm:text-sm">Transfer Stock</TabsTrigger>
-                  <TabsTrigger value="purchases" className="text-xs sm:text-sm">Purchase Orders</TabsTrigger>
-                  <TabsTrigger value="stock-take" className="text-xs sm:text-sm">Stock Taking</TabsTrigger>
-                  <TabsTrigger value="kitchen-stock-take" className="text-xs sm:text-sm">Kitchen Stock Take</TabsTrigger>
-                  <TabsTrigger value="kitchen-inventory" className="text-xs sm:text-sm">Kitchen Inventory</TabsTrigger>
-                  <TabsTrigger value="office-stock" className="text-xs sm:text-sm">Office Stock</TabsTrigger>
-                  <TabsTrigger value="ingredients-stock" className="text-xs sm:text-sm">Ingredients Stock</TabsTrigger>
-                  <TabsTrigger value="ingredients-mgmt" className="text-xs sm:text-sm">Ingredients Mgmt</TabsTrigger>
-                </TabsList>
-              </div>
-              <TabsContent value="stock-management">
-                <StockManagement />
-              </TabsContent>
-              <TabsContent value="receiving">
-                <StockReceiving />
-              </TabsContent>
-              <TabsContent value="transfer">
-                <StockTransfer />
-              </TabsContent>
-              <TabsContent value="purchases">
-                <InventoryManagement />
-              </TabsContent>
-              <TabsContent value="stock-take">
-                <DailyStockTaking />
-              </TabsContent>
-              <TabsContent value="kitchen-stock-take">
-                <KitchenStockTake readOnly={false} />
-              </TabsContent>
-              <TabsContent value="kitchen-inventory">
-                <KitchenInventory readOnly={false} />
-              </TabsContent>
-              <TabsContent value="office-stock">
-                <OfficeStockTake readOnly={false} />
-              </TabsContent>
-              <TabsContent value="ingredients-stock">
-                <IngredientsStockTake readOnly={false} />
-              </TabsContent>
-              <TabsContent value="ingredients-mgmt">
-                <IngredientsManagement readOnly={false} />
-              </TabsContent>
-            </Tabs>
+            <StockHub
+              readOnly={false}
+              generalContent={
+                <Tabs defaultValue="stock-management" className="w-full">
+                  <div className="overflow-x-auto pb-1">
+                    <TabsList className="flex gap-1 w-max min-w-full h-auto mb-4">
+                      <TabsTrigger value="stock-management" className="text-xs sm:text-sm">Stock Levels</TabsTrigger>
+                      <TabsTrigger value="receiving" className="text-xs sm:text-sm">Receive Stock</TabsTrigger>
+                      <TabsTrigger value="transfer" className="text-xs sm:text-sm">Transfer Stock</TabsTrigger>
+                      <TabsTrigger value="purchases" className="text-xs sm:text-sm">Purchase Orders</TabsTrigger>
+                      <TabsTrigger value="stock-take" className="text-xs sm:text-sm">Bar Stock Take</TabsTrigger>
+                    </TabsList>
+                  </div>
+                  <TabsContent value="stock-management"><StockManagement /></TabsContent>
+                  <TabsContent value="receiving"><StockReceiving /></TabsContent>
+                  <TabsContent value="transfer"><StockTransfer /></TabsContent>
+                  <TabsContent value="purchases"><InventoryManagement /></TabsContent>
+                  <TabsContent value="stock-take"><DailyStockTaking /></TabsContent>
+                </Tabs>
+              }
+            />
           </TabsContent>
 
           {/* Locations Tab - Multi-location stock management */}

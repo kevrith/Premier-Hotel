@@ -60,11 +60,7 @@ import { StockReceiving } from '@/components/Admin/StockReceiving';
 import { StockTransfer } from '@/components/Admin/StockTransfer';
 import { OfflineGate } from '@/components/shared/OfflineGate';
 import { PettyCash } from '@/components/Admin/PettyCash';
-import { KitchenStockTake } from '@/components/Kitchen/KitchenStockTake';
-import { KitchenInventory } from '@/components/Kitchen/KitchenInventory';
-import { IngredientsStockTake } from '@/components/Kitchen/IngredientsStockTake';
-import { IngredientsManagement } from '@/components/Kitchen/IngredientsManagement';
-import { OfficeStockTake } from '@/components/Office/OfficeStockTake';
+import { StockHub } from '@/components/Stock/StockHub';
 
 // Lazy-loading wrapper: only mounts children once the tab has been activated
 function LazyTab({ active, children }: { active: boolean; children: React.ReactNode }) {
@@ -186,29 +182,24 @@ export default function ManagerDashboard() {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
-          <TabsList className="flex flex-wrap w-full gap-1 h-auto">
-            <TabsTrigger value="overview" className="text-xs sm:text-sm px-1 sm:px-3">Overview</TabsTrigger>
-            <TabsTrigger value="manage-staff" className="text-xs sm:text-sm px-1 sm:px-3">Staff</TabsTrigger>
-            <TabsTrigger value="permissions" className="text-xs sm:text-sm px-1 sm:px-3">Perms</TabsTrigger>
-            <TabsTrigger value="operations" className="text-xs sm:text-sm px-1 sm:px-3">Ops</TabsTrigger>
-            <TabsTrigger value="financial-reports" className="text-xs sm:text-sm px-1 sm:px-3">Reports</TabsTrigger>
-            <TabsTrigger value="order-management" className="text-xs sm:text-sm px-1 sm:px-3">Orders</TabsTrigger>
-            <TabsTrigger value="stock" className="text-xs sm:text-sm px-1 sm:px-3">Stock</TabsTrigger>
-            <TabsTrigger value="purchases" className="text-xs sm:text-sm px-1 sm:px-3">Purchases</TabsTrigger>
-            <TabsTrigger value="stock-take" className="text-xs sm:text-sm px-1 sm:px-3">Stock Take</TabsTrigger>
-            <TabsTrigger value="kitchen-stock" className="text-xs sm:text-sm px-1 sm:px-3">Kitchen Stock</TabsTrigger>
-            <TabsTrigger value="kitchen-inventory" className="text-xs sm:text-sm px-1 sm:px-3">Kitchen Inv.</TabsTrigger>
-            <TabsTrigger value="office-stock" className="text-xs sm:text-sm px-1 sm:px-3">Office Stock</TabsTrigger>
-            <TabsTrigger value="ingredients-stock" className="text-xs sm:text-sm px-1 sm:px-3">Ingredients</TabsTrigger>
-            <TabsTrigger value="ingredients-mgmt" className="text-xs sm:text-sm px-1 sm:px-3">Ingr. Mgmt</TabsTrigger>
-            <TabsTrigger value="locations" className="text-xs sm:text-sm px-1 sm:px-3">Locations</TabsTrigger>
-            <TabsTrigger value="system-health" className="text-xs sm:text-sm px-1 sm:px-3">Health</TabsTrigger>
-            <TabsTrigger value="content-management" className="text-xs sm:text-sm px-1 sm:px-3">Content</TabsTrigger>
-            <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-1 sm:px-3">Housekeeping</TabsTrigger>
-            <TabsTrigger value="import" className="text-xs sm:text-sm px-1 sm:px-3">Import</TabsTrigger>
-            <TabsTrigger value="export-data" className="text-xs sm:text-sm px-1 sm:px-3">Export</TabsTrigger>
-            <TabsTrigger value="petty-cash" className="text-xs sm:text-sm px-1 sm:px-3">Petty Cash</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-1">
+            <TabsList className="flex gap-1 w-max min-w-full h-auto">
+              <TabsTrigger value="overview" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Overview</TabsTrigger>
+              <TabsTrigger value="manage-staff" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Staff</TabsTrigger>
+              <TabsTrigger value="permissions" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Permissions</TabsTrigger>
+              <TabsTrigger value="operations" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Operations</TabsTrigger>
+              <TabsTrigger value="financial-reports" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Reports</TabsTrigger>
+              <TabsTrigger value="order-management" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Orders</TabsTrigger>
+              <TabsTrigger value="stock-hub" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Stock</TabsTrigger>
+              <TabsTrigger value="locations" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Locations</TabsTrigger>
+              <TabsTrigger value="system-health" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Health</TabsTrigger>
+              <TabsTrigger value="content-management" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Content</TabsTrigger>
+              <TabsTrigger value="housekeeping" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Housekeeping</TabsTrigger>
+              <TabsTrigger value="import" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Import</TabsTrigger>
+              <TabsTrigger value="export-data" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Export</TabsTrigger>
+              <TabsTrigger value="petty-cash" className="text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">Petty Cash</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Overview Tab — loads immediately, no LazyTab wrapper */}
           <TabsContent value="overview" className="space-y-4 sm:space-y-6">
@@ -524,78 +515,30 @@ export default function ManagerDashboard() {
             </LazyTab>
           </TabsContent>
 
-          {/* Stock Management Tab */}
-          <TabsContent value="stock" className="space-y-6">
-            <LazyTab active={activeTab === 'stock'}>
-              <StockManagement />
-            </LazyTab>
-          </TabsContent>
-
-          {/* Purchase Orders / Receiving Tab */}
-          <TabsContent value="purchases" className="space-y-6">
-            <LazyTab active={activeTab === 'purchases'}>
-            <OfflineGate message="Stock receiving and purchasing requires an internet connection.">
-              <Tabs defaultValue="purchase-orders">
-                <div className="overflow-x-auto pb-1">
-                  <TabsList className="flex gap-1 w-max min-w-full h-auto">
-                    <TabsTrigger value="purchase-orders" className="text-xs sm:text-sm flex-1">Purchase Orders</TabsTrigger>
-                    <TabsTrigger value="receiving" className="text-xs sm:text-sm flex-1">Receive Stock</TabsTrigger>
-                    <TabsTrigger value="transfer" className="text-xs sm:text-sm flex-1">Transfer Stock</TabsTrigger>
-                  </TabsList>
-                </div>
-                <TabsContent value="purchase-orders" className="mt-4">
-                  <InventoryManagement />
-                </TabsContent>
-                <TabsContent value="receiving" className="mt-4">
-                  <StockReceiving />
-                </TabsContent>
-                <TabsContent value="transfer" className="mt-4">
-                  <StockTransfer />
-                </TabsContent>
-              </Tabs>
-            </OfflineGate>
-            </LazyTab>
-          </TabsContent>
-
-          {/* Daily Stock Taking Tab */}
-          <TabsContent value="stock-take" className="space-y-6">
-            <LazyTab active={activeTab === 'stock-take'}>
-              <DailyStockTaking />
-            </LazyTab>
-          </TabsContent>
-
-          {/* Kitchen Stock Take Tab */}
-          <TabsContent value="kitchen-stock" className="space-y-6">
-            <LazyTab active={activeTab === 'kitchen-stock'}>
-              <KitchenStockTake readOnly={false} />
-            </LazyTab>
-          </TabsContent>
-
-          {/* Kitchen Inventory Tab */}
-          <TabsContent value="kitchen-inventory" className="space-y-6">
-            <LazyTab active={activeTab === 'kitchen-inventory'}>
-              <KitchenInventory readOnly={false} />
-            </LazyTab>
-          </TabsContent>
-
-          {/* Office Stock Take Tab */}
-          <TabsContent value="office-stock" className="space-y-6">
-            <LazyTab active={activeTab === 'office-stock'}>
-              <OfficeStockTake readOnly={false} />
-            </LazyTab>
-          </TabsContent>
-
-          {/* Ingredients Stock Take Tab */}
-          <TabsContent value="ingredients-stock" className="space-y-6">
-            <LazyTab active={activeTab === 'ingredients-stock'}>
-              <IngredientsStockTake readOnly={false} />
-            </LazyTab>
-          </TabsContent>
-
-          {/* Ingredients Management Tab */}
-          <TabsContent value="ingredients-mgmt" className="space-y-6">
-            <LazyTab active={activeTab === 'ingredients-mgmt'}>
-              <IngredientsManagement readOnly={false} />
+          {/* Stock Hub Tab — all stock types in one place */}
+          <TabsContent value="stock-hub" className="space-y-6">
+            <LazyTab active={activeTab === 'stock-hub'}>
+              <StockHub
+                readOnly={false}
+                generalContent={
+                  <Tabs defaultValue="stock-levels">
+                    <div className="overflow-x-auto pb-1">
+                      <TabsList className="flex gap-1 w-max min-w-full h-auto mb-4">
+                        <TabsTrigger value="stock-levels">Stock Levels</TabsTrigger>
+                        <TabsTrigger value="receiving">Receive Stock</TabsTrigger>
+                        <TabsTrigger value="transfer">Transfer Stock</TabsTrigger>
+                        <TabsTrigger value="purchase-orders">Purchase Orders</TabsTrigger>
+                        <TabsTrigger value="bar-stock-take">Bar Stock Take</TabsTrigger>
+                      </TabsList>
+                    </div>
+                    <TabsContent value="stock-levels"><StockManagement /></TabsContent>
+                    <TabsContent value="receiving"><StockReceiving /></TabsContent>
+                    <TabsContent value="transfer"><StockTransfer /></TabsContent>
+                    <TabsContent value="purchase-orders"><InventoryManagement /></TabsContent>
+                    <TabsContent value="bar-stock-take"><DailyStockTaking /></TabsContent>
+                  </Tabs>
+                }
+              />
             </LazyTab>
           </TabsContent>
 

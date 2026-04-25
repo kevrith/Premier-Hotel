@@ -1,7 +1,7 @@
 """Kitchen Stock & Office Stock Endpoints"""
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional, List
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from pydantic import BaseModel
 from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import get_current_user
@@ -169,7 +169,15 @@ async def get_kitchen_daily_stock(
     logs_res = q.execute()
     logs_by_item = {r["item_id"]: r for r in (logs_res.data or [])}
 
-    # Merge
+    # Fetch previous day's closing stocks to auto-fill opening
+    prev_date = (date.fromisoformat(target_date) - timedelta(days=1)).isoformat()
+    pq = supabase.table("kitchen_daily_stock").select("item_id, closing_stock").eq("stock_date", prev_date)
+    if branch_id:
+        pq = pq.eq("branch_id", branch_id)
+    prev_res = pq.execute()
+    prev_closing = {r["item_id"]: float(r["closing_stock"] or 0) for r in (prev_res.data or [])}
+
+    # Merge — opening auto-fills from prev day if no record exists for today
     merged = []
     for item in items:
         log = logs_by_item.get(item["id"], {})
@@ -179,7 +187,7 @@ async def get_kitchen_daily_stock(
             "unit": item["unit"],
             "sort_order": item["sort_order"],
             "stock_date": target_date,
-            "opening_stock": log.get("opening_stock", 0),
+            "opening_stock": log.get("opening_stock", prev_closing.get(item["id"], 0)),
             "purchases": log.get("purchases", 0),
             "closing_stock": log.get("closing_stock", 0),
             "notes": log.get("notes", ""),
@@ -528,9 +536,21 @@ async def get_ingredient_daily_stock(
     logs_res = q.execute()
     logs_by_item = {r["ingredient_id"]: r for r in (logs_res.data or [])}
 
+    # Auto-fill opening from previous day's closing
+    prev_date = (date.fromisoformat(target_date) - timedelta(days=1)).isoformat()
+    pq = supabase.table("kitchen_ingredient_stock_takes").select("ingredient_id, closing_stock").eq("stock_date", prev_date)
+    if branch_id:
+        pq = pq.eq("branch_id", branch_id)
+    prev_res = pq.execute()
+    prev_closing = {r["ingredient_id"]: float(r["closing_stock"] or 0) for r in (prev_res.data or [])}
+
     merged = []
     for ing in ingredients:
         log = logs_by_item.get(ing["id"], {})
+        opening = log.get("opening_stock", prev_closing.get(ing["id"], 0))
+        purchases = log.get("purchases", 0)
+        waste = log.get("waste", 0)
+        closing = log.get("closing_stock", 0)
         merged.append({
             "ingredient_id": ing["id"],
             "name": ing["name"],
@@ -538,14 +558,13 @@ async def get_ingredient_daily_stock(
             "category": ing["category"],
             "sort_order": ing["sort_order"],
             "stock_date": target_date,
-            "opening_stock": log.get("opening_stock", 0),
-            "purchases": log.get("purchases", 0),
-            "used": log.get("used", 0),
-            "waste": log.get("waste", 0),
-            "closing_stock": log.get("closing_stock", 0),
-            "notes": log.get("notes", ""),
+            "opening_stock": opening,
+            "purchases": purchases,
+            "waste": waste,
+            "closing_stock": closing,
             "log_id": log.get("id"),
             "submitted_by": log.get("submitted_by"),
+            "notes": log.get("notes", ""),
         })
     return {"date": target_date, "items": merged}
 
@@ -594,6 +613,191 @@ async def get_ingredient_stock_dates(
     _require_role(current_user, ALLOWED_INGREDIENTS_READ, "ingredients stock", INGREDIENTS_PERMISSION)
     supabase = get_supabase_admin()
     q = supabase.table("kitchen_ingredient_stock_takes").select("stock_date").order("stock_date", desc=True).limit(limit)
+    if branch_id:
+        q = q.eq("branch_id", branch_id)
+    res = q.execute()
+    seen = set()
+    dates = []
+    for r in (res.data or []):
+        d = r["stock_date"]
+        if d not in seen:
+            seen.add(d)
+            dates.append(d)
+    return dates
+
+
+# ─── Utensil / Cutlery Stock ──────────────────────────────────────────────────
+
+UTENSILS_PERMISSION = "can_manage_utensils_stock"
+ALLOWED_UTENSILS_READ = {"admin", "manager", "owner", "chef", "waiter"}
+ALLOWED_UTENSILS_WRITE = {"admin", "manager", "chef", "waiter"}
+
+
+class UtensilItemCreate(BaseModel):
+    name: str
+    category: str = "General"
+    sort_order: int = 0
+    notes: Optional[str] = None
+
+
+class UtensilItemUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class UtensilStockUpsert(BaseModel):
+    utensil_id: str
+    opening_count: int = 0
+    closing_count: int = 0
+    broken: int = 0
+    notes: Optional[str] = None
+
+
+@router.get("/utensils")
+async def get_utensil_items(
+    include_inactive: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, ALLOWED_UTENSILS_READ, "utensils", UTENSILS_PERMISSION)
+    supabase = get_supabase_admin()
+    q = supabase.table("utensil_items").select("*").order("sort_order")
+    if not include_inactive:
+        q = q.eq("is_active", True)
+    return q.execute().data or []
+
+
+@router.post("/utensils")
+async def create_utensil_item(
+    body: UtensilItemCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, {"admin", "manager"}, "utensils")
+    supabase = get_supabase_admin()
+    result = supabase.table("utensil_items").insert(body.dict()).execute()
+    return result.data[0] if result.data else {}
+
+
+@router.put("/utensils/{utensil_id}")
+async def update_utensil_item(
+    utensil_id: str,
+    body: UtensilItemUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, {"admin", "manager"}, "utensils")
+    supabase = get_supabase_admin()
+    payload = {k: v for k, v in body.dict().items() if v is not None}
+    result = supabase.table("utensil_items").update(payload).eq("id", utensil_id).execute()
+    return result.data[0] if result.data else {}
+
+
+@router.delete("/utensils/{utensil_id}")
+async def delete_utensil_item(
+    utensil_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, {"admin", "manager"}, "utensils")
+    supabase = get_supabase_admin()
+    supabase.table("utensil_items").update({"is_active": False}).eq("id", utensil_id).execute()
+    return {"ok": True}
+
+
+@router.get("/utensils/daily")
+async def get_utensil_daily_stock(
+    stock_date: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get utensil counts for a date, with opening auto-filled from previous day closing."""
+    _require_role(current_user, ALLOWED_UTENSILS_READ, "utensils stock", UTENSILS_PERMISSION)
+    supabase = get_supabase_admin()
+    target_date = stock_date or date.today().isoformat()
+
+    items_res = supabase.table("utensil_items").select("*").eq("is_active", True).order("sort_order").execute()
+    items = items_res.data or []
+
+    q = supabase.table("utensil_stock_takes").select("*").eq("stock_date", target_date)
+    if branch_id:
+        q = q.eq("branch_id", branch_id)
+    logs_res = q.execute()
+    logs_by_item = {r["utensil_id"]: r for r in (logs_res.data or [])}
+
+    prev_date = (date.fromisoformat(target_date) - timedelta(days=1)).isoformat()
+    pq = supabase.table("utensil_stock_takes").select("utensil_id, closing_count").eq("stock_date", prev_date)
+    if branch_id:
+        pq = pq.eq("branch_id", branch_id)
+    prev_res = pq.execute()
+    prev_closing = {r["utensil_id"]: int(r["closing_count"] or 0) for r in (prev_res.data or [])}
+
+    merged = []
+    for item in items:
+        log = logs_by_item.get(item["id"], {})
+        opening = log.get("opening_count", prev_closing.get(item["id"], 0))
+        closing = log.get("closing_count", 0)
+        broken = log.get("broken", 0)
+        lost = max(0, opening - closing - broken)
+        merged.append({
+            "utensil_id": item["id"],
+            "name": item["name"],
+            "category": item["category"],
+            "sort_order": item["sort_order"],
+            "stock_date": target_date,
+            "opening_count": opening,
+            "closing_count": closing,
+            "broken": broken,
+            "lost": lost,
+            "notes": log.get("notes", ""),
+            "log_id": log.get("id"),
+            "submitted_by": log.get("submitted_by"),
+        })
+    return {"date": target_date, "items": merged}
+
+
+@router.post("/utensils/daily")
+async def upsert_utensil_daily_stock(
+    stock_date: str,
+    items: List[UtensilStockUpsert],
+    branch_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Save utensil count take — lost is auto-computed from opening - closing - broken."""
+    _require_role(current_user, ALLOWED_UTENSILS_WRITE, "utensils stock", UTENSILS_PERMISSION)
+    supabase = get_supabase_admin()
+    user_id = current_user["id"]
+
+    rows = []
+    for it in items:
+        lost = max(0, it.opening_count - it.closing_count - it.broken)
+        rows.append({
+            "utensil_id": it.utensil_id,
+            "stock_date": stock_date,
+            "branch_id": branch_id,
+            "opening_count": it.opening_count,
+            "closing_count": it.closing_count,
+            "broken": it.broken,
+            "lost": lost,
+            "notes": it.notes,
+            "submitted_by": user_id,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    result = supabase.table("utensil_stock_takes").upsert(
+        rows, on_conflict="utensil_id,stock_date,branch_id"
+    ).execute()
+    return {"saved": len(result.data or []), "date": stock_date}
+
+
+@router.get("/utensils/daily/dates")
+async def get_utensil_stock_dates(
+    branch_id: Optional[str] = None,
+    limit: int = 30,
+    current_user: dict = Depends(get_current_user)
+):
+    _require_role(current_user, ALLOWED_UTENSILS_READ, "utensils stock", UTENSILS_PERMISSION)
+    supabase = get_supabase_admin()
+    q = supabase.table("utensil_stock_takes").select("stock_date").order("stock_date", desc=True).limit(limit)
     if branch_id:
         q = q.eq("branch_id", branch_id)
     res = q.execute()
