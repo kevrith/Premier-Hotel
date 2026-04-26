@@ -760,6 +760,7 @@ class UtensilStockUpsert(BaseModel):
     opening_count: int = 0
     closing_count: int = 0
     broken: int = 0
+    office_count: int = 0
     notes: Optional[str] = None
 
 
@@ -844,7 +845,8 @@ async def get_utensil_daily_stock(
         opening = log.get("opening_count", prev_closing.get(item["id"], 0))
         closing = log.get("closing_count", 0)
         broken = log.get("broken", 0)
-        lost = max(0, opening - closing - broken)
+        office = log.get("office_count", 0)
+        lost = max(0, opening - closing - broken - office)
         merged.append({
             "utensil_id": item["id"],
             "name": item["name"],
@@ -854,6 +856,7 @@ async def get_utensil_daily_stock(
             "opening_count": opening,
             "closing_count": closing,
             "broken": broken,
+            "office_count": office,
             "lost": lost,
             "notes": log.get("notes", ""),
             "log_id": log.get("id"),
@@ -876,7 +879,7 @@ async def upsert_utensil_daily_stock(
 
     rows = []
     for it in items:
-        lost = max(0, it.opening_count - it.closing_count - it.broken)
+        lost = max(0, it.opening_count - it.closing_count - it.broken - it.office_count)
         rows.append({
             "utensil_id": it.utensil_id,
             "stock_date": stock_date,
@@ -884,6 +887,7 @@ async def upsert_utensil_daily_stock(
             "opening_count": it.opening_count,
             "closing_count": it.closing_count,
             "broken": it.broken,
+            "office_count": it.office_count,
             "lost": lost,
             "notes": it.notes,
             "submitted_by": user_id,

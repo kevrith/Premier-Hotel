@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, ChevronRight, Save, RefreshCw, UtensilsCrossed } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, RefreshCw, UtensilsCrossed, Lock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/api/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +17,7 @@ interface UtensilRow {
   opening_count: number;
   closing_count: number;
   broken: number;
+  office_count: number;
   lost: number;
   notes: string;
   log_id?: string;
@@ -30,10 +31,14 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
   const { role } = useAuth();
   const { hasPermission } = usePermissions();
 
+  // General staff can edit operational fields (opening, closing, broken)
   const canEdit = !readOnly && (
     ['admin', 'manager', 'chef', 'waiter'].includes(role || '') ||
     hasPermission('can_manage_utensils_stock')
   );
+
+  // Only admin/manager can edit the Office column
+  const canEditOffice = !readOnly && ['admin', 'manager'].includes(role || '');
 
   const today = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState(today);
@@ -71,6 +76,7 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
         opening_count: it.opening_count ?? 0,
         closing_count: it.closing_count ?? 0,
         broken: it.broken ?? 0,
+        office_count: it.office_count ?? 0,
         lost: it.lost ?? 0,
         notes: it.notes ?? '',
         log_id: it.log_id,
@@ -92,8 +98,8 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
         ...r,
         [field]: field === 'notes' ? value : parseInt(value) || 0,
       };
-      // Recompute lost whenever opening, closing, or broken changes
-      updated.lost = Math.max(0, updated.opening_count - updated.closing_count - updated.broken);
+      // Lost = Opening − Closing − Broken − Office (office items are accounted for, not lost)
+      updated.lost = Math.max(0, updated.opening_count - updated.closing_count - updated.broken - updated.office_count);
       return updated;
     }));
   };
@@ -108,6 +114,7 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
           opening_count: r.opening_count,
           closing_count: r.closing_count,
           broken: r.broken,
+          office_count: r.office_count,
           notes: r.notes || null,
         }))
       );
@@ -128,6 +135,7 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
 
   const totalLost = rows.reduce((s, r) => s + (r.lost || 0), 0);
   const totalBroken = rows.reduce((s, r) => s + (r.broken || 0), 0);
+  const totalOffice = rows.reduce((s, r) => s + (r.office_count || 0), 0);
   const idx = availableDates.indexOf(selectedDate);
 
   return (
@@ -140,7 +148,10 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
               <div>
                 <CardTitle className="text-lg">Utensils & Cutlery Count</CardTitle>
                 <CardDescription>
-                  Opening auto-fills from previous day. Lost = Opening − Closing − Broken (auto-calculated).
+                  Opening auto-fills from previous day. Lost = Opening − Closing − Broken − Office (auto-calculated).
+                  <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Lock className="h-3 w-3" /> Office column: manager/admin only.
+                  </span>
                 </CardDescription>
               </div>
             </div>
@@ -177,6 +188,7 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
             {selectedDate === today && <Badge className="bg-green-500/10 text-green-700 border-green-300">Today</Badge>}
             <Badge variant="outline">{rows.length} items</Badge>
             {totalBroken > 0 && <Badge variant="outline" className="text-orange-600 border-orange-300">Broken: {totalBroken}</Badge>}
+            {totalOffice > 0 && <Badge variant="outline" className="text-blue-600 border-blue-300">In Office: {totalOffice}</Badge>}
             {totalLost > 0 && <Badge variant="destructive">Lost: {totalLost}</Badge>}
             {totalLost === 0 && totalBroken === 0 && !loading && <Badge variant="outline" className="text-green-600 border-green-300">No losses today</Badge>}
           </div>
@@ -202,6 +214,11 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
                       <th className="text-center px-2 py-2 font-medium w-28">Opening</th>
                       <th className="text-center px-2 py-2 font-medium w-28">Closing</th>
                       <th className="text-center px-2 py-2 font-medium w-24">Broken</th>
+                      <th className="text-center px-2 py-2 font-medium w-28 bg-blue-50 dark:bg-blue-950/20">
+                        <span className="flex items-center justify-center gap-1">
+                          Office <Lock className="h-3 w-3 text-muted-foreground" />
+                        </span>
+                      </th>
                       <th className="text-center px-2 py-2 font-medium w-24 bg-red-50 dark:bg-red-950/20">Lost ✦</th>
                       <th className="text-left px-2 py-2 font-medium min-w-[120px]">Notes</th>
                     </tr>
@@ -212,6 +229,8 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
                       return (
                         <tr key={row.utensil_id} className="border-b last:border-0 hover:bg-muted/20">
                           <td className="px-3 py-2 font-medium">{row.name}</td>
+
+                          {/* Operational fields — all canEdit roles */}
                           {(['opening_count', 'closing_count', 'broken'] as const).map(field => (
                             <td key={field} className="px-2 py-1 text-center">
                               {canEdit ? (
@@ -227,12 +246,31 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
                               )}
                             </td>
                           ))}
-                          {/* Lost — auto-computed */}
+
+                          {/* Office column — admin/manager only */}
+                          <td className="px-2 py-1 text-center bg-blue-50/50 dark:bg-blue-950/10">
+                            {canEditOffice ? (
+                              <Input
+                                type="number" min="0" step="1"
+                                placeholder="0"
+                                className="h-7 text-center text-sm w-20 mx-auto border-blue-200 focus:border-blue-400"
+                                value={row.office_count || ''}
+                                onChange={e => update(globalIdx, 'office_count', e.target.value)}
+                              />
+                            ) : (
+                              <span className={`text-blue-700 font-medium ${row.office_count > 0 ? '' : 'text-muted-foreground'}`}>
+                                {row.office_count || 0}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Lost — auto-computed, read-only */}
                           <td className="px-2 py-2 text-center bg-red-50 dark:bg-red-950/20">
                             <span className={`font-semibold text-sm ${row.lost > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
                               {row.lost}
                             </span>
                           </td>
+
                           <td className="px-2 py-1">
                             {canEdit ? (
                               <Input
