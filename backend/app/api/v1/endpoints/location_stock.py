@@ -92,12 +92,32 @@ async def _next_transfer_number(supabase: Client, today: str) -> str:
     ).order("transfer_number", desc=True).limit(1).execute()
     if res.data:
         try:
-            seq = int(res.data[0]["transfer_number"].split("-")[-1]) + 1
+            # Strip any -N suffix (from batch items) before incrementing
+            base = res.data[0]["transfer_number"]
+            parts = base.split("-")
+            seq = int(parts[-1]) + 1
         except Exception:
             seq = 1
     else:
         seq = 1
     return f"{prefix}{seq:04d}"
+
+
+async def _allocate_transfer_numbers(supabase: Client, today: str, count: int) -> list:
+    """Reserve `count` sequential transfer numbers for a batch."""
+    prefix = f"TRF-{today.replace('-', '')}-"
+    res = supabase.table("stock_transfers").select("transfer_number").like(
+        "transfer_number", f"{prefix}%"
+    ).order("transfer_number", desc=True).limit(1).execute()
+    if res.data:
+        try:
+            base = res.data[0]["transfer_number"]
+            start = int(base.split("-")[-1]) + 1
+        except Exception:
+            start = 1
+    else:
+        start = 1
+    return [f"{prefix}{(start + i):04d}" for i in range(count)]
 
 
 # ── /locations CRUD ──────────────────────────────────────────────────────────
@@ -356,8 +376,9 @@ async def transfer_stock_batch(
 ):
     """
     Transfer multiple items from one location to another in a single operation.
-    Each item gets its own transfer record; a shared batch prefix is used.
-    Source stock must have sufficient quantity for each item.
+    Each item gets its own unique transfer_number to avoid unique-constraint violations.
+    All items share a batch_number (the first item's transfer_number) stored in notes
+    so the frontend can group them back together.
     """
     _require_manager(current_user)
 
@@ -368,9 +389,14 @@ async def transfer_stock_batch(
         raise HTTPException(status_code=422, detail="Source and destination must be different")
 
     # Validate locations exist
-    locs_res = supabase.table("locations").select("id, name").in_(
-        "id", [body.from_location_id, body.to_location_id]
-    ).execute()
+    try:
+        locs_res = supabase.table("locations").select("id, name").in_(
+            "id", [body.from_location_id, body.to_location_id]
+        ).execute()
+    except Exception as e:
+        logger.error(f"[transfer-batch] Failed to load locations: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load locations: {str(e)}")
+
     loc_map = {l["id"]: l["name"] for l in (locs_res.data or [])}
     if body.from_location_id not in loc_map:
         raise HTTPException(status_code=404, detail="Source location not found")
@@ -378,25 +404,46 @@ async def transfer_stock_batch(
         raise HTTPException(status_code=404, detail="Destination location not found")
 
     today = date.today().isoformat()
-    transfer_number = await _next_transfer_number(supabase, today)
     now_iso = datetime.now(timezone.utc).isoformat()
     transferred_by = current_user.get("id")
 
+    # Allocate one unique transfer number per item so we never violate a
+    # UNIQUE constraint on transfer_number.  The batch_number (first item's
+    # number) is stored in each record's notes so the frontend can group them.
+    try:
+        transfer_numbers = await _allocate_transfer_numbers(supabase, today, len(body.items))
+    except Exception as e:
+        logger.error(f"[transfer-batch] Failed to allocate transfer numbers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to allocate transfer numbers: {str(e)}")
+
+    batch_number = transfer_numbers[0]
+    batch_note_tag = f"[batch:{batch_number}]"
+
     # Batch-load item names from menu_items
     item_ids = [it.menu_item_id for it in body.items]
-    mi_res = supabase.table("menu_items").select("id, name").in_("id", item_ids).execute()
-    mi_name_map = {m["id"]: m["name"] for m in (mi_res.data or [])}
+    try:
+        mi_res = supabase.table("menu_items").select("id, name, category, cost_price").in_("id", item_ids).execute()
+    except Exception as e:
+        logger.error(f"[transfer-batch] Failed to load menu items: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load menu items: {str(e)}")
+    mi_map = {m["id"]: m for m in (mi_res.data or [])}
+    mi_name_map = {k: v["name"] for k, v in mi_map.items()}
 
-    # Batch-load source stocks
-    src_res = supabase.table("location_stock").select("id, menu_item_id, quantity").eq(
-        "location_id", body.from_location_id
-    ).in_("menu_item_id", item_ids).execute()
+    # Batch-load source stocks (include cost_price + category for destination inserts)
+    try:
+        src_res = supabase.table("location_stock").select(
+            "id, menu_item_id, quantity, cost_price, category"
+        ).eq("location_id", body.from_location_id).in_("menu_item_id", item_ids).execute()
+    except Exception as e:
+        logger.error(f"[transfer-batch] Failed to load source stock: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load source stock: {str(e)}")
     src_map = {s["menu_item_id"]: s for s in (src_res.data or [])}
 
     # Validate quantities upfront so we don't partially apply
     for it in body.items:
         if it.quantity <= 0:
-            raise HTTPException(status_code=422, detail=f"Quantity must be positive for item {it.menu_item_id}")
+            name = mi_name_map.get(it.menu_item_id, it.menu_item_id)
+            raise HTTPException(status_code=422, detail=f"Quantity must be positive for '{name}'")
         src = src_map.get(it.menu_item_id)
         if not src:
             name = mi_name_map.get(it.menu_item_id, it.menu_item_id)
@@ -410,63 +457,87 @@ async def transfer_stock_batch(
             )
 
     # Batch-load destination stocks
-    dst_res = supabase.table("location_stock").select("id, menu_item_id, quantity").eq(
-        "location_id", body.to_location_id
-    ).in_("menu_item_id", item_ids).execute()
+    try:
+        dst_res = supabase.table("location_stock").select(
+            "id, menu_item_id, quantity"
+        ).eq("location_id", body.to_location_id).in_("menu_item_id", item_ids).execute()
+    except Exception as e:
+        logger.error(f"[transfer-batch] Failed to load destination stock: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load destination stock: {str(e)}")
     dst_map = {s["menu_item_id"]: s for s in (dst_res.data or [])}
 
     transfer_records = []
 
-    for it in body.items:
+    for idx, it in enumerate(body.items):
         item_name = it.item_name or mi_name_map.get(it.menu_item_id, "Unknown Item")
-
-        # Decrement source
+        item_trn_number = transfer_numbers[idx]
         src = src_map[it.menu_item_id]
-        new_src_qty = round(float(src["quantity"]) - it.quantity, 3)
-        supabase.table("location_stock").update({
-            "quantity": new_src_qty,
-            "updated_at": now_iso,
-        }).eq("id", src["id"]).execute()
+        mi_data = mi_map.get(it.menu_item_id, {})
 
-        # Increment destination
-        dst = dst_map.get(it.menu_item_id)
-        if dst:
-            new_dst_qty = round(float(dst.get("quantity") or 0) + it.quantity, 3)
+        try:
+            # Decrement source
+            new_src_qty = round(float(src["quantity"]) - it.quantity, 3)
             supabase.table("location_stock").update({
-                "quantity": new_dst_qty,
-                "item_name": item_name,
-                "unit": it.unit,
+                "quantity": new_src_qty,
                 "updated_at": now_iso,
-            }).eq("id", dst["id"]).execute()
-        else:
-            supabase.table("location_stock").insert({
-                "location_id": body.to_location_id,
+            }).eq("id", src["id"]).execute()
+
+            # Increment destination (carry over cost_price + category for new rows)
+            dst = dst_map.get(it.menu_item_id)
+            if dst:
+                new_dst_qty = round(float(dst.get("quantity") or 0) + it.quantity, 3)
+                supabase.table("location_stock").update({
+                    "quantity": new_dst_qty,
+                    "item_name": item_name,
+                    "unit": it.unit,
+                    "updated_at": now_iso,
+                }).eq("id", dst["id"]).execute()
+            else:
+                cost_price = float(src.get("cost_price") or mi_data.get("cost_price") or 0)
+                category   = src.get("category") or mi_data.get("category") or ""
+                supabase.table("location_stock").insert({
+                    "location_id": body.to_location_id,
+                    "menu_item_id": it.menu_item_id,
+                    "item_name": item_name,
+                    "category": category,
+                    "unit": it.unit,
+                    "quantity": round(it.quantity, 3),
+                    "cost_price": cost_price,
+                    "updated_at": now_iso,
+                }).execute()
+
+            # Record transfer — unique number per item, shared batch tag in notes
+            item_notes = batch_note_tag
+            if it.notes or body.notes:
+                item_notes = f"{batch_note_tag} {it.notes or body.notes}"
+            transfer_rec = {
+                "transfer_number": item_trn_number,
+                "from_location_id": body.from_location_id,
+                "to_location_id": body.to_location_id,
                 "menu_item_id": it.menu_item_id,
                 "item_name": item_name,
+                "quantity": it.quantity,
                 "unit": it.unit,
-                "quantity": round(it.quantity, 3),
-                "updated_at": now_iso,
-            }).execute()
+                "notes": item_notes,
+                "transferred_by": transferred_by,
+                "transfer_date": today,
+            }
+            supabase.table("stock_transfers").insert(transfer_rec).execute()
+            transfer_records.append(transfer_rec)
 
-        # Log transfer record
-        transfer_rec = {
-            "transfer_number": transfer_number,
-            "from_location_id": body.from_location_id,
-            "to_location_id": body.to_location_id,
-            "menu_item_id": it.menu_item_id,
-            "item_name": item_name,
-            "quantity": it.quantity,
-            "unit": it.unit,
-            "notes": it.notes or body.notes,
-            "transferred_by": transferred_by,
-            "transfer_date": today,
-        }
-        supabase.table("stock_transfers").insert(transfer_rec).execute()
-        transfer_records.append(transfer_rec)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[transfer-batch] Error processing item '{item_name}': {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to transfer '{item_name}': {str(e)}"
+            )
 
     return {
         "success": True,
-        "transfer_number": transfer_number,
+        "transfer_number": batch_number,
+        "batch_number": batch_number,
         "from_location": loc_map[body.from_location_id],
         "to_location": loc_map[body.to_location_id],
         "items_transferred": len(transfer_records),
@@ -474,41 +545,14 @@ async def transfer_stock_batch(
     }
 
 
-@stock_router.post("/transfer/{transfer_number}/reverse")
-async def reverse_transfer(
-    transfer_number: str,
-    current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase_admin),
-):
-    """
-    Reverse all stock movements for a given transfer_number.
-    Moves stock back from the destination to the source and deletes the transfer records.
-    Admin/manager only.
-    """
-    _require_manager(current_user)
-
-    # Load all records for this transfer number
-    trn_res = supabase.table("stock_transfers").select("*").eq(
-        "transfer_number", transfer_number
-    ).execute()
-
-    records = trn_res.data or []
-    if not records:
-        raise HTTPException(status_code=404, detail=f"Transfer {transfer_number} not found")
-
-    # Check it hasn't already been reversed
-    if any(r.get("reversed") for r in records):
-        raise HTTPException(status_code=409, detail="This transfer has already been reversed")
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-
+async def _reverse_records(records: list, current_user: dict, supabase: Client, now_iso: str) -> None:
+    """Shared logic: reverse a list of stock_transfer records in place."""
     for rec in records:
         from_loc = rec.get("from_location_id")
         to_loc   = rec.get("to_location_id")
         item_id  = rec.get("menu_item_id")
         qty      = float(rec.get("quantity") or 0)
 
-        # Give stock back to source (from_location)
         if from_loc:
             src_res = supabase.table("location_stock").select("id, quantity").eq(
                 "location_id", from_loc
@@ -519,7 +563,6 @@ async def reverse_transfer(
                     "quantity": new_qty, "updated_at": now_iso,
                 }).eq("id", src_res.data[0]["id"]).execute()
             else:
-                # Item row was deleted — recreate it
                 supabase.table("location_stock").insert({
                     "location_id": from_loc,
                     "menu_item_id": item_id,
@@ -529,7 +572,6 @@ async def reverse_transfer(
                     "updated_at": now_iso,
                 }).execute()
 
-        # Deduct from destination (to_location)
         dst_res = supabase.table("location_stock").select("id, quantity").eq(
             "location_id", to_loc
         ).eq("menu_item_id", item_id).execute()
@@ -539,13 +581,50 @@ async def reverse_transfer(
                 "quantity": new_qty, "updated_at": now_iso,
             }).eq("id", dst_res.data[0]["id"]).execute()
 
-    # Mark the original transfer records as reversed (don't delete — keep audit trail)
-    supabase.table("stock_transfers").update({
-        "reversed": True,
-        "reversed_by": current_user.get("id"),
-        "reversed_at": now_iso,
-        "notes": (records[0].get("notes") or "") + f" [REVERSED by {current_user.get('full_name', 'staff')}]",
-    }).eq("transfer_number", transfer_number).execute()
+        supabase.table("stock_transfers").update({
+            "reversed": True,
+            "reversed_by": current_user.get("id"),
+            "reversed_at": now_iso,
+        }).eq("transfer_number", rec["transfer_number"]).execute()
+
+
+@stock_router.post("/transfer/{transfer_number}/reverse")
+async def reverse_transfer(
+    transfer_number: str,
+    current_user: dict = Depends(get_current_user),
+    supabase: Client = Depends(get_supabase_admin),
+):
+    """
+    Reverse stock movements for a transfer_number or a whole batch.
+    If transfer_number is a batch number (used in [batch:X] notes), reverses all items in the batch.
+    """
+    _require_manager(current_user)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # First try: exact match on transfer_number
+    trn_res = supabase.table("stock_transfers").select("*").eq(
+        "transfer_number", transfer_number
+    ).execute()
+    records = trn_res.data or []
+
+    # If not found by exact number, try batch lookup: find all records whose
+    # notes contain [batch:TRANSFER_NUMBER] — covers batches where each item
+    # got its own unique transfer_number
+    if not records:
+        batch_tag = f"[batch:{transfer_number}]"
+        batch_res = supabase.table("stock_transfers").select("*").like(
+            "notes", f"%{batch_tag}%"
+        ).execute()
+        records = batch_res.data or []
+
+    if not records:
+        raise HTTPException(status_code=404, detail=f"Transfer {transfer_number} not found")
+
+    if any(r.get("reversed") for r in records):
+        raise HTTPException(status_code=409, detail="This transfer has already been reversed")
+
+    await _reverse_records(records, current_user, supabase, now_iso)
 
     return {
         "success": True,

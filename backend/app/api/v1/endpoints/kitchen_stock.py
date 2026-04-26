@@ -226,6 +226,36 @@ async def upsert_kitchen_daily_stock(
     result = supabase.table("kitchen_daily_stock").upsert(
         rows, on_conflict="item_id,stock_date,branch_id"
     ).execute()
+
+    # Auto-populate next day's opening stock from today's closing stock.
+    # Skip items whose next-day record has already been started (purchases > 0).
+    next_date = (date.fromisoformat(stock_date) + timedelta(days=1)).isoformat()
+    nq = supabase.table("kitchen_daily_stock").select("item_id, purchases").eq("stock_date", next_date)
+    if branch_id:
+        nq = nq.eq("branch_id", branch_id)
+    next_res = nq.execute()
+    started_items = {r["item_id"] for r in (next_res.data or []) if (r.get("purchases") or 0) > 0}
+
+    next_rows = []
+    for it in items:
+        if it.item_id not in started_items:
+            next_rows.append({
+                "item_id": it.item_id,
+                "stock_date": next_date,
+                "branch_id": branch_id,
+                "opening_stock": it.closing_stock,
+                "purchases": 0,
+                "closing_stock": it.closing_stock,
+                "notes": "",
+                "submitted_by": user_id,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    if next_rows:
+        supabase.table("kitchen_daily_stock").upsert(
+            next_rows, on_conflict="item_id,stock_date,branch_id"
+        ).execute()
+
     return {"saved": len(result.data or []), "date": stock_date}
 
 
@@ -351,6 +381,14 @@ async def get_office_daily_stock(
     logs_res = q.execute()
     logs_by_item = {r["item_id"]: r for r in (logs_res.data or [])}
 
+    # Fetch previous day's closing stocks to auto-fill opening when no record exists for today
+    prev_date = (date.fromisoformat(target_date) - timedelta(days=1)).isoformat()
+    pq = supabase.table("office_stock_takes").select("item_id, closing_stock").eq("stock_date", prev_date)
+    if branch_id:
+        pq = pq.eq("branch_id", branch_id)
+    prev_res = pq.execute()
+    prev_closing = {r["item_id"]: float(r["closing_stock"] or 0) for r in (prev_res.data or [])}
+
     merged = []
     for item in items:
         log = logs_by_item.get(item["id"], {})
@@ -361,7 +399,7 @@ async def get_office_daily_stock(
             "category": item["category"],
             "min_stock": item["min_stock"],
             "stock_date": target_date,
-            "opening_stock": log.get("opening_stock", 0),
+            "opening_stock": log.get("opening_stock", prev_closing.get(item["id"], 0)),
             "received": log.get("received", 0),
             "used": log.get("used", 0),
             "closing_stock": log.get("closing_stock", 0),
@@ -401,6 +439,40 @@ async def upsert_office_daily_stock(
     result = supabase.table("office_stock_takes").upsert(
         rows, on_conflict="item_id,stock_date,branch_id"
     ).execute()
+
+    # Auto-populate next day's opening stock from today's closing stock.
+    # Only update items whose next-day record hasn't been started yet (received=0, used=0).
+    next_date = (date.fromisoformat(stock_date) + timedelta(days=1)).isoformat()
+    nq = supabase.table("office_stock_takes").select("item_id, received, used").eq("stock_date", next_date)
+    if branch_id:
+        nq = nq.eq("branch_id", branch_id)
+    next_res = nq.execute()
+    started_items = {
+        r["item_id"] for r in (next_res.data or [])
+        if (r.get("received") or 0) > 0 or (r.get("used") or 0) > 0
+    }
+
+    next_rows = []
+    for it in items:
+        if it.item_id not in started_items:
+            next_rows.append({
+                "item_id": it.item_id,
+                "stock_date": next_date,
+                "branch_id": branch_id,
+                "opening_stock": it.closing_stock,
+                "received": 0,
+                "used": 0,
+                "closing_stock": it.closing_stock,
+                "notes": "",
+                "submitted_by": user_id,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    if next_rows:
+        supabase.table("office_stock_takes").upsert(
+            next_rows, on_conflict="item_id,stock_date,branch_id"
+        ).execute()
+
     return {"saved": len(result.data or []), "date": stock_date}
 
 
@@ -600,6 +672,41 @@ async def upsert_ingredient_daily_stock(
     result = supabase.table("kitchen_ingredient_stock_takes").upsert(
         rows, on_conflict="ingredient_id,stock_date,branch_id"
     ).execute()
+
+    # Auto-populate next day's opening from today's closing.
+    # Skip items whose next-day record has already been started (purchases/used/waste > 0).
+    next_date = (date.fromisoformat(stock_date) + timedelta(days=1)).isoformat()
+    nq = supabase.table("kitchen_ingredient_stock_takes").select("ingredient_id, purchases, used, waste").eq("stock_date", next_date)
+    if branch_id:
+        nq = nq.eq("branch_id", branch_id)
+    next_res = nq.execute()
+    started_items = {
+        r["ingredient_id"] for r in (next_res.data or [])
+        if (r.get("purchases") or 0) > 0 or (r.get("used") or 0) > 0 or (r.get("waste") or 0) > 0
+    }
+
+    next_rows = []
+    for it in items:
+        if it.ingredient_id not in started_items:
+            next_rows.append({
+                "ingredient_id": it.ingredient_id,
+                "stock_date": next_date,
+                "branch_id": branch_id,
+                "opening_stock": it.closing_stock,
+                "purchases": 0,
+                "used": 0,
+                "waste": 0,
+                "closing_stock": it.closing_stock,
+                "notes": "",
+                "submitted_by": user_id,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    if next_rows:
+        supabase.table("kitchen_ingredient_stock_takes").upsert(
+            next_rows, on_conflict="ingredient_id,stock_date,branch_id"
+        ).execute()
+
     return {"saved": len(result.data or []), "date": stock_date}
 
 
@@ -786,6 +893,40 @@ async def upsert_utensil_daily_stock(
     result = supabase.table("utensil_stock_takes").upsert(
         rows, on_conflict="utensil_id,stock_date,branch_id"
     ).execute()
+
+    # Auto-populate next day's opening count from today's closing count.
+    # Skip items whose next-day record has already been started (closing_count changed from 0).
+    next_date = (date.fromisoformat(stock_date) + timedelta(days=1)).isoformat()
+    nq = supabase.table("utensil_stock_takes").select("utensil_id, closing_count, broken").eq("stock_date", next_date)
+    if branch_id:
+        nq = nq.eq("branch_id", branch_id)
+    next_res = nq.execute()
+    started_items = {
+        r["utensil_id"] for r in (next_res.data or [])
+        if (r.get("closing_count") or 0) > 0 or (r.get("broken") or 0) > 0
+    }
+
+    next_rows = []
+    for it in items:
+        if it.utensil_id not in started_items:
+            next_rows.append({
+                "utensil_id": it.utensil_id,
+                "stock_date": next_date,
+                "branch_id": branch_id,
+                "opening_count": it.closing_count,
+                "closing_count": 0,
+                "broken": 0,
+                "lost": 0,
+                "notes": "",
+                "submitted_by": user_id,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    if next_rows:
+        supabase.table("utensil_stock_takes").upsert(
+            next_rows, on_conflict="utensil_id,stock_date,branch_id"
+        ).execute()
+
     return {"saved": len(result.data or []), "date": stock_date}
 
 

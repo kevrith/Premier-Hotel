@@ -284,9 +284,19 @@ export function StockTransfer() {
     });
   }
 
-  // Group history by transfer_number
+  // Extract batch key: if notes contain [batch:TRF-...], group by that batch number;
+  // otherwise fall back to the record's own transfer_number (single-item transfers).
+  function getBatchKey(record: TransferRecord): string {
+    if (record.notes) {
+      const m = record.notes.match(/\[batch:(TRF-\d+-\d+)\]/);
+      if (m) return m[1];
+    }
+    return record.transfer_number;
+  }
+
+  // Group history by batch key
   const groupedHistory = history.reduce<Record<string, TransferRecord[]>>((acc, t) => {
-    const key = t.transfer_number;
+    const key = getBatchKey(t);
     if (!acc[key]) acc[key] = [];
     acc[key].push(t);
     return acc;

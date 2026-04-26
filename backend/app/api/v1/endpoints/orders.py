@@ -578,9 +578,9 @@ async def create_order(
         # Get tax configuration
         tax_config_response = supabase_admin.table("hotel_settings").select("setting_value").eq("setting_key", "tax_config").execute()
         
-        # Default tax config if not found
+        # Default tax config if not found — taxes OFF by default
         tax_config = {
-            "vat_enabled": True,
+            "vat_enabled": False,
             "vat_rate": 0.16,
             "tourism_levy_enabled": False,
             "tourism_levy_rate": 0.0,

@@ -85,25 +85,24 @@ function receiptStyles(): string {
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
         font-family: 'Courier New', Courier, monospace;
-        font-size: 13px;
-        font-weight: bold;
+        font-size: 11px;
         width: 280px;
         margin: 0 auto;
-        padding: 10px 2px 10px 10px;
+        padding: 6px 2px 6px 6px;
         color: #000;
       }
       .center { text-align: center; }
       .bold { font-weight: bold; }
-      .divider { border-top: 1px dashed #000; margin: 8px 0; }
-      .divider-solid { border-top: 2px solid #000; margin: 8px 0; }
-      .row { display: flex; justify-content: space-between; margin: 3px 0; }
+      .divider { border-top: 1px dashed #000; margin: 5px 0; }
+      .divider-solid { border-top: 2px solid #000; margin: 5px 0; }
+      .row { display: flex; justify-content: space-between; margin: 2px 0; }
       .row-right { text-align: right; }
-      .total { font-size: 15px; font-weight: bold; }
-      .small { font-size: 11px; font-weight: bold; }
-      .mt { margin-top: 6px; }
+      .total { font-size: 12px; font-weight: bold; }
+      .small { font-size: 10px; }
+      .mt { margin-top: 4px; }
       @media print {
         @page { margin: 0; size: 80mm auto; }
-        body { padding: 4px 2px 4px 4px; }
+        body { padding: 2px 2px 2px 3px; }
       }
     </style>
   `;
@@ -263,8 +262,8 @@ export function printBill(order: {
       ${itemRows}
       <div class="divider"></div>
 
-      <div class="row"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>
-      <div class="row"><span>Tax (VAT)</span><span>${fmt(order.tax)}</span></div>
+      ${order.tax > 0 ? `<div class="row"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>` : ''}
+      ${order.tax > 0 ? `<div class="row"><span>Tax (VAT 16%)</span><span>${fmt(order.tax)}</span></div>` : ''}
       <div class="divider-solid"></div>
       <div class="row total"><span>TOTAL DUE</span><span>${fmt(order.total_amount)}</span></div>
       <div class="divider"></div>
@@ -319,32 +318,44 @@ export function buildItemSummaryHtml(params: ItemSummaryParams): string {
     ? `${startDay}, ${params.startDate}`
     : `${params.startDate} to ${params.endDate}`;
 
-  // Column widths — Dept 4-char, Qty spaced from Ext Price, right margin minimal
+  // Column layout (all fixed-width so columns stay aligned across rows):
+  // Dept(22) | Qty(34) | gap(8) | Ext Price(76) | Item Name(flex)
+  const C = {
+    dept:  'width:22px;flex-shrink:0',
+    qty:   'width:34px;flex-shrink:0;text-align:right',
+    gap:   'width:8px;flex-shrink:0',
+    price: 'width:76px;flex-shrink:0;text-align:right',
+    name:  'flex:1;padding-left:6px',
+  };
+
   const COL = `
     <div class="row" style="font-size:10px;border-bottom:1px solid #000;padding-bottom:2px;margin-bottom:2px">
-      <span style="width:22px;flex-shrink:0">Dept</span>
-      <span style="width:30px;flex-shrink:0;text-align:right">Qty</span>
-      <span style="width:68px;flex-shrink:0;text-align:right">Ext Price</span>
-      <span style="flex:1;padding-left:4px">Item Name</span>
+      <span style="${C.dept}">Dept</span>
+      <span style="${C.qty}">Qty</span>
+      <span style="${C.gap}"></span>
+      <span style="${C.price}">Ext Price</span>
+      <span style="${C.name}">Item Name</span>
     </div>`;
 
   const rows = params.categories.map(cat => {
     const abbr = cat.category.substring(0, 4).toUpperCase();
     const itemRows = cat.items.map(item => `
       <div class="row" style="font-size:11px">
-        <span style="width:22px;flex-shrink:0;font-size:10px">${abbr}</span>
-        <span style="width:30px;flex-shrink:0;text-align:right">${item.qty}</span>
-        <span style="width:68px;flex-shrink:0;text-align:right">${fmtAmt(item.revenue)}</span>
-        <span style="flex:1;padding-left:4px;word-break:break-word">${item.name}</span>
+        <span style="${C.dept};font-size:10px">${abbr}</span>
+        <span style="${C.qty}">${item.qty}</span>
+        <span style="${C.gap}"></span>
+        <span style="${C.price}">${fmtAmt(item.revenue)}</span>
+        <span style="${C.name};word-break:break-word">${item.name}</span>
       </div>`).join('');
 
     return `
       ${itemRows}
       <div class="row bold" style="font-size:11px;border-top:1px solid #555;margin-top:1px">
-        <span style="width:22px;flex-shrink:0;font-size:10px">${abbr}</span>
-        <span style="width:30px;flex-shrink:0;text-align:right">${cat.total_qty}</span>
-        <span style="width:68px;flex-shrink:0;text-align:right">${fmtAmt(cat.total_revenue)}</span>
-        <span style="flex:1;padding-left:4px"></span>
+        <span style="${C.dept};font-size:10px">${abbr}</span>
+        <span style="${C.qty}">${cat.total_qty}</span>
+        <span style="${C.gap}"></span>
+        <span style="${C.price}">${fmtAmt(cat.total_revenue)}</span>
+        <span style="${C.name}"></span>
       </div>
       <div class="divider"></div>`;
   }).join('');
@@ -367,10 +378,11 @@ export function buildItemSummaryHtml(params: ItemSummaryParams): string {
       ${COL}
       ${rows}
       <div class="row bold" style="font-size:12px;border-top:2px solid #000;padding-top:3px">
-        <span style="width:22px;flex-shrink:0"></span>
-        <span style="width:30px;flex-shrink:0;text-align:right">${params.grand_total_qty}</span>
-        <span style="width:68px;flex-shrink:0;text-align:right">${fmtAmt(params.grand_total_revenue)}</span>
-        <span style="flex:1;padding-left:4px"></span>
+        <span style="${C.dept}"></span>
+        <span style="${C.qty}">${params.grand_total_qty}</span>
+        <span style="${C.gap}"></span>
+        <span style="${C.price}">${fmtAmt(params.grand_total_revenue)}</span>
+        <span style="${C.name}"></span>
       </div>
       <div class="center small mt">Total Items: ${params.grand_total_qty}</div>
     </body>
@@ -485,8 +497,8 @@ export function printOrderSlipAndBill(order: {
       <div class="bold" style="margin-bottom:4px">ITEMS</div>
       ${billRows}
       <div class="divider"></div>
-      <div class="row"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>
-      <div class="row"><span>Tax (VAT)</span><span>${fmt(order.tax)}</span></div>
+      ${order.tax > 0 ? `<div class="row"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>` : ''}
+      ${order.tax > 0 ? `<div class="row"><span>Tax (VAT 16%)</span><span>${fmt(order.tax)}</span></div>` : ''}
       <div class="divider-solid"></div>
       <div class="row total"><span>TOTAL DUE</span><span>${fmt(order.total_amount)}</span></div>
       <div class="divider"></div>
