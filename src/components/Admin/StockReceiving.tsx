@@ -371,9 +371,10 @@ export function StockReceiving() {
                         <Input
                           type="number"
                           min="0"
-                          step="0.001"
+                          step="1"
+                          placeholder="0"
                           className="h-8 w-24 text-right ml-auto"
-                          value={line.quantity}
+                          value={line.quantity || ''}
                           onChange={(e) => updateLine(idx, 'quantity', e.target.value)}
                         />
                       </td>
@@ -381,9 +382,10 @@ export function StockReceiving() {
                         <Input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="1"
+                          placeholder="0"
                           className="h-8 w-32 text-right ml-auto"
-                          value={line.unit_cost}
+                          value={line.unit_cost || ''}
                           onChange={(e) => updateLine(idx, 'unit_cost', e.target.value)}
                         />
                       </td>

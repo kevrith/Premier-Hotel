@@ -212,8 +212,9 @@ export function KitchenStockTake({ readOnly = false, branchId }: Props) {
                             <Input
                               type="number"
                               min={0}
-                              step="0.1"
-                              value={row.opening_stock}
+                              step="1"
+                              placeholder="0"
+                              value={row.opening_stock || ''}
                               onChange={e => update(i, 'opening_stock', parseFloat(e.target.value) || 0)}
                               className="w-24 text-center h-8 mx-auto"
                             />
@@ -224,8 +225,9 @@ export function KitchenStockTake({ readOnly = false, branchId }: Props) {
                             <Input
                               type="number"
                               min={0}
-                              step="0.1"
-                              value={row.purchases}
+                              step="1"
+                              placeholder="0"
+                              value={row.purchases || ''}
                               onChange={e => update(i, 'purchases', parseFloat(e.target.value) || 0)}
                               className="w-24 text-center h-8 mx-auto"
                             />
@@ -237,8 +239,9 @@ export function KitchenStockTake({ readOnly = false, branchId }: Props) {
                             <Input
                               type="number"
                               min={0}
-                              step="0.1"
-                              value={row.closing_stock}
+                              step="1"
+                              placeholder="0"
+                              value={row.closing_stock || ''}
                               onChange={e => update(i, 'closing_stock', parseFloat(e.target.value) || 0)}
                               className={`w-24 text-center h-8 mx-auto ${
                                 row.closing_stock > total ? 'border-red-400' : ''

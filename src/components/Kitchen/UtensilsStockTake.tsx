@@ -217,6 +217,7 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
                               {canEdit ? (
                                 <Input
                                   type="number" min="0" step="1"
+                                  placeholder="0"
                                   className="h-7 text-center text-sm w-20 mx-auto"
                                   value={row[field] || ''}
                                   onChange={e => update(globalIdx, field, e.target.value)}

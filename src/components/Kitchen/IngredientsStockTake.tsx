@@ -222,7 +222,8 @@ export function IngredientsStockTake({ readOnly = false }: Props) {
                             <td key={field} className="px-2 py-1 text-center">
                               {canEdit ? (
                                 <Input
-                                  type="number" min="0" step="0.001"
+                                  type="number" min="0" step="1"
+                                  placeholder="0"
                                   className="h-7 text-center text-sm w-20 mx-auto"
                                   value={row[field] || ''}
                                   onChange={e => update(globalIdx, field, e.target.value)}

@@ -200,8 +200,9 @@ const ReceiveGoodsDialog: React.FC<ReceiveGoodsDialogProps> = ({
                         type="number"
                         min="0"
                         max={item.quantity_ordered}
-                        step="0.01"
-                        value={item.quantity_received}
+                        step="1"
+                        placeholder="0"
+                        value={item.quantity_received || ''}
                         onChange={(e) =>
                           handleItemChange(index, 'quantity_received', parseFloat(e.target.value) || 0)
                         }

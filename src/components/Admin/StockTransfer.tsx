@@ -443,9 +443,10 @@ export function StockTransfer() {
                           type="number"
                           min="0"
                           max={line.available}
-                          step="0.001"
+                          step="1"
+                          placeholder="0"
                           className={`h-8 w-28 text-right ml-auto ${line.quantity > line.available ? 'border-destructive' : ''}`}
-                          value={line.quantity}
+                          value={line.quantity || ''}
                           onChange={(e) => updateQty(idx, e.target.value)}
                         />
                         {line.quantity > line.available && (
