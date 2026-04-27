@@ -98,8 +98,8 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
         ...r,
         [field]: field === 'notes' ? value : parseInt(value) || 0,
       };
-      // Lost = Opening − Closing − Broken − Office (office items are accounted for, not lost)
-      updated.lost = Math.max(0, updated.opening_count - updated.closing_count - updated.broken - updated.office_count);
+      // Lost = Opening − Closing − Broken (office column is informational only, does not affect lost)
+      updated.lost = Math.max(0, updated.opening_count - updated.closing_count - updated.broken);
       return updated;
     }));
   };
@@ -148,7 +148,7 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
               <div>
                 <CardTitle className="text-lg">Utensils & Cutlery Count</CardTitle>
                 <CardDescription>
-                  Opening auto-fills from previous day. Lost = Opening − Closing − Broken − Office (auto-calculated).
+                  Opening auto-fills from previous day. Lost = Opening − Closing − Broken (auto-calculated). Office column is for tracking only.
                   <span className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <Lock className="h-3 w-3" /> Office column: manager/admin only.
                   </span>

@@ -846,7 +846,7 @@ async def get_utensil_daily_stock(
         closing = log.get("closing_count", 0)
         broken = log.get("broken", 0)
         office = log.get("office_count", 0)
-        lost = max(0, opening - closing - broken - office)
+        lost = max(0, opening - closing - broken)
         merged.append({
             "utensil_id": item["id"],
             "name": item["name"],
@@ -879,7 +879,7 @@ async def upsert_utensil_daily_stock(
 
     rows = []
     for it in items:
-        lost = max(0, it.opening_count - it.closing_count - it.broken - it.office_count)
+        lost = max(0, it.opening_count - it.closing_count - it.broken)
         rows.append({
             "utensil_id": it.utensil_id,
             "stock_date": stock_date,

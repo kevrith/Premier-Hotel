@@ -86,6 +86,7 @@ function receiptStyles(): string {
       body {
         font-family: 'Courier New', Courier, monospace;
         font-size: 11px;
+        font-weight: bold;
         width: 280px;
         margin: 0 auto;
         padding: 6px 2px 6px 6px;
