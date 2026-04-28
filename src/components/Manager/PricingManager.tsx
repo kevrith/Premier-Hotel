@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, Calendar, TrendingUp, Plus, Edit } from 'lucide-react';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -119,9 +120,15 @@ export function PricingManager() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
-                                const newPrice = prompt('Enter new price:', room.base_price?.toString());
-                                if (newPrice) {
+                              onClick={async () => {
+                                const newPrice = await confirmDialog.prompt({
+                                  title: 'Update Room Price',
+                                  description: `Set a new nightly rate for ${room.name || 'this room'}.`,
+                                  label: 'New price (KES)',
+                                  placeholder: room.base_price?.toString() || '0',
+                                  confirmLabel: 'Update Price',
+                                });
+                                if (newPrice && parseFloat(newPrice) > 0) {
                                   updateRoomPrice(room.id, parseFloat(newPrice));
                                 }
                               }}

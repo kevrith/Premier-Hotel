@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import PurchaseOrderDialog from './PurchaseOrderDialog';
 import PurchaseOrderViewDialog from './PurchaseOrderViewDialog';
 import ReceiveGoodsDialog from './ReceiveGoodsDialog';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 const PurchaseOrderList: React.FC = () => {
   const { toast } = useToast();
@@ -124,7 +125,13 @@ const PurchaseOrderList: React.FC = () => {
   };
 
   const handleCancelPO = async (po: PurchaseOrder) => {
-    const reason = prompt('Enter cancellation reason:');
+    const reason = await confirmDialog.prompt({
+      title: 'Cancel Purchase Order',
+      description: `Cancel PO #${po.po_number || po.id}? This cannot be undone.`,
+      label: 'Cancellation reason',
+      placeholder: 'e.g. Supplier unavailable, duplicate order…',
+      confirmLabel: 'Cancel Order',
+    });
     if (!reason) return;
 
     try {

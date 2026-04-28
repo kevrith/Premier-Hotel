@@ -13,6 +13,7 @@ import {
   Calendar, BedDouble, Loader2, Search, Users, Wrench, ShoppingBag
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import housekeepingService, {
   HousekeepingTask, HousekeepingTaskCreate,
   HousekeepingStats, RoomStatusSummary
@@ -443,7 +444,14 @@ export function HousekeepingManagement() {
                             loadData();
                           }}>In Progress</Button>
                           <Button size="sm" onClick={async () => {
-                            const notes = prompt('Resolution notes (optional):');
+                            const notes = await confirmDialog.prompt({
+                              title: 'Resolve Issue',
+                              description: `Mark "${flag.title || 'this issue'}" as resolved.`,
+                              label: 'Resolution notes (optional)',
+                              placeholder: 'Describe what was done to fix it…',
+                              confirmLabel: 'Mark Resolved',
+                            });
+                            if (notes === null) return;
                             await api.patch(`/maintenance/flags/${flag.id}`, { status: 'resolved', resolution_notes: notes || undefined });
                             toast.success('Issue resolved');
                             loadData();
@@ -849,7 +857,13 @@ function LinenInventoryPanel({ linenItems, onRefresh }: { linenItems: LinenItem[
   };
 
   const handleUpdateStock = async (item: LinenItem) => {
-    const qty = prompt(`Current total for "${item.item_name}" is ${item.total_quantity}.\nEnter new total quantity:`);
+    const qty = await confirmDialog.prompt({
+      title: 'Update Stock Quantity',
+      description: `Current total for "${item.item_name}" is ${item.total_quantity}.`,
+      label: 'New total quantity',
+      placeholder: item.total_quantity?.toString() || '0',
+      confirmLabel: 'Update',
+    });
     if (qty === null) return;
     const n = parseInt(qty, 10);
     if (isNaN(n) || n < 0) { toast.error('Enter a valid number'); return; }

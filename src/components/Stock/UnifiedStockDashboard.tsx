@@ -21,6 +21,7 @@ import { api } from '@/lib/api/client';
 import { formatKES } from '@/lib/utils/format';
 import { toast } from 'react-hot-toast';
 import { InventoryClosingStock } from '@/components/Manager/Reports/InventoryClosingStock';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface StockItem {
@@ -872,9 +873,21 @@ export function UnifiedStockDashboard({ mode = 'owner', department }: { mode?: S
   const [backfillDone, setBackfillDone] = useState(() => !!localStorage.getItem('stock_backfill_done'));
 
   const runBackfill = async () => {
-    const fromDate = prompt('Backfill from date (YYYY-MM-DD), e.g. 2026-04-01. Leave blank for all orders:', '2026-04-01');
+    const fromDate = await confirmDialog.prompt({
+      title: 'Backfill Stock from Sales',
+      description: 'This will deduct stock for all completed orders not yet processed. Leave blank to process all orders.',
+      label: 'Start date (YYYY-MM-DD)',
+      placeholder: '2026-04-01',
+      confirmLabel: 'Run Backfill',
+    });
     if (fromDate === null) return;
-    if (!confirm(`This will deduct stock for all completed orders${fromDate ? ` from ${fromDate}` : ''} not yet processed. Continue?`)) return;
+    const confirmed = await confirmDialog.confirm({
+      title: 'Confirm Backfill',
+      description: `This will deduct stock for all completed orders${fromDate ? ` from ${fromDate}` : ''} not yet processed. Continue?`,
+      confirmLabel: 'Yes, Run Backfill',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     setBackfilling(true);
     try {
       const params = fromDate ? `?from_date=${fromDate}` : '';

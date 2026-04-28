@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { housekeepingService } from '@/lib/api/housekeeping';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 
 interface InventoryItem {
   id: string;
@@ -403,8 +404,14 @@ export function InventoryManagement() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                  const quantity = prompt(`Restock quantity for ${item.name}:`);
+                                onClick={async () => {
+                                  const quantity = await confirmDialog.prompt({
+                                    title: 'Restock Item',
+                                    description: `How many units are you adding for "${item.name}"?`,
+                                    label: 'Quantity to add',
+                                    placeholder: '0',
+                                    confirmLabel: 'Restock',
+                                  });
                                   if (quantity) {
                                     handleRestockItem(item.id, parseInt(quantity));
                                   }
@@ -529,10 +536,16 @@ export function InventoryManagement() {
                       </div>
                       <Button
                         size="sm"
-                        onClick={() => {
+                        onClick={async () => {
                           const item = items.find(i => i.id === alert.item_id);
                           if (item) {
-                            const quantity = prompt(`Restock quantity for ${item.name}:`, item.reorder_quantity.toString());
+                            const quantity = await confirmDialog.prompt({
+                              title: 'Restock Item',
+                              description: `How many units are you adding for "${item.name}"?`,
+                              label: 'Quantity to add',
+                              placeholder: item.reorder_quantity?.toString() || '0',
+                              confirmLabel: 'Restock',
+                            });
                             if (quantity) {
                               handleRestockItem(item.id, parseInt(quantity));
                             }

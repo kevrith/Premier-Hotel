@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { confirmDialog } from '@/components/ui/ConfirmDialog';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navbar } from '@/components/Navbar';
@@ -90,7 +91,13 @@ export default function LoyaltyProgram() {
   };
 
   const handleCreateReferral = async () => {
-    const email = prompt('Enter referee email:');
+    const email = await confirmDialog.prompt({
+      title: 'Create Referral',
+      description: 'Enter the email address of the person you are referring.',
+      label: 'Referee email',
+      placeholder: 'e.g. friend@example.com',
+      confirmLabel: 'Create Referral',
+    });
     if (!email) return;
 
     try {
