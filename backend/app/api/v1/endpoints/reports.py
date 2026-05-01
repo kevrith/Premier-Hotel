@@ -6,9 +6,15 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
+import re
 from app.middleware.auth_secure import get_current_user, require_role
 from app.core.supabase import get_supabase, get_supabase_admin
 from supabase import Client
+
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
+def _is_uuid(val) -> bool:
+    return bool(val and _UUID_RE.match(str(val)))
 
 _executor = ThreadPoolExecutor(max_workers=6)
 
@@ -561,9 +567,9 @@ async def get_employee_sales_report(
         def _order_revenue(order: dict) -> float:
             """Sum price*qty from non-voided line items — same method item-summary uses."""
             return sum(
-                float(i.get("price", 0)) * int(i.get("quantity", 0))
+                float(i.get("price") or 0) * int(i.get("quantity") or 0)
                 for i in (order.get("items") or [])
-                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity", 0)) > 0
+                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity") or 0) > 0
             )
 
         if not staff_order_map:
@@ -601,10 +607,10 @@ async def get_employee_sales_report(
 
         # ── Step 3b: Batch-fetch menu item categories for item summary ──────────
         all_menu_item_ids = list({
-            str(item.get("menu_item_id") or item.get("id") or "")
+            str(item["menu_item_id"])
             for o in all_orders
             for item in (o.get("items") or [])
-            if isinstance(item, dict) and (item.get("menu_item_id") or item.get("id"))
+            if isinstance(item, dict) and _is_uuid(item.get("menu_item_id"))
         })
         menu_category_map: Dict[str, str] = {}
         if all_menu_item_ids:
@@ -651,12 +657,12 @@ async def get_employee_sales_report(
                     qty = int(item.get("quantity", 0))
                     if qty <= 0:
                         continue
-                    mid = str(item.get("menu_item_id") or item.get("id") or "")
+                    mid = str(item.get("menu_item_id") or "") if _is_uuid(item.get("menu_item_id")) else ""
                     emp_order_items.append({
                         "menu_item_id": mid,
                         "quantity": qty,
                         "name": item.get("name", "Unknown"),
-                        "price": float(item.get("price", 0)),
+                        "price": float(item.get("price") or 0),
                         "category": menu_category_map.get(mid) or item.get("category") or "Other",
                     })
 
@@ -1515,8 +1521,8 @@ async def get_item_summary_report(
             items = order.get("items") or []
             if isinstance(items, list):
                 for item in items:
-                    mid = item.get("menu_item_id") or item.get("id")
-                    if mid:
+                    mid = item.get("menu_item_id")
+                    if _is_uuid(mid):
                         all_item_ids.add(str(mid))
             staff_id = order.get("assigned_waiter_id") or order.get("created_by_staff_id")
             if staff_id:
@@ -1550,12 +1556,12 @@ async def get_item_summary_report(
             for item in items:
                 if item.get("voided"):
                     continue
-                mid = str(item.get("menu_item_id") or item.get("id") or "")
+                mid = str(item.get("menu_item_id") or "")
                 item_name = item.get("name", "Unknown")
                 qty = int(item.get("quantity", 0))
                 if qty <= 0:
                     continue
-                price = float(item.get("price", 0))
+                price = float(item.get("price") or 0)
                 revenue = price * qty
 
                 if mid and mid in menu_map:
@@ -1622,14 +1628,14 @@ async def get_item_summary_report(
             except Exception:
                 continue
             order_qty = sum(
-                int(i.get("quantity", 0))
+                int(i.get("quantity") or 0)
                 for i in (order.get("items") or [])
-                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity", 0)) > 0
+                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity") or 0) > 0
             )
             order_rev = sum(
-                float(i.get("price", 0)) * int(i.get("quantity", 0))
+                float(i.get("price") or 0) * int(i.get("quantity") or 0)
                 for i in (order.get("items") or [])
-                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity", 0)) > 0
+                if isinstance(i, dict) and not i.get("voided") and int(i.get("quantity") or 0) > 0
             )
             if h not in hourly:
                 hourly[h] = {"qty": 0, "revenue": 0.0, "orders": 0}
