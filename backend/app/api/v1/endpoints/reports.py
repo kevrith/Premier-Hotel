@@ -27,6 +27,16 @@ def _end(date_str: str) -> str:
     return date_str if 'T' in date_str else date_str + 'T23:59:59'
 
 
+def _in_batches(supabase: Client, table: str, columns: str, id_field: str, ids: list, batch_size: int = 100) -> list:
+    """Run a Supabase .in_() query in batches to avoid exceeding URL length limits."""
+    results = []
+    for i in range(0, len(ids), batch_size):
+        batch = ids[i:i + batch_size]
+        res = supabase.table(table).select(columns).in_(id_field, batch).execute()
+        results.extend(res.data or [])
+    return results
+
+
 def _fetch_all(supabase: Client, table: str, columns: str, start: str, end: str) -> list:
     PAGE = 1000
     results, offset = [], 0
@@ -567,10 +577,8 @@ async def get_employee_sales_report(
 
         # ── Step 3: Batch-fetch users, payments, bills (3 queries total) ──
         staff_ids = list(staff_order_map.keys())
-        users_res = supabase.table("users").select(
-            "id, full_name, email, role, department"
-        ).in_("id", staff_ids).execute()
-        users_map = {u["id"]: u for u in (users_res.data or [])}
+        users_data = _in_batches(supabase, "users", "id, full_name, email, role, department", "id", staff_ids)
+        users_map = {u["id"]: u for u in users_data}
 
         # Collect ALL bill IDs from ALL orders at once
         all_bill_ids = list({o["bill_id"] for o in all_orders if o.get("bill_id")})
@@ -579,17 +587,17 @@ async def get_employee_sales_report(
         global_bills_map: Dict[str, dict] = {}
 
         if all_bill_ids:
-            pay_res = supabase.table("payments").select(
+            payments_data = _in_batches(
+                supabase, "payments",
                 "id, bill_id, amount, payment_method, mpesa_code, mpesa_phone, "
-                "payment_status, processed_by_waiter_id, created_at"
-            ).in_("bill_id", all_bill_ids).execute()
-            for p in (pay_res.data or []):
+                "payment_status, processed_by_waiter_id, created_at",
+                "bill_id", all_bill_ids
+            )
+            for p in payments_data:
                 global_payments_by_bill.setdefault(p["bill_id"], []).append(p)
 
-            bill_res = supabase.table("bills").select(
-                "id, bill_number, total_amount"
-            ).in_("id", all_bill_ids).execute()
-            global_bills_map = {b["id"]: b for b in (bill_res.data or [])}
+            bills_data = _in_batches(supabase, "bills", "id, bill_number, total_amount", "id", all_bill_ids)
+            global_bills_map = {b["id"]: b for b in bills_data}
 
         # ── Step 3b: Batch-fetch menu item categories for item summary ──────────
         all_menu_item_ids = list({
@@ -600,10 +608,8 @@ async def get_employee_sales_report(
         })
         menu_category_map: Dict[str, str] = {}
         if all_menu_item_ids:
-            mi_res = supabase.table("menu_items").select("id, category").in_(
-                "id", all_menu_item_ids
-            ).execute()
-            for mi in (mi_res.data or []):
+            mi_data = _in_batches(supabase, "menu_items", "id, category", "id", all_menu_item_ids)
+            for mi in mi_data:
                 menu_category_map[str(mi["id"])] = mi.get("category") or "Other"
 
         # ── Step 4: Build per-employee stats (pure Python, no more DB calls) ──
@@ -1038,10 +1044,8 @@ async def get_daily_sales_report(
                 menu_item_ids = [item.get("menu_item_id") for item in all_order_items if item.get("menu_item_id")]
                 menu_item_map = {}
                 if menu_item_ids:
-                    menu_items_result = supabase.table("menu_items").select(
-                        "id, name, category"
-                    ).in_("id", list(set(menu_item_ids))).execute()
-                    menu_item_map = {item["id"]: item for item in menu_items_result.data}
+                    mi_data = _in_batches(supabase, "menu_items", "id, name, category", "id", list(set(menu_item_ids)))
+                    menu_item_map = {item["id"]: item for item in mi_data}
 
                 # Aggregate by category
                 for item in all_order_items:
@@ -1124,10 +1128,8 @@ async def get_category_breakdown(
         menu_item_ids = list(set(item.get("menu_item_id") for item in all_items if item.get("menu_item_id")))
         menu_map = {}
         if menu_item_ids:
-            menu_items = supabase.table("menu_items").select(
-                "id, category"
-            ).in_("id", menu_item_ids).execute()
-            menu_map = {item["id"]: item["category"] for item in menu_items.data}
+            mi_data = _in_batches(supabase, "menu_items", "id, category", "id", menu_item_ids)
+            menu_map = {item["id"]: item["category"] for item in mi_data}
 
         category_data = {}
         for item in all_items:
@@ -1347,10 +1349,8 @@ async def get_employee_details(
         menu_cat_map: Dict[str, str] = {}
         if all_item_ids_emp:
             try:
-                mc_result = supabase.table("menu_items").select("id, category").in_(
-                    "id", all_item_ids_emp
-                ).execute()
-                for mi in (mc_result.data or []):
+                mi_data = _in_batches(supabase, "menu_items", "id, category", "id", all_item_ids_emp)
+                for mi in mi_data:
                     menu_cat_map[str(mi["id"])] = mi.get("category") or "Other"
             except Exception:
                 pass
@@ -1525,10 +1525,8 @@ async def get_item_summary_report(
         # Fetch menu items with categories
         menu_map = {}
         if all_item_ids:
-            menu_result = supabase.table("menu_items").select(
-                "id, name, category"
-            ).in_("id", list(all_item_ids)).execute()
-            for mi in (menu_result.data or []):
+            mi_data = _in_batches(supabase, "menu_items", "id, name, category", "id", list(all_item_ids))
+            for mi in mi_data:
                 menu_map[str(mi["id"])] = {
                     "name": mi.get("name", "Unknown"),
                     "category": mi.get("category") or "Other"
@@ -1537,8 +1535,8 @@ async def get_item_summary_report(
         # Fetch staff names
         staff_map = {}
         if all_staff_ids:
-            staff_result = supabase.table("users").select("id, full_name").in_("id", list(all_staff_ids)).execute()
-            for s in (staff_result.data or []):
+            staff_data = _in_batches(supabase, "users", "id, full_name", "id", list(all_staff_ids))
+            for s in staff_data:
                 staff_map[str(s["id"])] = s.get("full_name") or "Unknown"
 
         # Aggregate: category -> item_name -> {qty, revenue, waiters: {name: {qty, revenue}}}
@@ -1736,10 +1734,12 @@ async def get_void_report(
         all_order_ids = list(set(mod_order_ids + void_log_order_ids))
         orders_map: Dict[str, Any] = {}
         if all_order_ids:
-            ord_result = supabase.table("orders").select(
-                "id, order_number, items, total_amount, assigned_waiter_id, created_by_staff_id"
-            ).in_("id", all_order_ids).execute()
-            for o in (ord_result.data or []):
+            ord_data = _in_batches(
+                supabase, "orders",
+                "id, order_number, items, total_amount, assigned_waiter_id, created_by_staff_id",
+                "id", all_order_ids
+            )
+            for o in ord_data:
                 orders_map[o["id"]] = o
                 for fld in ["assigned_waiter_id", "created_by_staff_id"]:
                     if o.get(fld):
@@ -1748,10 +1748,8 @@ async def get_void_report(
         # Fetch staff names
         staff_map: Dict[str, Any] = {}
         if staff_ids:
-            s_result = supabase.table("users").select("id, full_name, role").in_(
-                "id", list(staff_ids)
-            ).execute()
-            for s in (s_result.data or []):
+            staff_data = _in_batches(supabase, "users", "id, full_name, role", "id", list(staff_ids))
+            for s in staff_data:
                 staff_map[s["id"]] = {"name": s.get("full_name", "Unknown"), "role": s.get("role", "")}
 
         def staff_name(uid):
