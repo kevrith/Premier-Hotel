@@ -294,6 +294,15 @@ export function UtensilsStockTake({ readOnly = false }: Props) {
         ))
       )}
 
+      {canEdit && (
+        <div className="flex justify-end pt-2">
+          <Button size="sm" onClick={handleSave} disabled={saving || loading}>
+            <Save className="h-4 w-4 mr-1" />
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      )}
+
       {availableDates.length > 1 && (
         <div className="flex flex-wrap gap-2 pt-1">
           <span className="text-xs text-muted-foreground pt-1">Recent dates:</span>

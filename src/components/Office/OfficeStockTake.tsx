@@ -294,6 +294,15 @@ function StockTakeTab({ readOnly, branchId }: { readOnly: boolean; branchId?: st
         </div>
       )}
 
+      {canEdit && (
+        <div className="flex justify-end pt-2">
+          <Button onClick={handleSave} disabled={saving || loading} size="sm">
+            <Save className="h-4 w-4 mr-2" />
+            {saving ? 'Saving…' : 'Save Stock'}
+          </Button>
+        </div>
+      )}
+
       {/* Date history pills */}
       {availableDates.length > 1 && (
         <div className="flex flex-wrap gap-2 pt-1">
