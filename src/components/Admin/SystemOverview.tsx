@@ -149,32 +149,53 @@ export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdat
 
           setRevenueData(transformed);
 
-          // Exclude the current (incomplete) month from regression so the slope
-          // isn't dragged down by a partial month's data.
+          // Never include the current (partial) month in regression — it would
+          // produce a falsely negative slope and clamp all projections to 0.
           const completedData = transformed.filter((d: any) => d.yearMonth !== currentYearMonth);
-          const regressionBase = completedData.length >= 2 ? completedData : transformed;
 
-          if (regressionBase.length >= 2) {
-            const { slope, intercept } = calculateLinearRegression(regressionBase);
-            const confidence = calculateRSquared(regressionBase, slope, intercept);
+          if (completedData.length >= 2) {
+            // ── Enough history: use linear regression on completed months ──
+            const { slope, intercept } = calculateLinearRegression(completedData);
+            const confidence = calculateRSquared(completedData, slope, intercept);
 
-            // Project forward from position regressionBase.length (one beyond last completed month)
             const projections = Array.from({ length: 3 }, (_, i) => ({
               month: shortMonths[(nowDate.getMonth() + i + 1) % 12],
-              revenue: Math.max(0, Math.round(slope * (regressionBase.length + i) + intercept)),
+              revenue: Math.max(0, Math.round(slope * (completedData.length + i) + intercept)),
               bookings: 0,
               type: 'projected',
             }));
 
             setProjectionData([...transformed, ...projections]);
 
-            const first = regressionBase[0].revenue;
-            const last  = regressionBase[regressionBase.length - 1].revenue;
+            const first = completedData[0].revenue;
+            const last  = completedData[completedData.length - 1].revenue;
             setProjectionMetrics({
               nextMonthProjection:   projections[0]?.revenue || 0,
               next3MonthsProjection: projections.reduce((s, p) => s + p.revenue, 0),
               growthRate: first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : 0,
               confidence: Math.round(confidence),
+            });
+
+          } else if (completedData.length === 1) {
+            // ── Only one completed month: project a flat baseline from it ──
+            // Linear regression needs 2+ points. With a single reference month
+            // we project the same revenue forward and flag low confidence so
+            // the user knows more historical data will improve accuracy.
+            const baseRevenue = completedData[0].revenue;
+
+            const projections = Array.from({ length: 3 }, (_, i) => ({
+              month: shortMonths[(nowDate.getMonth() + i + 1) % 12],
+              revenue: baseRevenue,
+              bookings: 0,
+              type: 'projected',
+            }));
+
+            setProjectionData([...transformed, ...projections]);
+            setProjectionMetrics({
+              nextMonthProjection:   baseRevenue,
+              next3MonthsProjection: baseRevenue * 3,
+              growthRate: 0,
+              confidence: 35,
             });
           }
         }
