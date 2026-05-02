@@ -5,9 +5,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import api from '@/lib/api/client';
-import { Trash2, ChevronDown, ChevronRight, Package, Search } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Package, Search, Plus, Check, ChevronsUpDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import SupplierDialog from './SupplierDialog';
 
 interface Supplier {
   id: string;
@@ -65,6 +68,11 @@ export function StockReceiving() {
   const [receivedAt, setReceivedAt] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<ReceiptLine[]>([]);
+
+  // Supplier combobox state
+  const [supplierOpen, setSupplierOpen] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [showAddSupplier, setShowAddSupplier] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,6 +149,19 @@ export function StockReceiving() {
       );
     } catch {
       toast.error('Failed to load reference data');
+    }
+  }
+
+  async function handleSupplierCreated() {
+    try {
+      const res = await api.get('/purchase-orders/suppliers?limit=500');
+      const newList: Supplier[] = res.data?.suppliers || res.data || [];
+      const prevIds = new Set(suppliers.map((s) => s.id));
+      setSuppliers(newList);
+      const created = newList.find((s) => !prevIds.has(s.id));
+      if (created) setSupplierId(created.id);
+    } catch {
+      // non-fatal
     }
   }
 
@@ -262,18 +283,93 @@ export function StockReceiving() {
               <Label>
                 Supplier <span className="text-destructive">*</span>
               </Label>
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select supplier…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={supplierOpen} onOpenChange={setSupplierOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={supplierOpen}
+                    className="w-full justify-between font-normal h-9 px-3 text-sm"
+                  >
+                    <span className={cn('truncate', !supplierId && 'text-muted-foreground')}>
+                      {supplierId
+                        ? suppliers.find((s) => s.id === supplierId)?.name ?? 'Select supplier…'
+                        : 'Select supplier…'}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-0" align="start">
+                  {/* Search */}
+                  <div className="flex items-center gap-2 border-b px-3 py-2">
+                    <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <input
+                      autoFocus
+                      placeholder="Search suppliers…"
+                      value={supplierSearch}
+                      onChange={(e) => setSupplierSearch(e.target.value)}
+                      className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                    />
+                  </div>
+
+                  {/* Supplier list */}
+                  <div className="max-h-52 overflow-y-auto py-1">
+                    {suppliers.filter((s) =>
+                      s.name.toLowerCase().includes(supplierSearch.toLowerCase())
+                    ).length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No suppliers found
+                      </p>
+                    ) : (
+                      suppliers
+                        .filter((s) =>
+                          s.name.toLowerCase().includes(supplierSearch.toLowerCase())
+                        )
+                        .map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={cn(
+                              'w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between gap-2',
+                              supplierId === s.id && 'bg-accent/60'
+                            )}
+                            onClick={() => {
+                              setSupplierId(s.id);
+                              setSupplierOpen(false);
+                              setSupplierSearch('');
+                            }}
+                          >
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{s.name}</p>
+                              {s.phone && (
+                                <p className="text-xs text-muted-foreground">{s.phone}</p>
+                              )}
+                            </div>
+                            {supplierId === s.id && (
+                              <Check className="h-4 w-4 text-primary shrink-0" />
+                            )}
+                          </button>
+                        ))
+                    )}
+                  </div>
+
+                  {/* Add new supplier */}
+                  <div className="border-t p-1">
+                    <button
+                      type="button"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 rounded-sm transition-colors"
+                      onClick={() => {
+                        setSupplierOpen(false);
+                        setSupplierSearch('');
+                        setShowAddSupplier(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add New Supplier
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-1">
@@ -442,6 +538,16 @@ export function StockReceiving() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Add Supplier Dialog ── */}
+      <SupplierDialog
+        open={showAddSupplier}
+        supplier={null}
+        onClose={(refresh) => {
+          setShowAddSupplier(false);
+          if (refresh) handleSupplierCreated();
+        }}
+      />
 
       {/* ── Receiving History ── */}
       <Card>
