@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import api from '@/lib/api/client';
-import { Trash2, ChevronDown, ChevronRight, Package, Search, Plus, Check, ChevronsUpDown } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, Package, Search, Plus, Check, ChevronsUpDown, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import SupplierDialog from './SupplierDialog';
@@ -37,6 +37,14 @@ interface ReceiptLine {
   item_name: string;
   quantity: number;
   unit_cost: number;
+  original_cost_price: number;
+}
+
+interface PriceChange {
+  menu_item_id: string;
+  item_name: string;
+  old_price: number;
+  new_price: number;
 }
 
 interface ReceiptHistoryItem {
@@ -90,6 +98,8 @@ export function StockReceiving() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingPriceUpdates, setPendingPriceUpdates] = useState<PriceChange[]>([]);
+  const [updatingPrices, setUpdatingPrices] = useState(false);
 
   useEffect(() => {
     loadReferenceData();
@@ -191,6 +201,7 @@ export function StockReceiving() {
         item_name: item.name,
         quantity: 1,
         unit_cost: item.cost_price ?? 0,
+        original_cost_price: item.cost_price ?? 0,
       },
     ]);
     setSearchQuery('');
@@ -243,6 +254,17 @@ export function StockReceiving() {
         `Receipt ${d.receipt_number} saved — ${d.items_received} item(s), KES ${Number(d.total_cost).toLocaleString()}`
       );
 
+      // Detect price changes before clearing lines
+      const changes: PriceChange[] = lines
+        .filter((l) => l.unit_cost > 0 && l.unit_cost !== l.original_cost_price)
+        .map((l) => ({
+          menu_item_id: l.menu_item_id,
+          item_name: l.item_name,
+          old_price: l.original_cost_price,
+          new_price: l.unit_cost,
+        }));
+      if (changes.length > 0) setPendingPriceUpdates(changes);
+
       // Reset form
       setSupplierId('');
       setLocationId('__none__');
@@ -254,6 +276,26 @@ export function StockReceiving() {
       toast.error(err?.response?.data?.detail || 'Failed to save receipt');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSavePriceUpdates() {
+    setUpdatingPrices(true);
+    try {
+      await Promise.all(
+        pendingPriceUpdates.map((c) =>
+          api.put(`/menu/items/${c.menu_item_id}`, { cost_price: c.new_price })
+        )
+      );
+      toast.success(
+        `Price${pendingPriceUpdates.length !== 1 ? 's' : ''} updated for ${pendingPriceUpdates.length} item${pendingPriceUpdates.length !== 1 ? 's' : ''}`
+      );
+      setPendingPriceUpdates([]);
+      loadReferenceData();
+    } catch {
+      toast.error('Failed to update some prices');
+    } finally {
+      setUpdatingPrices(false);
     }
   }
 
@@ -475,15 +517,25 @@ export function StockReceiving() {
                         />
                       </td>
                       <td className="py-2 pr-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="1"
-                          placeholder="0"
-                          className="h-8 w-32 text-right ml-auto"
-                          value={line.unit_cost || ''}
-                          onChange={(e) => updateLine(idx, 'unit_cost', e.target.value)}
-                        />
+                        <div className="flex flex-col items-end gap-0.5">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="0"
+                            className={cn(
+                              'h-8 w-32 text-right ml-auto',
+                              line.unit_cost !== line.original_cost_price && 'border-amber-400 focus-visible:ring-amber-400'
+                            )}
+                            value={line.unit_cost || ''}
+                            onChange={(e) => updateLine(idx, 'unit_cost', e.target.value)}
+                          />
+                          {line.unit_cost !== line.original_cost_price && line.original_cost_price > 0 && (
+                            <span className="text-xs text-amber-600 tabular-nums">
+                              was {line.original_cost_price.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 pr-2 text-right tabular-nums">
                         {(line.quantity * line.unit_cost).toLocaleString(undefined, {
@@ -548,6 +600,42 @@ export function StockReceiving() {
           if (refresh) handleSupplierCreated();
         }}
       />
+
+      {/* ── Price Update Confirmation ── */}
+      {pendingPriceUpdates.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 text-amber-600" />
+              Price Changes Detected
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              The following items were received at a different price. Save the new prices as the default for future receipts?
+            </p>
+            <div className="space-y-1.5">
+              {pendingPriceUpdates.map((change) => (
+                <div key={change.menu_item_id} className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{change.item_name}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    KES {change.old_price.toLocaleString()} →{' '}
+                    <span className="text-foreground font-semibold">KES {change.new_price.toLocaleString()}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" onClick={handleSavePriceUpdates} disabled={updatingPrices}>
+                {updatingPrices ? 'Updating…' : 'Save New Prices'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setPendingPriceUpdates([])}>
+                Keep Old Prices
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Receiving History ── */}
       <Card>

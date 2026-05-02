@@ -9,8 +9,10 @@ import api from '@/lib/api/client';
 import { toast } from 'react-hot-toast';
 
 const ROOM_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdate?: (stats: any) => void }) {
+  const currentMonthName = MONTH_NAMES[new Date().getMonth()];
   const [kpis, setKpis] = useState({
     totalRevenue: 0,
     totalBookings: 0,
@@ -67,8 +69,9 @@ export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdat
     const fetchDashboardData = async () => {
       setIsLoading(true);
       try {
-        const endDate = new Date().toISOString();
-        const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const now = new Date();
+        const endDate = now.toISOString();
+        const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
         const revenueEndDate = endDate;
         const revenueStartDate = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -129,34 +132,44 @@ export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdat
 
         // ── Revenue chart + projections ─────────────────────────────────
         if (revenueAnalytics.status === 'fulfilled') {
-          const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const nowDate = new Date();
+          const currentYearMonth = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+
           const transformed = (revenueAnalytics.value.data || []).map((item: any) => {
             const date = new Date(item.date + '-01');
             return {
-              month: monthNames[date.getMonth()],
+              month: shortMonths[date.getMonth()],
               revenue: item.total,
               bookings: item.count,
-              type: 'actual'
+              type: 'actual',
+              yearMonth: item.date,
             };
           }).slice(-6);
 
           setRevenueData(transformed);
 
-          if (transformed.length >= 2) {
-            const { slope, intercept } = calculateLinearRegression(transformed);
-            const confidence = calculateRSquared(transformed, slope, intercept);
-            const lastIndex = transformed.length - 1;
+          // Exclude the current (incomplete) month from regression so the slope
+          // isn't dragged down by a partial month's data.
+          const completedData = transformed.filter((d: any) => d.yearMonth !== currentYearMonth);
+          const regressionBase = completedData.length >= 2 ? completedData : transformed;
+
+          if (regressionBase.length >= 2) {
+            const { slope, intercept } = calculateLinearRegression(regressionBase);
+            const confidence = calculateRSquared(regressionBase, slope, intercept);
+
+            // Project forward from position regressionBase.length (one beyond last completed month)
             const projections = Array.from({ length: 3 }, (_, i) => ({
-              month: monthNames[(new Date().getMonth() + i + 1) % 12],
-              revenue: Math.max(0, Math.round(slope * (lastIndex + i + 1) + intercept)),
+              month: shortMonths[(nowDate.getMonth() + i + 1) % 12],
+              revenue: Math.max(0, Math.round(slope * (regressionBase.length + i) + intercept)),
               bookings: 0,
-              type: 'projected'
+              type: 'projected',
             }));
 
             setProjectionData([...transformed, ...projections]);
 
-            const first = transformed[0].revenue;
-            const last  = transformed[transformed.length - 1].revenue;
+            const first = regressionBase[0].revenue;
+            const last  = regressionBase[regressionBase.length - 1].revenue;
             setProjectionMetrics({
               nextMonthProjection:   projections[0]?.revenue || 0,
               next3MonthsProjection: projections.reduce((s, p) => s + p.revenue, 0),
@@ -256,12 +269,12 @@ export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdat
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <CreditCard className="h-4 w-4" />
-                  Revenue (Last 30 Days)
+                  Revenue ({currentMonthName})
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">KES {kpis.totalRevenue.toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground mt-1">From completed payments</div>
+                <div className="text-xs text-muted-foreground mt-1">Month to date</div>
               </CardContent>
             </Card>
 
@@ -303,7 +316,7 @@ export function SystemOverview({ onStatsUpdate: _onStatsUpdate }: { onStatsUpdat
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{kpis.newUsers}</div>
-                <div className="text-xs text-muted-foreground mt-1">In the last 30 days</div>
+                <div className="text-xs text-muted-foreground mt-1">This month</div>
               </CardContent>
             </Card>
           </div>
