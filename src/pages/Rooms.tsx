@@ -275,7 +275,7 @@ export default function Rooms() {
 
                   <CardHeader className="pb-1 pt-3 px-4">
                     <CardTitle className="flex items-start justify-between text-base gap-2">
-                      <span className="leading-tight">{room.type}</span>
+                      <span className="leading-tight">{room.room_number}</span>
                       <div className="flex items-center gap-1 text-yellow-500 flex-shrink-0">
                         <Star className="h-3.5 w-3.5 fill-current" />
                         <span className="text-sm font-normal text-foreground">{room.rating ?? '—'}</span>
@@ -303,7 +303,7 @@ export default function Rooms() {
                       </div>
                       <div className="flex items-center gap-1">
                         <Bed className="h-3.5 w-3.5" />
-                        <span>Room {room.room_number}</span>
+                        <span className="capitalize">{room.type}</span>
                       </div>
                     </div>
                   </CardContent>

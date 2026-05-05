@@ -63,8 +63,6 @@ const CHECKLIST_ITEMS = [
   { id: 'dusting',     label: 'Surfaces and furniture dusted',          required: true  },
   { id: 'windows',     label: 'Windows and mirrors cleaned',            required: true  },
   { id: 'trash',       label: 'Trash bins emptied',                     required: true  },
-  { id: 'minibar',     label: 'Minibar restocked (if applicable)',       required: false },
-  { id: 'appliances',  label: 'All appliances checked and working',     required: false },
 ];
 
 export default function CleanerDashboard() {
