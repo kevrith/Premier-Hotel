@@ -23,14 +23,15 @@ configure_logging()
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
-# Create FastAPI app
+# Create FastAPI app — docs disabled in production to prevent schema exposure
+_is_prod = settings.ENVIRONMENT == "production"
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
     description="Premier Hotel Management System API with Supabase",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=None if _is_prod else "/docs",
+    redoc_url=None if _is_prod else "/redoc",
+    openapi_url=None if _is_prod else "/openapi.json",
 )
 
 # Add rate limiter to app state

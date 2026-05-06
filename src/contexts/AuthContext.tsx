@@ -54,14 +54,14 @@ export function AuthProvider({ children }: { children: any }) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const initDone = useRef(false);
+  const prevAuthenticated = useRef<boolean | null>(null);
 
   useDataPreCache(user?.id, role);
 
-  // Session-expired handler — only fires for genuine 401s from the API
+  // Session-expired handler — fires for genuine 401s from the API interceptor
   useEffect(() => {
     const handleSessionExpired = () => {
       const state = useAuthStore.getState();
-      // Never log out during an offline session or if already on login page
       if (state.isOfflineSession) return;
       if (window.location.pathname === '/login') return;
       storeLogout().then(() => navigate('/login', { replace: true }));
@@ -69,6 +69,20 @@ export function AuthProvider({ children }: { children: any }) {
     window.addEventListener('auth:session-expired', handleSessionExpired);
     return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
   }, [storeLogout, navigate]);
+
+  // Safety net: if isAuthenticated drops to false after being true (token expired,
+  // background refresh failed), force navigation to login so the user isn't stuck
+  // on a page with a broken/dead session.
+  useEffect(() => {
+    if (isLoading) return;
+    if (isOfflineSession) return;
+    if (prevAuthenticated.current === true && !isAuthenticated) {
+      if (window.location.pathname !== '/login') {
+        navigate('/login', { replace: true });
+      }
+    }
+    prevAuthenticated.current = isAuthenticated;
+  }, [isAuthenticated, isOfflineSession, isLoading, navigate]);
 
   // One-time auth initialization after Zustand has rehydrated from localStorage
   useEffect(() => {

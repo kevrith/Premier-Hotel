@@ -26,3 +26,39 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+
+  # ── Daily backup cron job ───────────────────────────────────────────────────
+  # Runs every day at 09:00 UTC = 12:00 EAT (East Africa Time, UTC+3).
+  # Emails a full JSON backup to BACKUP_EMAIL_RECIPIENT.
+  # Required env vars (set in Render dashboard):
+  #   BACKUP_EMAIL_RECIPIENT  — who receives the backup (e.g. premierhotel2023@gmail.com)
+  #   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD  — same as the web service
+  #   SUPABASE_URL, SUPABASE_SERVICE_KEY (or SUPABASE_SERVICE_ROLE_KEY)
+  - type: cron
+    name: daily-backup-email
+    runtime: python
+    rootDir: .
+    schedule: "0 9 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend/send_backup_email.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: ENVIRONMENT
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: BACKUP_EMAIL_RECIPIENT
+        sync: false

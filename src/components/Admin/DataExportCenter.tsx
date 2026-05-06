@@ -11,7 +11,7 @@ import * as XLSX from 'xlsx';
 import {
   Download, FileSpreadsheet, FileText, BedDouble, Users,
   ShoppingCart, Package, Coffee, CalendarDays, ClipboardList,
-  Loader2, CheckCircle2
+  Loader2, CheckCircle2, Shield, Mail, DatabaseBackup
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/api/client';
@@ -388,6 +388,102 @@ function ExportAll() {
   );
 }
 
+// ─── Database backup card ─────────────────────────────────────────────────────
+function DatabaseBackupCard() {
+  const [downloading, setDownloading] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+  const [done, setDone] = useState<'download' | 'email' | null>(null);
+
+  const flash = (type: 'download' | 'email') => {
+    setDone(type);
+    setTimeout(() => setDone(null), 4000);
+  };
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await api.get('/admin/backup/download', { responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/json' }));
+      const disposition: string = res.headers['content-disposition'] ?? '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : `premier_hotel_backup_${new Date().toISOString().slice(0,10)}.json`;
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+      flash('download');
+      toast.success('Backup downloaded');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Download failed');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleEmail = async () => {
+    setEmailing(true);
+    try {
+      const res = await api.post('/admin/backup/email');
+      flash('email');
+      toast.success(res.data?.message || 'Backup emailed');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Email failed');
+    } finally {
+      setEmailing(false);
+    }
+  };
+
+  return (
+    <Card className="border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-500/5">
+      <CardHeader className="pb-3">
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-emerald-600">
+            <DatabaseBackup className="h-4 w-4 text-white" />
+          </div>
+          <div className="flex-1">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              Database Backup
+              <span className="text-[10px] font-normal bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 px-2 py-0.5 rounded-full">
+                Admin only
+              </span>
+            </CardTitle>
+            <CardDescription className="text-xs mt-0.5">
+              Full JSON snapshot of all critical tables — use this to restore after any data loss.
+              A backup is also emailed automatically every day at 12:00.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <Button
+          className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700"
+          onClick={handleDownload}
+          disabled={downloading || emailing}
+        >
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> :
+           done === 'download' ? <CheckCircle2 className="h-4 w-4" /> :
+           <Download className="h-4 w-4" />}
+          {downloading ? 'Preparing backup…' : done === 'download' ? 'Downloaded!' : 'Download Backup Now'}
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400"
+          onClick={handleEmail}
+          disabled={downloading || emailing}
+        >
+          {emailing ? <Loader2 className="h-4 w-4 animate-spin" /> :
+           done === 'email' ? <CheckCircle2 className="h-4 w-4" /> :
+           <Mail className="h-4 w-4" />}
+          {emailing ? 'Sending…' : done === 'email' ? 'Emailed!' : 'Email Backup Now'}
+        </Button>
+        <p className="text-[10px] text-muted-foreground text-center pt-1">
+          Covers: menu, rooms, bookings, orders, bills, stock, staff, settings &amp; more
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main export page ─────────────────────────────────────────────────────────
 export function DataExportCenter() {
   return (
@@ -400,7 +496,15 @@ export function DataExportCenter() {
         </p>
       </div>
 
-      {/* Full export at the top */}
+      {/* Safety backup at the top */}
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-1">
+          <Shield className="h-3 w-3" /> Safety Backup
+        </p>
+        <DatabaseBackupCard />
+      </div>
+
+      {/* Full export */}
       <ExportAll />
 
       {/* Individual exports */}

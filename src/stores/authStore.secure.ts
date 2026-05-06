@@ -472,6 +472,7 @@ const useAuthStore = create<AuthState>()(
             lastAuthenticatedAt: null,
             isOfflineSession: false,
           });
+          window.dispatchEvent(new CustomEvent('auth:session-expired'));
           return false;
         }
       },

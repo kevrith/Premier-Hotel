@@ -59,7 +59,7 @@ async def get_menu_items(
 
 
 @router.get("/items/{item_id}", response_model=MenuItemResponse)
-async def get_menu_item(item_id: str, supabase: Client = Depends(get_supabase)):
+async def get_menu_item(item_id: str, supabase: Client = Depends(get_supabase_admin)):
     """
     Get menu item by ID
 

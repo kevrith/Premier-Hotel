@@ -47,8 +47,8 @@ class RoomResponse(RoomBase):
     status: str
     branch_id: Optional[str] = None
     rating: Optional[Decimal] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
