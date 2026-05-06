@@ -8,7 +8,7 @@ from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 import re
 from app.middleware.auth_secure import get_current_user, require_role
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from supabase import Client
 
 _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)

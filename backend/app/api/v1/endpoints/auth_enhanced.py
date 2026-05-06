@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from supabase import Client
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase_admin
 from app.schemas.auth import (
     UserRegister,
     UserLogin,
@@ -127,7 +127,7 @@ async def create_auth_response(user: dict) -> AuthResponse:
 async def register(
     request: Request,
     user_data: UserRegister,
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Register a new user with email OR phone + password
@@ -210,7 +210,7 @@ async def register(
 async def login(
     request: Request,
     credentials: UserLogin,
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Login with email OR phone + password
@@ -272,7 +272,7 @@ async def login(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_access_token(
-    refresh_data: RefreshToken, supabase: Client = Depends(get_supabase)
+    refresh_data: RefreshToken, supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Refresh access token using refresh token
@@ -334,7 +334,7 @@ async def refresh_access_token(
 
 @router.post("/phone/request-otp")
 async def request_phone_otp(
-    otp_request: PhoneOTPRequest, supabase: Client = Depends(get_supabase)
+    otp_request: PhoneOTPRequest, supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Request OTP code for phone verification
@@ -376,7 +376,7 @@ async def request_phone_otp(
 
 @router.post("/phone/verify-otp")
 async def verify_phone_otp(
-    otp_verify: PhoneOTPVerify, supabase: Client = Depends(get_supabase)
+    otp_verify: PhoneOTPVerify, supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Verify phone number with OTP code
@@ -464,7 +464,7 @@ async def verify_phone_otp(
 @router.post("/email/request-verification")
 async def request_email_verification(
     email_request: EmailVerificationRequest,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Request email verification link
@@ -493,7 +493,7 @@ async def request_email_verification(
 @router.post("/email/verify")
 async def verify_email(
     verify_data: EmailVerificationConfirm,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Verify email with token from verification link
@@ -561,7 +561,7 @@ async def verify_email(
 async def request_password_reset(
     request: Request,
     reset_request: PasswordResetRequest,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Request password reset link
@@ -611,7 +611,7 @@ async def request_password_reset(
 @router.post("/password/reset-confirm")
 async def confirm_password_reset(
     reset_data: PasswordResetConfirm,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Reset password with reset token
@@ -680,7 +680,7 @@ async def confirm_password_reset(
 @router.post("/guest/create", response_model=AuthResponse)
 async def create_guest_user(
     guest_data: GuestUserCreate,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Create anonymous guest user for checkout without signup
@@ -725,7 +725,7 @@ async def create_guest_user(
 @router.post("/guest/convert", response_model=AuthResponse)
 async def convert_guest_to_user(
     conversion_data: GuestToUserConversion,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Convert guest user to registered user
@@ -815,7 +815,7 @@ async def convert_guest_to_user(
 @router.post("/social/google", response_model=AuthResponse)
 async def google_auth(
     auth_data: SocialAuthRequest,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Authenticate with Google OAuth
@@ -834,7 +834,7 @@ async def google_auth(
 @router.post("/social/facebook", response_model=AuthResponse)
 async def facebook_auth(
     auth_data: SocialAuthRequest,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Authenticate with Facebook OAuth
@@ -853,7 +853,7 @@ async def facebook_auth(
 @router.post("/social/whatsapp", response_model=AuthResponse)
 async def whatsapp_auth(
     auth_data: SocialAuthRequest,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Authenticate with WhatsApp
@@ -880,7 +880,7 @@ async def get_current_user_profile(current_user: dict = Depends(get_current_user
 @router.post("/logout")
 async def logout(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """Logout current user"""
     try:

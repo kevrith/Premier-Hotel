@@ -5,7 +5,7 @@ In-app messaging between guests and staff
 
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase_admin
 from app.middleware.auth import get_current_user
 from app.schemas.messaging import (
     ConversationCreate,
@@ -28,7 +28,7 @@ router = APIRouter()
 async def create_conversation(
     conversation: ConversationCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Create a new conversation"""
     try:
@@ -82,7 +82,7 @@ async def list_conversations(
     status: Optional[str] = None,
     limit: int = 50,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """List user's conversations"""
     try:
@@ -152,7 +152,7 @@ async def list_conversations(
 async def get_conversation(
     conversation_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get a specific conversation"""
     try:
@@ -215,7 +215,7 @@ async def update_conversation(
     conversation_id: str,
     conversation: ConversationUpdate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Update a conversation"""
     try:
@@ -244,7 +244,7 @@ async def update_conversation(
 async def send_message(
     message: MessageCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Send a message in a conversation"""
     try:
@@ -307,7 +307,7 @@ async def get_messages(
     limit: int = 50,
     offset: int = 0,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get messages in a conversation"""
     try:
@@ -344,7 +344,7 @@ async def get_messages(
 async def mark_conversation_as_read(
     conversation_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Mark all messages in a conversation as read"""
     try:
@@ -365,7 +365,7 @@ async def mark_conversation_as_read(
 @router.get("/stats", response_model=MessageStats)
 async def get_message_stats(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get messaging statistics for current user"""
     try:

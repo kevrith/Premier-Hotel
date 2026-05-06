@@ -9,7 +9,7 @@ import hmac
 import hashlib
 import base64
 from app.middleware.auth import get_current_user, require_role
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.core.config import settings
 from app.schemas.payment import (
     PaymentInitiate,
@@ -59,7 +59,7 @@ async def initiate_payment(
     payment: PaymentInitiate,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Initiate a payment for a booking or order
@@ -371,7 +371,7 @@ async def mpesa_callback(
 async def get_payment_status(
     payment_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get payment status
@@ -430,7 +430,7 @@ async def get_my_payments(
     reference_type: Optional[str] = None,
     payment_status: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get current user's payments
@@ -456,7 +456,7 @@ async def get_all_payments(
     payment_method: Optional[str] = None,
     payment_status: Optional[str] = None,
     current_user: dict = Depends(require_role(["admin", "staff", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get all payments (staff only)
@@ -482,7 +482,7 @@ async def confirm_payment(
     payment_id: str,
     transaction_reference: Optional[str] = None,
     current_user: dict = Depends(require_role(["admin", "staff", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Confirm a cash/card payment (staff only)
@@ -539,7 +539,7 @@ async def confirm_payment(
 async def cancel_payment(
     payment_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Cancel a pending payment
@@ -646,7 +646,7 @@ async def paystack_webhook(
 async def paypal_capture(
     request: Request,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """Capture a PayPal order after buyer approval.
     Expects JSON body: { "order_id": "..." }

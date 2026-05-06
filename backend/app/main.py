@@ -169,12 +169,12 @@ async def _db_keepalive():
     Ping the database every 3 minutes to prevent Supabase free-tier cold starts.
     Pings BOTH the regular and admin clients so all endpoints stay warm.
     """
-    from app.core.supabase import get_supabase, get_supabase_admin
+    from app.core.supabase import get_supabase_admin
     while True:
         await asyncio.sleep(180)  # 3 minutes
         try:
             def _ping():
-                get_supabase().table("users").select("id").limit(1).execute()
+                get_supabase_admin().table("users").select("id").limit(1).execute()
                 get_supabase_admin().table("users").select("id").limit(1).execute()
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, _ping)
@@ -283,9 +283,9 @@ async def startup():
     # doesn't hit a cold connection. Regular client handles most endpoints;
     # admin client handles reports, admin ops, etc.
     try:
-        from app.core.supabase import get_supabase
+        from app.core.supabase import get_supabase_admin
         def _warmup():
-            get_supabase().table("users").select("id").limit(1).execute()
+            get_supabase_admin().table("users").select("id").limit(1).execute()
             get_supabase_admin().table("users").select("id").limit(1).execute()
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _warmup)

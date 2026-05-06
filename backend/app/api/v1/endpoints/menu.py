@@ -4,7 +4,7 @@ Menu Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import Optional, List
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.schemas.menu import MenuItemCreate, MenuItemUpdate, MenuItemResponse
 from app.middleware.auth_secure import get_current_user, require_admin, require_manager_or_admin
 

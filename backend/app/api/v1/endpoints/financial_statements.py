@@ -9,7 +9,7 @@ from pydantic import BaseModel
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from app.middleware.auth_secure import require_role
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from supabase import Client
 
 router = APIRouter()

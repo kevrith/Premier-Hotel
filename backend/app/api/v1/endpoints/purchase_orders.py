@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from app.middleware.auth_secure import get_current_user, require_role
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from supabase import Client
 from pydantic import BaseModel, Field
 import uuid
@@ -193,7 +193,7 @@ async def get_suppliers(
 async def create_supplier(
     supplier: SupplierCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Create a new supplier"""
     try:
@@ -217,7 +217,7 @@ async def update_supplier(
     supplier_id: str,
     supplier: SupplierUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Update supplier information"""
     try:
@@ -254,7 +254,7 @@ async def get_purchase_orders(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get purchase orders with filters"""
     try:
@@ -381,7 +381,7 @@ async def list_direct_receipts(
 async def get_purchase_order(
     po_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get purchase order details with items"""
     try:
@@ -420,7 +420,7 @@ async def get_purchase_order(
 async def create_purchase_order(
     po: PurchaseOrderCreate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Create a new purchase order"""
     try:
@@ -484,7 +484,7 @@ async def update_purchase_order(
     po_id: str,
     po: PurchaseOrderUpdate,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Update purchase order (only in draft status)"""
     try:
@@ -522,7 +522,7 @@ async def update_purchase_order(
 async def approve_purchase_order(
     po_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Approve a purchase order"""
     try:
@@ -569,7 +569,7 @@ async def approve_purchase_order(
 async def send_purchase_order(
     po_id: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Mark purchase order as sent to supplier"""
     try:
@@ -615,7 +615,7 @@ async def cancel_purchase_order(
     po_id: str,
     reason: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Cancel a purchase order"""
     try:
@@ -664,7 +664,7 @@ async def receive_purchase_order(
     po_id: str,
     grn: GoodsReceiptCreate,
     current_user: dict = Depends(require_role(["admin", "manager", "staff"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Receive goods against a purchase order
@@ -835,7 +835,7 @@ async def get_goods_received_notes(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get goods received notes"""
     try:
@@ -879,7 +879,7 @@ async def record_payment(
     po_id: str,
     payment: PaymentRecord,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Record payment for a purchase order"""
     try:
@@ -948,7 +948,7 @@ async def record_payment(
 @router.get("/dashboard/stats")
 async def get_po_dashboard_stats(
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get purchase order dashboard statistics"""
     try:

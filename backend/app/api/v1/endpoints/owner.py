@@ -1473,7 +1473,7 @@ async def get_active_alerts(
         return r.count or 0
 
     def _low_stock_count():
-        inv = get_supabase()
+        inv = get_supabase_admin()
         rows = inv.table("inventory_items").select("id, quantity, min_quantity").eq("is_active", True).execute().data or []
         return sum(1 for i in rows if float(i.get("quantity") or 0) <= float(i.get("min_quantity") or 0))
 
@@ -1529,7 +1529,7 @@ async def owner_stock_balances(
     current_user: dict = Depends(require_role(OWNER_ROLES)),
 ):
     """Current stock balance for all tracked menu items."""
-    inv = get_supabase()
+    inv = get_supabase_admin()
     query = inv.table("menu_items").select(
         "id, name, category, stock_quantity, reorder_level, unit, cost_price, is_available"
     ).eq("track_inventory", True)

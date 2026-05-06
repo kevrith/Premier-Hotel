@@ -4,7 +4,7 @@ Booking Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import Optional, List
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase_admin
 from app.schemas.booking import (
     BookingCreate,
     BookingUpdate,
@@ -38,7 +38,7 @@ async def get_all_bookings(
     limit: int = Query(100, ge=1, le=100),
     status: Optional[str] = None,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Get all bookings (Staff only)
@@ -75,7 +75,7 @@ async def get_my_bookings(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Get current user's bookings
@@ -105,7 +105,7 @@ async def get_my_bookings(
 async def get_booking(
     booking_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Get booking by ID
@@ -150,7 +150,7 @@ async def get_booking(
 async def create_booking(
     booking_data: BookingCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Create a new booking
@@ -274,7 +274,7 @@ async def update_booking(
     booking_id: str,
     booking_data: BookingUpdate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Update booking
@@ -380,7 +380,7 @@ async def cancel_booking(
     booking_id: str,
     cancel_data: BookingCancel,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Cancel booking
@@ -450,7 +450,7 @@ async def check_in(
     booking_id: str,
     check_in_data: BookingCheckIn,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Check in guest (Staff only)
@@ -510,7 +510,7 @@ async def check_out(
     booking_id: str,
     check_out_data: BookingCheckOut,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     db_pool: asyncpg.Pool = Depends(get_db_pool),
 ):
     """

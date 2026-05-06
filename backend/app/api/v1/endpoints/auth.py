@@ -4,7 +4,7 @@ Authentication Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from supabase import Client
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase_admin
 from app.schemas.auth import (
     UserRegister,
     UserLogin,
@@ -29,7 +29,7 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserRegister, supabase: Client = Depends(get_supabase)):
+async def register(user_data: UserRegister, supabase: Client = Depends(get_supabase_admin)):
     """
     Register a new user
 
@@ -104,7 +104,7 @@ async def register(user_data: UserRegister, supabase: Client = Depends(get_supab
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(credentials: UserLogin, response: Response, supabase: Client = Depends(get_supabase)):
+async def login(credentials: UserLogin, response: Response, supabase: Client = Depends(get_supabase_admin)):
     """
     Login user
 
@@ -175,7 +175,7 @@ async def login(credentials: UserLogin, response: Response, supabase: Client = D
 @router.post("/logout")
 async def logout(
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Logout user
@@ -196,7 +196,7 @@ async def logout(
 async def refresh_token(
     refresh_data: RefreshToken,
     response: Response,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Refresh access token
@@ -261,7 +261,7 @@ async def get_current_user_profile(current_user: dict = Depends(get_current_user
 async def update_profile(
     profile_data: UserUpdate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Update user profile
@@ -304,7 +304,7 @@ async def update_profile(
 async def change_password(
     password_data: ChangePassword,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Change password
@@ -342,7 +342,7 @@ async def change_password(
 async def social_login(
     payload: dict,
     response: Response,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Social login (Google, etc.) via OAuth access token.
@@ -428,7 +428,7 @@ async def get_ws_token(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/forgot-password")
-async def forgot_password(email: str, supabase: Client = Depends(get_supabase)):
+async def forgot_password(email: str, supabase: Client = Depends(get_supabase_admin)):
     """
     Request password reset
 
@@ -446,7 +446,7 @@ async def forgot_password(email: str, supabase: Client = Depends(get_supabase)):
 async def reset_password(
     token: str,
     new_password: str,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Reset password with token

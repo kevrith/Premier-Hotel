@@ -4,7 +4,7 @@ Room Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import Optional, List
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.schemas.room import (
     RoomCreate,
     RoomUpdate,
@@ -72,7 +72,7 @@ async def get_available_rooms(
     check_out: date,
     guests: Optional[int] = None,
     room_type: Optional[str] = None,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Get available rooms for specific dates
@@ -117,7 +117,7 @@ async def get_available_rooms(
 
 
 @router.get("/{room_id}", response_model=RoomResponse)
-async def get_room(room_id: str, supabase: Client = Depends(get_supabase), supabase_admin: Client = Depends(get_supabase_admin)):
+async def get_room(room_id: str, supabase: Client = Depends(get_supabase_admin), supabase_admin: Client = Depends(get_supabase_admin)):
     """
     Get room by ID
 
@@ -147,7 +147,7 @@ async def get_room(room_id: str, supabase: Client = Depends(get_supabase), supab
 async def check_availability(
     room_id: str,
     availability_data: AvailabilityCheck,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Check room availability

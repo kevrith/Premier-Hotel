@@ -7,7 +7,7 @@ from supabase import Client
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import get_current_user, require_role
 from app.core.security import get_password_hash
 import secrets
@@ -679,7 +679,7 @@ async def delete_user(
 @router.get("/users/stats", response_model=UserStatistics)
 async def get_user_statistics(
     current_user: dict = Depends(require_role(["admin", "owner", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get user statistics and analytics"""
     try:
@@ -784,7 +784,7 @@ async def get_user_audit_log(
     user_id: str,
     limit: int = 50,
     current_user: dict = Depends(require_role(["admin", "owner"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """Get audit log for a specific user"""
     try:

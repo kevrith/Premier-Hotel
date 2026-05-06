@@ -10,7 +10,7 @@ from supabase import Client
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from decimal import Decimal
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import get_current_user, require_staff
 from app.core.security import verify_password
 

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import List, Optional
 from datetime import datetime, date, timezone
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import get_current_user, require_role
 from app.schemas.housekeeping import (
     HousekeepingTaskCreate,

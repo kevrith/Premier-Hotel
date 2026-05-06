@@ -10,7 +10,7 @@ from supabase import Client
 from decimal import Decimal
 import statistics
 
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.middleware.auth import require_role
 from app.schemas.analytics import (
     RevenueAnalytics, RevenueByPeriod,

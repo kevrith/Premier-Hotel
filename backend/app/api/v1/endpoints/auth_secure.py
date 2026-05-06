@@ -8,7 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from supabase import Client
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase_admin
 from app.schemas.auth import (
     UserRegister,
     UserLogin,
@@ -155,7 +155,7 @@ async def register(
     request: Request,
     response: Response,
     user_data: UserRegister,
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Register a new user with httpOnly cookie authentication
@@ -252,7 +252,7 @@ async def login(
     request: Request,
     response: Response,
     credentials: UserLogin,
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Login with httpOnly cookie authentication
@@ -336,7 +336,7 @@ async def login(
 async def logout(
     request: Request,
     response: Response,
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Logout and clear authentication cookies
@@ -412,7 +412,7 @@ async def refresh(
 async def get_websocket_token(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get a JWT token for WebSocket authentication.
@@ -474,7 +474,7 @@ async def get_websocket_token(
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Get current authenticated user.
@@ -545,7 +545,7 @@ async def get_current_user(
 async def request_password_reset(
     request: Request,
     reset_request: PasswordResetRequest,
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Request password reset link
@@ -596,7 +596,7 @@ async def request_password_reset(
 @router.post("/password-reset/confirm")
 async def confirm_password_reset(
     reset_data: PasswordResetConfirm,
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Confirm password reset with token
@@ -696,7 +696,7 @@ async def _get_google_userinfo(token: str) -> dict:
 async def social_login(
     payload: dict,
     response: Response,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Social login via Google OAuth access token.
@@ -815,7 +815,7 @@ STAFF_ROLES = ["waiter", "chef", "cleaner", "housekeeping", "manager"]
 
 @router.get("/staff-list")
 async def get_staff_list(
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Return active staff members for the PIN login picker.
@@ -851,7 +851,7 @@ async def pin_login(
     request: Request,
     response: Response,
     credentials: PinLoginRequest,
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Fast PIN-based login for staff.

@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from app.core.config import settings
-from app.core.supabase import get_supabase
+from app.core.supabase import get_supabase_admin
 from app.core.cookie_auth import get_current_user_from_cookie, ACCESS_TOKEN_COOKIE_NAME
 from app.core.security import decode_token
 from supabase import Client
@@ -19,7 +19,7 @@ security = HTTPBearer(auto_error=False)
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ):
     """
     Get current authenticated user from cookie OR Bearer token
@@ -272,7 +272,7 @@ async def require_customer_or_staff(current_user: dict = Depends(get_current_use
 async def get_current_user_optional(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
 ) -> Optional[dict]:
     """
     Get current user if authenticated, None otherwise

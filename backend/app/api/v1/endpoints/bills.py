@@ -9,7 +9,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import get_current_user
 from app.schemas.bill import (
     BillCreate,

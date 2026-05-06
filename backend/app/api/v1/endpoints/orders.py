@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 from typing import Optional, List
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.schemas.order import OrderCreate, OrderUpdate, OrderResponse, OrderStatusUpdate
 from app.middleware.auth_secure import get_current_user, require_staff, require_chef
 from datetime import datetime, timedelta, timezone
@@ -75,7 +75,7 @@ async def get_all_orders(
     location_type: Optional[str] = None,
     date: Optional[str] = Query(None),
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
@@ -167,7 +167,7 @@ async def get_my_orders(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
@@ -198,7 +198,7 @@ async def get_my_orders(
 @router.get("/kitchen", response_model=List[OrderResponse])
 async def get_kitchen_orders(
     current_user: dict = Depends(require_chef),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
@@ -443,7 +443,7 @@ async def get_manager_order_stats(
 async def get_order(
     order_id: str,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
@@ -491,7 +491,7 @@ async def get_order(
 async def create_order(
     order_data: OrderCreate,
     current_user: dict = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
@@ -944,7 +944,7 @@ async def update_order_status(
     order_id: str,
     status_data: OrderStatusUpdate,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
     db_pool: Optional[asyncpg.Pool] = Depends(get_db_pool),
 ):
@@ -1265,7 +1265,7 @@ async def update_order(
     order_id: str,
     order_data: OrderUpdate,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """
@@ -1317,7 +1317,7 @@ async def update_order(
 async def request_void(
     modification: dict,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Request to void an order or item"""
@@ -1361,7 +1361,7 @@ async def approve_void(
     modification_id: str,
     approval_data: dict,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Approve a void request"""
@@ -1463,7 +1463,7 @@ async def reject_void(
     modification_id: str,
     rejection_data: dict,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Reject a void request"""
@@ -1501,7 +1501,7 @@ async def reject_void(
 @router.get("/modifications/pending")
 async def get_pending_modifications(
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Get all pending modification requests"""
@@ -1519,7 +1519,7 @@ async def get_pending_modifications(
 async def get_order_history(
     order_id: str,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Get order modification history"""
@@ -1547,7 +1547,7 @@ async def get_void_statistics(
     start_date: str = Query(...),
     end_date: str = Query(...),
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Get void statistics for reporting"""
@@ -1622,7 +1622,7 @@ async def reverse_order(
     order_id: str,
     reversal_data: dict,
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Reverse a completed order"""
@@ -1678,7 +1678,7 @@ async def get_audit_trail(
     entity_type: Optional[str] = Query(None),
     performed_by: Optional[str] = Query(None),
     current_user: dict = Depends(require_staff),
-    supabase: Client = Depends(get_supabase),
+    supabase: Client = Depends(get_supabase_admin),
     supabase_admin: Client = Depends(get_supabase_admin),
 ):
     """Get audit trail for order modifications"""

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from app.middleware.auth_secure import get_current_user, require_role
 from app.core.security import get_password_hash
 import secrets
@@ -50,7 +50,7 @@ class UserResponse(BaseModel):
 async def create_user(
     user_data: UserCreate,
     current_user: dict = Depends(require_role(["admin", "owner", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Create a new user account.
@@ -198,7 +198,7 @@ async def update_user_role(
     user_id: str,
     role: str,
     current_user: dict = Depends(require_role(["admin", "manager"])),
-    supabase: Client = Depends(get_supabase)
+    supabase: Client = Depends(get_supabase_admin)
 ):
     """
     Update a user's role.

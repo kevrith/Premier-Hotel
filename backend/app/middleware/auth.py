@@ -8,7 +8,7 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from app.core.config import settings
-from app.core.supabase import get_supabase, get_supabase_admin
+from app.core.supabase import get_supabase_admin
 from supabase import Client
 
 # Make security optional to allow cookie fallback
